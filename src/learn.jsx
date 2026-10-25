@@ -107,10 +107,16 @@ const CSS = `
   .ln-grade-bar { position: relative; display: block; height: 10px; border-radius: 999px; overflow: hidden; background: color-mix(in srgb, var(--u) 12%, var(--ds-card2)); }
   .ln-grade-bar i { position: absolute; inset: 0 auto 0 0; border-radius: inherit; background: linear-gradient(90deg, color-mix(in srgb, var(--u) 70%, #fff), var(--u)); transition: width .8s cubic-bezier(.2, .9, .3, 1);
     animation: ln-grade-grow 1s cubic-bezier(.2, .9, .3, 1) backwards; }
-  .ln-grade-bar i::after { content: ''; position: absolute; inset: 0; background: linear-gradient(105deg, transparent 30%, rgba(255,255,255,.55) 50%, transparent 70%); background-size: 220% 100%; animation: ln-grade-shine 3.2s ease-in-out 1s infinite; }
+  .ln-grade-bar i::after { content: ''; position: absolute; inset: 0; background: linear-gradient(105deg, transparent 30%, rgba(255,255,255,.55) 50%, transparent 70%); background-size: 220% 100%; animation: ln-grade-shine 3.2s ease-in-out 1s 3; }
   @keyframes ln-grade-grow { from { width: 0 } }
   @keyframes ln-grade-shine { 0% { background-position: 140% 0 } 60%, 100% { background-position: -60% 0 } }
-  .ln-grade-foot { display: block; margin-top: 5px; font: 12.5px var(--ds-sans); color: var(--ds-ink2); }
+  /* телефон: карточка ниже — карта Пути не уезжает под нижнюю панель */
+  @media (max-width: 560px) {
+    .ln-grade { padding: 10px 12px 9px; margin-bottom: 12px; }
+    .ln-grade-row { margin: 4px 0 7px; gap: 10px; }
+    .ln-grade-num { min-width: 54px; font-size: 28px; padding: 4px 6px; }
+    .ln-grade-word b { font-size: 16px; }
+  }
   @media (prefers-reduced-motion: reduce) { .ln-grade-num, .ln-grade-bar i, .ln-grade-bar i::after { animation: none; } }
   .ln-streak.on { background: color-mix(in srgb, var(--ds-bad) 12%, var(--ds-card)); border-color: color-mix(in srgb, var(--ds-bad) 55%, var(--ds-rule2)); color: var(--ds-bad); }
   .ln-streak.on small { color: inherit; }
@@ -229,7 +235,7 @@ const CSS = `
   @keyframes ln-intro-in { from { opacity: 0; transform: translateY(10px) scale(.98) } }
   .ln-model-intro-top { display: flex; align-items: center; gap: 12px; }
   .ln-model-intro-thumb { flex: none; display: grid; place-items: center; border-radius: 12px; background: var(--ds-card); box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--u) 25%, var(--ds-rule)); padding: 4px; }
-  .ln-new-pill { display: inline-block; padding: 2px 7px; margin-right: 4px; border-radius: 999px; background: var(--u-ink); color: #fff; letter-spacing: .06em; }
+  .ln-new-pill { display: inline-block; padding: 2px 7px; margin-right: 4px; border-radius: 999px; background: var(--u); color: #fff; letter-spacing: .06em; }
   @media (prefers-reduced-motion: reduce) { .ln-model-intro { animation: none; } }
   .ln-fold-row .lm-pips { margin-right: 4px; }
   /* «К карте»: появляется, когда карта уехала за верх экрана */
@@ -1695,7 +1701,8 @@ const writeSeen = (set) => { try { localStorage.setItem(SEEN_KEY, JSON.stringify
 /* Оценка в курсе (src/learn/grade.js): вместо счётчиков опыта и монет — «ваша оценка» от 2 до 5 и
    полоска пройденного курса. Опыт — в лиге, монеты — в лавке; здесь — главное: как идёт учёба. */
 function GradeCard({ learn }) {
-  const c = courseGrade(learn);
+  // весь курс по урокам — считаем, только когда прогресс поменялся
+  const c = useMemo(() => courseGrade(learn), [learn]);
   const pct = Math.round(c.share * 100);
   return (
     <div className="ln-grade" data-testid="course-grade" data-grade={c.grade == null ? '' : String(c.grade)} data-done={c.done}>
@@ -1707,12 +1714,11 @@ function GradeCard({ learn }) {
         <span className={`ln-grade-num${c.grade == null ? ' none' : ''}`} aria-hidden="true">{c.grade == null ? '—' : String(c.grade.toFixed(1)).replace('.', ',')}</span>
         <span className="ln-grade-word">
           <b>{c.grade == null ? 'Появится после первого урока' : gradeWord(c.grade)}</b>
-          <small>{c.grade == null ? 'Оценка — по точности ответов в пройденных уроках' : `точность ${c.accuracy}%${c.diamonds ? ` · алмазов: ${c.diamonds}` : ''}`}</small>
+          <small>{c.grade == null ? 'Оценка — по точности ответов в пройденных уроках' : `точность ${c.accuracy}% · ${c.done} из ${c.total} уроков`}</small>
         </span>
       </div>
       <span className="ds-sr">{c.grade == null ? 'Оценки пока нет.' : `Оценка ${String(c.grade).replace('.', ',')} из 5, ${gradeWord(c.grade)}.`} Пройдено {c.done} из {c.total} уроков, {pct}% курса.</span>
       <span className="ln-grade-bar" aria-hidden="true"><i style={{ width: `${Math.max(c.done ? 2 : 0, pct)}%` }} /></span>
-      <span className="ln-grade-foot" aria-hidden="true">{c.done} из {c.total} уроков</span>
     </div>
   );
 }

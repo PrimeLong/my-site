@@ -55,8 +55,12 @@ export const PARTS = [
           { book: 'mankiwPrinciples', chapter: '«Фирмы на конкурентных рынках» (Firms in Competitive Markets) и «Монополия» (Monopoly)' },
           { book: 'varian', chapter: '«Предложение фирмы» (Firm Supply), «Предложение отрасли» (Industry Supply), «Монополия» (Monopoly) и «Поведение монополии» (Monopoly Behavior)' },
         ] },
-      { id: 'monopolistic', title: 'Монополистическая конкуренция', status: 'planned',
-        summary: 'Дифференцированный товар, свободный вход, избыточные мощности в длинном периоде, реклама и бренды.' },
+      { id: 'monopolistic', title: 'Монополистическая конкуренция', status: 'ready',
+        summary: 'Дифференцированный товар, свободный вход, избыточные мощности в длинном периоде, реклама и бренды.',
+        refs: [
+          { book: 'mankiwPrinciples', chapter: '«Монополистическая конкуренция» (Monopolistic Competition)' },
+          { book: 'varian', chapter: '«Поведение монополии» (Monopoly Behavior), раздел «Монополистическая конкуренция» (Monopolistic Competition)' },
+        ] },
       { id: 'oligopoly', title: 'Олигополия и картели', status: 'ready',
         summary: 'Модели Курно и Бертрана, картель и дилемма заключённого: почему сговор выгоден и почему он разваливается.',
         refs: [

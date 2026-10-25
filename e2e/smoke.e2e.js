@@ -47,6 +47,8 @@ const ACCOUNT = { token: 't', login: 'tester', name: 'Тест', emblem: 'star',
 test.beforeEach(async ({ page }, info) => {
   // уведомление о памяти браузера уже прочитано — кроме теста самого уведомления
   if (!info.title.startsWith('память браузера:')) await page.context().addInitScript(() => { try { localStorage.setItem('ems-storage-notice', '1'); } catch { /* нет хранилища */ } });
+  // знакомство с живой моделью уже показано — кроме теста самого знакомства
+  if (!info.title.startsWith('живая модель: знакомство')) await page.context().addInitScript(() => { try { localStorage.setItem('ems-model-intro', JSON.stringify(['supply-demand'])); } catch { /* нет хранилища */ } });
   if (info.title.startsWith('вход:')) return;
   await page.context().addInitScript((a) => { try { localStorage.setItem('ems-account', JSON.stringify(a)); } catch { /* нет хранилища */ } }, ACCOUNT);
 });
@@ -1460,8 +1462,8 @@ async function passCards(page) {
 }
 
 const pathNode = (page, id) => page.getByTestId('path').getByTestId('path-lesson').and(page.locator(`[data-lesson="${id}"]`));
-const UNIT_OF = { sc: 'scarcity', sd: 'supply-demand', el: 'elasticity', mf: 'market-failures', mb: 'money-banks', in: 'inflation', cs: 'consumer', ct: 'costs', cm: 'competition-monopoly' };
-const LEVEL_OF = { scarcity: 'start', 'supply-demand': 'basic', elasticity: 'basic', 'market-failures': 'basic', 'money-banks': 'basic', inflation: 'basic', consumer: 'middle', costs: 'middle', 'competition-monopoly': 'middle' };
+const UNIT_OF = { sc: 'scarcity', sd: 'supply-demand', el: 'elasticity', mf: 'market-failures', mb: 'money-banks', in: 'inflation', cs: 'consumer', ct: 'costs', cm: 'competition-monopoly', mc: 'monopolistic' };
+const LEVEL_OF = { scarcity: 'start', 'supply-demand': 'basic', elasticity: 'basic', 'market-failures': 'basic', 'money-banks': 'basic', inflation: 'basic', consumer: 'middle', costs: 'middle', 'competition-monopoly': 'middle', monopolistic: 'middle' };
 // на Пути юниты одного уровня: уровень нужного юнита — через плашку и список уровней, если юнита ещё нет на экране
 async function showUnit(page, id) {
   const unit = page.getByTestId('path').locator(`[data-testid="path-unit"][data-unit="${id}"]`);
@@ -2132,6 +2134,46 @@ test('путь: юнит «Биржа» (конкуренция и монопо�
   expect(errors).toEqual([]);
 });
 
+test('путь: юнит «Ярмарка» (монополистическая конкуренция) — каждый урок проходится, игра — наценка ниже или выше', async ({ page }) => {
+  test.setTimeout(300_000);
+  await withTestFlag(page);
+  await page.addInitScript(() => {
+    const at = Date.now() - 86400000;
+    const units = { sc: ['i1', 'l1', 'l2', 'i2', 'l3', 'l4', 'l5', 'l6', 'w', 's1', 'radio', 'g', 'rev', 'sum'], sd: ['i1', 'l1', 'w', 'i2', 'l3', 's1', 'l-radio', 'g', 'rev', 'sum'] };
+    for (const u of ['el', 'mf', 'mb', 'in', 'cs', 'ct', 'cm']) units[u] = ['i1', 'l1', 'i2', 'l2', 'w', 's1', 'radio', 'g', 'rev', 'sum'];
+    const ids = Object.entries(units).flatMap(([u, ls]) => ls.map((l) => `${u}-${l}`));
+    localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons: Object.fromEntries(ids.map((id) => [id, { at, runs: 1, best: 90 }])) } }));
+  });
+  const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
+  const unit = await showUnit(page, 'monopolistic');
+  await expect(unit.getByTestId('path-lesson')).toHaveCount(10);
+  expect(await unit.getByTestId('path-lesson').evaluateAll((els) => els.map((e) => e.dataset.kind)))
+    .toEqual(['intro', 'practice', 'intro', 'practice', 'words', 'story', 'listen', 'game', 'review', 'summary']);
+  const finish = async () => { await expect(page.getByTestId('lesson-result')).toBeVisible(); await page.getByTestId('lesson-result').getByRole('button', { name: 'Дальше', exact: true }).click(); await expect(page.getByTestId('lesson')).toHaveCount(0); };
+  // «Знакомство»: спрос на свою чашку и правило MR = MC — на графике кофейни
+  await startLesson(page, 'mc-i1');
+  await expect(page.getByTestId('lesson-card')).toContainText('монополистическая конкуренция');
+  await playLesson(page);
+  await finish();
+  for (const id of ['mc-l1', 'mc-i2', 'mc-l2', 'mc-w']) { await startLesson(page, id); await playLesson(page); await finish(); }
+  // «История»: соседки «Зерна» — Маша, Тимур, Гриша и Вера Павловна
+  await startLesson(page, 'mc-s1');
+  await expect(page.getByTestId('lesson-card').getByTestId('portrait')).toHaveAttribute('data-who', 'masha');
+  await playLesson(page);
+  await finish();
+  await startLesson(page, 'mc-radio');
+  await expect(page.getByTestId('listen-text')).toContainText('ярмарке');
+  await playLesson(page);
+  await finish();
+  // игра: каждое событие сдвигает наценку шагом — график «наценка»
+  await startLesson(page, 'mc-g');
+  await expect(page.getByTestId('ex').getByTestId('game-chart')).toHaveAttribute('data-chart', 'markup');
+  await playLesson(page);
+  await finish();
+  for (const id of ['mc-rev', 'mc-sum']) { await startLesson(page, id); await playLesson(page); await finish(); }
+  expect(errors).toEqual([]);
+});
+
 test('лавка → сад: урожай с редкостью — продать или оставить, семена садятся за монеты, растение растёт без приложения', async ({ page }) => {
   await withTestFlag(page);
   await page.addInitScript(() => {
@@ -2752,7 +2794,10 @@ test('вход: программа — вступительный тест, су
   await expect(page.getByTestId('path')).toBeVisible();
   // ответы при регистрации — в программе ученика: цель дня — 15 минут занятий
   await expect(page.getByTestId('goal')).toContainText('0/15');
-  await expect(page.getByTestId('wallet-balance')).toHaveText('0');
+  // наверху Пути — оценка в курсе вместо опыта и монет: до первого урока её нет
+  await expect(page.getByTestId('wallet-balance')).toHaveCount(0);
+  await expect(page.getByTestId('course-grade')).toHaveAttribute('data-done', '0');
+  await expect(page.getByTestId('course-grade')).toContainText('Появится после первого урока');
   await expect(page.getByTestId('chest')).toHaveCount(0);
   // задания дня и испытание месяца — экран «Задания» с карточки наверху Пути; испытание считается от цели в минутах
   await expect(page.getByTestId('quests')).toHaveCount(0);
@@ -3490,6 +3535,8 @@ test('Путь: открывается на рекомендованном ур�
   // место на карте — уровень этого юнита; у пройденного места дымит труба — оно всё время чуть
   // движется, поэтому без ожидания неподвижности (но после того, как плавная прокрутка закончилась)
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+  // место — посреди экрана: на телефоне низ карты прячется под нижней панелью
+  await path.locator('[data-testid=atlas-place][data-unit="scarcity"]').evaluate((el) => el.scrollIntoView({ block: 'center' }));
   await path.locator('[data-testid=atlas-place][data-unit="scarcity"]').click({ force: true });
   await expect(path.getByTestId('level-switch')).toHaveAttribute('data-level', 'start');
   // повторное касание вкладки «Путь» — снова текущий уровень и рекомендованный урок
@@ -3857,6 +3904,16 @@ test('урок на ПК: черновик на полях — включает�
   await page.keyboard.press('Control+z');
   await expect(canvas).toHaveAttribute('data-strokes', '1');
   expect(await inkAt(160, 420)).toBe(0);
+  // Ctrl+Y и «Повторить» возвращают отменённое по одному штриху; новый штрих стирает очередь повтора
+  await page.keyboard.press('Control+y');
+  await expect(canvas).toHaveAttribute('data-strokes', '2');
+  expect(await inkAt(160, 420)).toBeGreaterThan(40);
+  await page.getByTestId('sketch-redo').click();
+  await expect(canvas).toHaveAttribute('data-strokes', '3');
+  await expect(page.getByTestId('sketch-redo')).toBeDisabled();
+  await page.keyboard.press('Control+z');
+  await page.keyboard.press('Control+z');
+  await expect(canvas).toHaveAttribute('data-strokes', '1');
   // «Стереть всё» — холст чист, «Вернуть» возвращает стёртое
   await page.getByTestId('sketch-clear').click();
   await expect(canvas).toHaveAttribute('data-strokes', '0');
@@ -4355,5 +4412,175 @@ test('антистресс: после четырёх уроков — знак�
   await expect(box).toHaveAttribute('data-corner', 'tl');
   await page.waitForTimeout(900);
   await expect(intro).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+/* ------------------------------ ВЫПУСК 25 ОКТЯБРЯ ------------------------------ */
+test('урок: назад ровно на одну карточку — прошлое задание с ответом и разбором, дальше назад нельзя', async ({ page }) => {
+  await withTestFlag(page);
+  const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
+  await startLesson(page, 'sc-i1');
+  // на первом шаге назад некуда
+  await expect(page.getByTestId('lesson-back')).toHaveCount(0);
+  await page.getByTestId('lesson').locator('.ln-foot button').last().click();
+  // со второго экрана — назад к прошлой карточке
+  await expect(page.getByTestId('lesson-back')).toBeVisible();
+  await answerExercise(page);
+  await page.getByRole('button', { name: 'Дальше', exact: true }).click();
+  await page.getByTestId('lesson-back').click();
+  const peek = page.getByTestId('lesson-peek');
+  await expect(peek).toHaveAttribute('data-type', 'ex');
+  await expect(page.getByTestId('lesson-peek-verdict')).toContainText('Вы ответили верно');
+  // пока смотрим назад, второго шага назад нет
+  await expect(page.getByTestId('lesson-back')).toHaveCount(0);
+  await page.getByTestId('lesson-peek-return').click();
+  await expect(peek).toHaveCount(0);
+  await expect(page.getByTestId('lesson-back')).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test('уведомления: смахнуть в сторону — прочитано, касание по-прежнему ведёт к делу', async ({ page, isMobile }) => {
+  await page.clock.setFixedTime(new Date('2026-10-21T16:00:00'));
+  await withTestFlag(page);
+  await page.addInitScript(() => {
+    if (localStorage.getItem('ems-textbook-v1')) return;
+    const at = Date.now() - 3 * 86400000;
+    const ids = ['sc-inside', 'sc-oc', 'sc-hours', 'sc-ppf-cost', 'sc-terms', 'sc-gains'];
+    localStorage.setItem('ems-textbook-v1', JSON.stringify({
+      problems: Object.fromEntries(ids.map((id) => [id, { tries: 1, ok: true, box: 1, due: Date.now() - 1000, lastAt: at }])),
+      learn: { lessons: { 'sc-i1': { at, runs: 1, best: 90 } }, done: { [new Date(at).toISOString().slice(0, 10)]: 1 } },
+    }));
+  });
+  const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
+  await page.getByTestId('bell').first().click();
+  const note = page.locator('[data-testid=notifications] [data-id^="book-review:"]');
+  await expect(note).toHaveAttribute('data-unread', 'true');
+  await expect(page.getByTestId('notify-swipe-hint')).toBeVisible();
+  const box = await note.boundingBox();
+  const y = box.y + box.height / 2;
+  if (isMobile) {
+    // пальцем: касание — тоже указатель
+    await note.dispatchEvent('pointerdown', { pointerId: 7, pointerType: 'touch', clientX: box.x + box.width / 2, clientY: y, isPrimary: true, button: 0 });
+    for (let k = 1; k <= 8; k += 1) await note.dispatchEvent('pointermove', { pointerId: 7, pointerType: 'touch', clientX: box.x + box.width / 2 - k * 25, clientY: y, isPrimary: true });
+    await note.dispatchEvent('pointerup', { pointerId: 7, pointerType: 'touch', clientX: box.x + box.width / 2 - 200, clientY: y, isPrimary: true });
+  } else {
+    await page.mouse.move(box.x + box.width / 2, y); await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2 - 200, y, { steps: 10 }); await page.mouse.up();
+  }
+  // смахнутое — в «Ранее», непрочитанных больше нет; вкладка не сменилась
+  await expect(page.locator('[data-testid=notifications] [data-id^="book-review:"][data-unread="true"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid=notifications] [data-id^="book-review:"][data-unread="false"]')).toHaveCount(1);
+  await expect(page.getByTestId('review')).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+test('лига: до первого урока ученика в лиге нет — так и написано', async ({ page }) => {
+  const { errors } = await openApp(page, '/', '{}', { tab: 'league' });
+  const goal = page.getByTestId('league-goal');
+  await expect(goal).toHaveAttribute('data-kind', 'first');
+  await expect(goal).toContainText('Лига — после первого урока');
+  await page.getByTestId('league-rules-toggle').click();
+  await expect(page.getByTestId('league-rules')).toContainText('после первого урока');
+  await expect(page.getByTestId('league-utc')).toContainText('всемирное');
+  expect(errors).toEqual([]);
+});
+
+test('Путь: наверху — оценка в курсе экономики и полоска прогресса вместо опыта и монет', async ({ page }) => {
+  await page.addInitScript(() => {
+    if (localStorage.getItem('ems-textbook-v1')) return;
+    const at = Date.now() - 86400000;
+    const ids = ['sc-i1', 'sc-l1', 'sc-l2', 'sc-i2'];
+    localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons: Object.fromEntries(ids.map((id) => [id, { at, runs: 1, best: 90 }])) } }));
+  });
+  const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
+  const grade = page.getByTestId('course-grade');
+  await expect(grade).toHaveAttribute('data-done', '4');
+  await expect(grade).toHaveAttribute('data-grade', '4.7');
+  await expect(grade).toContainText('Ваша оценка в курсе экономики');
+  await expect(grade).toContainText('отлично');
+  await expect(page.getByTestId('wallet-balance')).toHaveCount(0);
+  // на узком телефоне подписи не вылезают за рамку
+  // текст для чтения с экрана обрезан нарочно — его не считаем
+  const over = await grade.evaluate((el) => [...el.querySelectorAll('*')].filter((x) => !x.classList.contains('ds-sr') && x.scrollWidth > x.clientWidth + 1 && getComputedStyle(x).overflow !== 'visible').length);
+  expect(over).toBe(0);
+  const gb = await grade.boundingBox(); const vw = page.viewportSize().width;
+  expect(gb.x + gb.width).toBeLessThanOrEqual(vw);
+  expect(errors).toEqual([]);
+});
+
+test('живая модель: знакомство — карточка «Новое» на Пути, «Открыть модель», больше не показывается', async ({ page, isMobile }) => {
+  // на ПК модель и так открыта в боковой колонке — знакомство нужно телефону
+  test.skip(!isMobile, 'на ПК модель открыта сбоку');
+  await page.addInitScript(() => {
+    if (localStorage.getItem('ems-textbook-v1')) return;
+    const at = Date.now() - 86400000;
+    const ids = ['sc-i1', 'sc-l1', 'sc-l2', 'sc-i2', 'sc-l3', 'sc-l4', 'sc-l5', 'sc-l6', 'sc-w', 'sc-s1', 'sc-radio', 'sc-g', 'sc-rev', 'sc-sum', 'sd-i1'];
+    localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons: Object.fromEntries(ids.map((id) => [id, { at, runs: 1, best: 90 }])) } }));
+  });
+  const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
+  const unit = await showUnit(page, 'supply-demand');
+  const intro = page.getByTestId('model-intro').first();
+  await expect(intro).toBeVisible();
+  await expect(intro).toContainText('Рынок, который можно покрутить');
+  await intro.getByTestId('model-intro-open').click();
+  await expect(page.getByTestId('model-open').first()).toBeVisible();
+  await expect(page.getByTestId('model-intro')).toHaveCount(0);
+  await gotoApp(page, '/', 'path');
+  await showUnit(page, 'supply-demand');
+  await expect(page.getByTestId('model-intro')).toHaveCount(0);
+  await expect(unit.getByTestId('model-fold').or(page.getByTestId('path-side').getByTestId('model-fold')).first()).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test('ник: грубый — окно «Смените ник» со сроком; срок вышел — экран блокировки, смена ника открывает аккаунт', async ({ page }) => {
+  // сервер отвечает по «фазе»: сначала срок на смену идёт, потом вышел; смена ника снимает всё
+  let phase = 'rename';
+  const profile = (extra) => JSON.stringify({ profile: { login: 'tester', name: 'Грубиян', emblem: 'star', kidsMode: false, nameNextAt: 0, ...extra } });
+  const { errors } = await openApp(page, '/', (req) => {
+    const body = JSON.parse(req.postData() || '{}');
+    if (body.action === 'update') { phase = 'ok'; return profile({ name: body.name, renameBy: null, blocked: false }); }
+    if (body.action === 'me') {
+      if (phase === 'rename') return profile({ renameBy: Date.now() + 3 * 86400000, blocked: false });
+      if (phase === 'blocked') return profile({ renameBy: Date.now() - 1000, blocked: true });
+      return profile({ name: 'Тимур', renameBy: null, blocked: false });
+    }
+    return '{}';
+  }, { tab: 'path' });
+  const ask = page.getByTestId('name-rename');
+  await expect(ask).toBeVisible();
+  await expect(ask).toContainText('нарушает правила');
+  await expect(ask).toContainText('иначе аккаунт будет заблокирован');
+  // «Позже» — до следующего запуска; уведомление в колокольчике остаётся
+  await ask.getByRole('button', { name: 'Позже' }).click();
+  await expect(ask).toHaveCount(0);
+  await page.getByTestId('bell').first().click();
+  const note = page.locator('[data-testid=notifications] [data-id^="rename:"]');
+  await expect(note).toContainText('Смените ник');
+  await note.click();
+  await expect(ask).toBeVisible();
+  await page.getByLabel('Новый ник').fill('Тимур');
+  await page.getByTestId('rename-save').click();
+  await expect(ask).toHaveCount(0);
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('ems-account')).renameBy)).toBe(null);
+  // срок вышел (сервер ответил «заблокирован»): закрыть нельзя, только сменить ник или выйти
+  phase = 'blocked';
+  await page.evaluate(() => window.dispatchEvent(new Event('ems-blocked')));
+  const blocked = page.getByTestId('name-blocked');
+  await expect(blocked).toContainText('Аккаунт заблокирован');
+  await expect(blocked.getByRole('button', { name: 'Позже' })).toHaveCount(0);
+  await expect(blocked.getByRole('button', { name: 'Выйти' })).toBeVisible();
+  await page.getByLabel('Новый ник').fill('Тимур');
+  await page.getByTestId('rename-save').click();
+  await expect(blocked).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+test('учебник из гайда юнита: черновик на полях есть и там', async ({ page, isMobile }) => {
+  test.skip(isMobile, 'черновик в учебнике — на широком экране с мышью');
+  await page.setViewportSize({ width: 1600, height: 950 });
+  const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
+  await page.getByTestId('unit-guide').first().click();
+  await expect(page.locator('.ln-book .ln-textbook')).toBeVisible();
+  await expect(page.getByTestId('sketch-toggle')).toBeVisible();
   expect(errors).toEqual([]);
 });

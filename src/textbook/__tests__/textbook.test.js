@@ -175,8 +175,8 @@ describe('оглавление', () => {
       .toEqual(['scarcity', 'supply-demand', 'consumer', 'elasticity', 'production', 'costs', 'competition-monopoly', 'monopolistic', 'oligopoly', 'labor', 'market-failures']);
     expect(CHAPTERS.filter((c) => c.part === 'macro').map((c) => c.id))
       .toEqual(['gdp', 'money-banks', 'inflation', 'is-lm', 'ad-as', 'phillips', 'policy', 'growth', 'open-economy', 'public-debt', 'inequality']);
-    expect(READY.map((c) => c.id)).toEqual(['scarcity', 'supply-demand', 'consumer', 'elasticity', 'costs', 'competition-monopoly', 'oligopoly', 'market-failures', 'gdp', 'money-banks', 'inflation', 'is-lm', 'ad-as', 'phillips', 'policy', 'growth']);
-    expect(CHAPTERS.filter((c) => c.part === 'micro' && c.status !== 'ready').map((c) => c.id)).toEqual(['production', 'monopolistic', 'labor']);
+    expect(READY.map((c) => c.id)).toEqual(['scarcity', 'supply-demand', 'consumer', 'elasticity', 'costs', 'competition-monopoly', 'monopolistic', 'oligopoly', 'market-failures', 'gdp', 'money-banks', 'inflation', 'is-lm', 'ad-as', 'phillips', 'policy', 'growth']);
+    expect(CHAPTERS.filter((c) => c.part === 'micro' && c.status !== 'ready').map((c) => c.id)).toEqual(['production', 'labor']);
   });
   it('у каждой готовой главы есть текст, у ненаписанной — нет; карточки приложения существуют', () => {
     CHAPTERS.forEach((c) => {
@@ -623,6 +623,27 @@ const INDEPENDENT = {
   },
   'mon-lerner-game': () => { const e = RES.furniture.elast; return (0.6 * e / (e - 1) - 1) * 100; },
   'pc-basic': () => { const q = argmin((x) => -(30 * x - (10 * x + x * x)), 0, 50); return [q, 30 * q, (30 - 26) * q]; },
+  // монополистическая конкуренция: перебором прибыли и средних издержек, без формул главы
+  'mcomp-short': () => { const pr = (x) => (80 - 2 * x) * x - (150 + 20 * x + x * x); const q = argmin((x) => -pr(x), 0, 40); return [q, 80 - 2 * q, pr(q)]; },
+  'mcomp-markup': () => { const P = argmin((p) => -((p - 30) * Math.pow(p, -4)), 30, 200); return [P, ((P - 30) / P) * 100]; },
+  'mcomp-long': () => {
+    const pr = (x) => (90 - 6 * x) * x - (200 + 10 * x + 2 * x * x); const q = argmin((x) => -pr(x), 0, 15);
+    const qe = argmin((x) => (200 + 10 * x + 2 * x * x) / x, 1, 50);
+    return [q, 90 - 6 * q, qe - q];
+  },
+  'mcomp-exit': () => { const pr = (x) => (74 - 3 * x) * x - (400 + 10 * x + x * x); const q = argmin((x) => -pr(x), 0, 24); return [q, pr(q)]; },
+  'mcomp-adv': () => {
+    const best = (a) => { const q = argmin((x) => -((a - 2 * x) * x - 20 * x), 0, a / 2); return (a - 2 * q) * q - 20 * q; };
+    return [best(100), best(120) - 200];
+  },
+  'mcomp-tangent': () => {
+    // A, при котором лучшая прибыль фирмы ровно ноль: делением отрезка пополам
+    const top = (A) => { const q = argmin((x) => -((A - 8 * x) * x - (144 + 16 * x + x * x)), 0, A / 8); return { q, pr: (A - 8 * q) * q - (144 + 16 * q + q * q) }; };
+    let lo = 20; let hi = 300;
+    for (let k = 0; k < 200; k += 1) { const mid = (lo + hi) / 2; if (top(mid).pr > 0) hi = mid; else lo = mid; }
+    const A = (lo + hi) / 2;
+    return [A, A - 8 * top(A).q];
+  },
   'mon-dwl': () => {
     const q = argmin((x) => -((150 - x) * x - 30 * x), 0, 150); const P = 150 - q;
     let dwl = 0; const h = 0.001; for (let x = q + h / 2; x < 120; x += h) dwl += ((150 - x) - 30) * h;

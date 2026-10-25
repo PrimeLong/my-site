@@ -27,6 +27,8 @@ async function setup(page, { theme, account = true, learn = null }) {
     try {
       window.__INFLATIA_TEST__ = true;
       localStorage.setItem('ems-storage-notice', '1');
+      // знакомство с живой моделью уже показано: на снимках — свёрнутая модель
+      localStorage.setItem('ems-model-intro', JSON.stringify(['supply-demand']));
       if (acc) localStorage.setItem('ems-account', JSON.stringify(a));
       if (th === 'dark') localStorage.setItem('ems-learn-dark', '1');
       if (!localStorage.getItem('ems-textbook-v1')) {
@@ -462,8 +464,10 @@ for (const theme of ['light', 'dark']) {
         localStorage.setItem('ems-textbook-v1', JSON.stringify(p));
       });
       await page.reload({ waitUntil: 'networkidle' });
+      // на телефоне модель свёрнута строкой: ждём Путь и раскрываем
       const fold = page.getByTestId('model-fold').first();
-      if (await fold.isVisible()) await fold.click();
+      await expect(page.getByTestId('path')).toBeVisible();
+      if (await fold.isVisible({ timeout: 5000 }).catch(() => false) || await fold.waitFor({ timeout: 5000 }).then(() => true).catch(() => false)) await fold.click();
       const model = page.locator('[data-testid=unit-model]').first();
       await model.scrollIntoViewIfNeeded();
       await shot(page, '58-unit-model', theme);

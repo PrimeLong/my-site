@@ -493,7 +493,7 @@ export function Sketch({ mode = 'lesson' }) {
             </div>
             <span className="sk-sep" aria-hidden="true" />
             <button type="button" className="sk-tool" aria-label="Отменить" title="Отменить (Ctrl+Z)" data-testid="sketch-undo" disabled={!count} onClick={() => { Audio.play('tick'); undo(); }}><Undo2 size={18} aria-hidden="true" /></button>
-            <button type="button" className="sk-tool" aria-label="Вернуть" title="Вернуть (Ctrl+Y)" data-testid="sketch-redo" disabled={!redoCount} onClick={() => { Audio.play('tick'); redo(); }}><Redo2 size={18} aria-hidden="true" /></button>
+            <button type="button" className="sk-tool" aria-label="Повторить" title="Повторить отменённое (Ctrl+Y)" data-testid="sketch-redo" disabled={!redoCount} onClick={() => { Audio.play('tick'); redo(); }}><Redo2 size={18} aria-hidden="true" /></button>
             <button type="button" className="sk-tool" aria-label="Стереть всё" title="Стереть всё" data-testid="sketch-clear" disabled={!count} onClick={wipe}><Trash2 size={18} aria-hidden="true" /></button>
           </div>
         </div>

@@ -475,6 +475,79 @@ const monopolyChart = {
   },
 };
 
+/* ---------------- МОНОПОЛИСТИЧЕСКАЯ КОНКУРЕНЦИЯ ----------------
+   Фирма со своим вариантом товара: спрос на него P = A − B·Q (падает — у фирмы немного власти над
+   ценой), издержки TC = F + c·Q + d·Q², то есть ATC = F/Q + c + d·Q и MC = c + 2d·Q. Выпуск — из
+   MR = MC, цена — со спроса. Прибыль зовёт новые фирмы: покупатели расходятся по соседям, спрос
+   на товар фирмы сдвигается влево (A падает), пока не коснётся ATC — прибыль нулевая. Касание:
+   Q = √(F/(B + d)), A = ATC(Q) + B·Q. Там P = ATC > MC (наценка), а выпуск меньше, чем при минимуме
+   ATC (Q = √(F/d)), — избыточная мощность. */
+export function monComp({ A, B, F, c, d }) {
+  const atc = (q) => F / q + c + d * q;
+  const Q = Math.max(0, (A - c) / (2 * B + 2 * d)); const P = A - B * Q;
+  const qL = Math.sqrt(F / (B + d)); const aL = atc(qL) + B * qL;
+  const qEff = Math.sqrt(F / d); const atcMin = atc(qEff);
+  return { Q, P, ATC: Q > 0 ? atc(Q) : Infinity, MC: c + 2 * d * Q, profit: Q > 0 ? (P - atc(Q)) * Q : -F, markup: P - (c + 2 * d * Q), aL, qL, pL: atc(qL), qEff, atcMin, spare: qEff - Q };
+}
+const mcParams = (A) => ({ A: num(A, 'a', 120), B: num(A, 'b', 3), F: num(A, 'f', 400), c: num(A, 'c', 10), d: num(A, 'd', 1) });
+const mcShow = (A) => (A.show ? String(A.show).split(/[\s,]+/).filter(Boolean) : null);
+const monCompChart = {
+  title: 'Монополистическая конкуренция',
+  controls: (A) => {
+    const p = mcParams(A); const m = monComp(p);
+    const lo = Math.floor(m.aL - (p.A - m.aL) * 0.6); const hi = Math.ceil(Math.max(p.A, m.aL) + (Math.abs(p.A - m.aL) || 20) * 0.4);
+    return [
+      { id: 'A', label: 'Спрос на товар фирмы (меньше соседей — выше)', min: lo, max: hi, step: 1, def: p.A, fmt: (v) => `${v}` },
+      { id: 'longrun', label: 'Длинный период: фирмы входят, пока прибыль не ноль', button: true },
+    ];
+  },
+  onButton: (A, v) => ({ ...v, A: Math.round(monComp(mcParams(A)).aL * 100) / 100 }),
+  legend: (A) => {
+    const show = mcShow(A);
+    return [
+      { id: 'D', color: 'blue', text: 'D — спрос на товар этой фирмы' },
+      { id: 'MR', color: 'teal', dashed: true, text: 'MR — прибавка выручки от ещё одной единицы' },
+      { id: 'MC', color: 'rust', text: 'MC — во сколько обходится ещё одна единица' },
+      { id: 'ATC', color: 'gold', text: 'ATC — средние издержки на единицу' },
+      { id: 'profit', color: 'gold', box: true, text: 'прямоугольник — прибыль (или убыток): (P − ATC) × Q' },
+    ].filter((it) => !show || show.includes(it.id));
+  },
+  measure: (A, v) => { const p = mcParams(A); const m = monComp({ ...p, A: v.A }); return { P: m.P, Q: m.Q, profit: m.profit, markup: m.markup, spare: m.spare }; },
+  vars: (A) => { const m = monComp(mcParams(A)); return { aL: m.aL, qL: m.qL, pL: m.pL, qEff: m.qEff, atcMin: m.atcMin }; },
+  build: (A, v) => {
+    const p = mcParams(A); const m = monComp({ ...p, A: v.A });
+    const Qmax = Math.ceil((m.qEff * 1.5) / 5) * 5; const yMax = Math.ceil((Math.max(p.A, v.A) * 1.08) / 10) * 10;
+    const samp = (fn, q0, q1 = Qmax) => Array.from({ length: 60 }, (_, i) => { const q = q0 + (q1 - q0) * i / 59; return { x: q, y: fn(q) }; });
+    const atc = (q) => p.F / q + p.c + p.d * q;
+    const curves = [
+      { id: 'ATC', label: 'ATC', points: samp(atc, Math.max(0.5, p.F / yMax)), color: 'gold' },
+      { id: 'MC', label: 'MC', points: samp((q) => p.c + 2 * p.d * q, 0, Math.min(Qmax, (yMax - p.c) / (2 * p.d))), color: 'rust' },
+      { id: 'D', label: 'D', points: [{ x: 0, y: v.A }, { x: Math.min(Qmax, v.A / p.B), y: v.A - p.B * Math.min(Qmax, v.A / p.B) }], color: 'blue' },
+      { id: 'MR', label: 'MR', points: [{ x: 0, y: v.A }, { x: Math.min(Qmax, v.A / (2 * p.B)), y: v.A - 2 * p.B * Math.min(Qmax, v.A / (2 * p.B)) }], color: 'teal', dashed: true },
+    ];
+    // спрос сдвинут — прежний остаётся бледным: видно, куда его увели новые фирмы
+    if (v.A !== p.A) curves.push({ id: 'D0', points: [{ x: 0, y: p.A }, { x: Math.min(Qmax, p.A / p.B), y: p.A - p.B * Math.min(Qmax, p.A / p.B) }], color: 'blue', ghost: true });
+    const long = Math.abs(m.profit) < 0.5;
+    const show = mcShow(A);
+    const has = (id) => !show || show.includes(id);
+    // выбор фирмы — на спросе; в длинном периоде это касание спроса и ATC
+    const points = [
+      ...(has('D') ? [{ x: m.Q, y: m.P, label: long && has('ATC') ? 'касание: P = ATC' : 'выбор фирмы', guide: true }] : []),
+      ...(has('ATC') ? [{ x: m.qEff, y: m.atcMin, label: 'min ATC', small: true }] : []),
+    ];
+    const rects = m.Q > 0 && !long ? [{ x0: 0, x1: m.Q, y0: Math.min(m.ATC, m.P), y1: Math.max(m.ATC, m.P), label: m.profit >= 0 ? 'прибыль' : 'убыток', tone: m.profit >= 0 ? 'gold' : 'rust' }] : [];
+    const readout = [
+      { label: 'Выпуск', value: r1(m.Q) },
+      { label: 'Цена', value: r1(m.P) },
+      { label: 'Прибыль', value: r1(m.profit) },
+      { label: 'Наценка P − MC', value: r1(m.markup) },
+      { label: 'Избыточная мощность', value: `${r1(m.spare)} (до min ATC при Q = ${r1(m.qEff)})` },
+      { label: 'Что дальше', value: m.profit > 0.5 ? 'прибыль — придут новые фирмы, спрос уйдёт влево' : m.profit < -0.5 ? 'убыток — часть фирм уйдёт, спрос вернётся вправо' : 'длинное равновесие: прибыль ноль' },
+    ];
+    return { xDomain: [0, Qmax], yDomain: [0, yMax], xLabel: 'Q', yLabel: 'кр.', curves: curves.filter((c) => has(c.id.replace(/0$/, ''))), points, rects: has('profit') ? rects : [], readout };
+  },
+};
+
 /* ---------------- ДУОПОЛИЯ КУРНО ----------------
    Спрос P = a − (q₁ + q₂), издержки c₁ и c₂ на единицу. Кривая реакции фирмы 1:
    q₁ = (a − c₁ − q₂)/2, фирмы 2 — симметрично. Равновесие Нэша — их пересечение. */
@@ -1174,6 +1247,7 @@ isLm.measureNames = { Y: 'выпуск', r: 'ставка' };
 adAs.measureNames = { Y: 'выпуск', P: 'уровень цен' };
 costs.measureNames = { avcMin: 'минимум AVC', atcMin: 'минимум ATC', qEff: 'выпуск при минимуме ATC', Q: 'выпуск', profit: 'прибыль' };
 monopolyChart.measureNames = { P: 'цена', Q: 'выпуск', profit: 'прибыль', dwl: 'безвозвратные потери' };
+monCompChart.measureNames = { P: 'цена', Q: 'выпуск', profit: 'прибыль', markup: 'наценка над MC', spare: 'избыточная мощность' };
 cournotChart.measureNames = { q1: 'выпуск фирмы 1', q2: 'выпуск фирмы 2', P: 'цена', pi1: 'прибыль фирмы 1', pi2: 'прибыль фирмы 2' };
 
 ppf.measureNames = { x: 'хлеб', y: 'станки', oc: 'альтернативная стоимость хлеба' };
@@ -1318,7 +1392,7 @@ phillipsChart.measureNames = { pi: 'инфляция', u: 'безработиц�
 taylorChart.measureNames = { i: 'ставка', real: 'реальная ставка' };
 solowChart.measureNames = { k: 'капитал на работника', y: 'выпуск на работника', c: 'потребление на работника', i: 'инвестиции на работника' };
 
-export const CHARTS = { 'supply-demand': supplyDemand, elasticity, 'elastic-compare': elasticCompare, revenue: revenueCurve, 'is-lm': isLm, 'ad-as': adAs, costs, monopoly: monopolyChart, cournot: cournotChart, ppf, consumer, tax, lrac, budget: budgetChart, choice: choiceChart, indiff: indiffChart, demand: demandChart, 'market-demand': marketDemandChart, cross: crossChart, externality: extChart, 'trade-ppf': tradeChart, gdp: gdpChart, inflation: inflationChart, money: moneyChart, phillips: phillipsChart, taylor: taylorChart, solow: solowChart };
+export const CHARTS = { 'supply-demand': supplyDemand, elasticity, 'elastic-compare': elasticCompare, revenue: revenueCurve, 'is-lm': isLm, 'ad-as': adAs, costs, monopoly: monopolyChart, moncomp: monCompChart, cournot: cournotChart, ppf, consumer, tax, lrac, budget: budgetChart, choice: choiceChart, indiff: indiffChart, demand: demandChart, 'market-demand': marketDemandChart, cross: crossChart, externality: extChart, 'trade-ppf': tradeChart, gdp: gdpChart, inflation: inflationChart, money: moneyChart, phillips: phillipsChart, taylor: taylorChart, solow: solowChart };
 /* Переменные подписи: {{имя}} в тексте подписи заменяется числом из модели графика при
    текущих ползунках — величины measure и свои vars графика; с приставкой d_ — при исходных. */
 const fmtVar = (x) => (typeof x === 'number' ? (Number.isInteger(Math.round(x * 100) / 100) ? String(Math.round(x)) : r1(x)).replace('-', '−') : String(x));

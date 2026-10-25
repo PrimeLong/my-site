@@ -463,6 +463,61 @@ T.push({ id: 'v-mon-dwl1', chapter: 'competition-monopoly', level: 2, source: 'm
     check: ([x]) => { const qm = (a - c) / (2 * b); const qc = (a - c) / b; return near(x, 0.5 * ((a - b * qm) - c) * (qc - qm)); },
   };
 } });
+// монополистическая конкуренция: короткий период — выпуск, цена и прибыль фирмы со своим товаром
+T.push({ id: 'v-mc-short', chapter: 'monopolistic', level: 1, source: 'mcomp-short', gen: (rand) => {
+  const B = ri(rand, 1, 3); const c = ri(rand, 10, 30, 5); const Q = ri(rand, 8, 20); const A = c + 2 * (B + 1) * Q; const P = A - B * Q;
+  const F = ri(rand, 50, Math.floor(((B + 1) * Q * Q * 0.6) / 10) * 10, 10); const profit = P * Q - (F + c * Q + Q * Q);
+  return {
+    statement: `Спрос на товар фирмы при монополистической конкуренции $P = ${A} - ${B === 1 ? '' : B}Q$, её издержки $TC = ${F} + ${c}Q + Q^2$.\n\nа) Какой выпуск она выберет?\n\nб) Какую цену назначит?\n\nв) Какой будет прибыль?`,
+    parts: [{ answer: Q, unit: 'ед.', pos: true }, { answer: P, unit: 'руб.', pos: true }, { answer: profit, unit: 'руб.' }],
+    traps: [
+      { part: 0, value: (A - c) / (B + 2), text: 'Это выпуск при $P = MC$. Фирма со своим товаром приравнивает к $MC$ предельную выручку $MR = A - 2BQ$.' },
+      { part: 2, value: (P - c - Q) * Q + F, text: 'Постоянные издержки не вычли: прибыль — выручка минус все издержки, $TC = F + cQ + Q^2$.' },
+    ],
+    solution: `а) $MR = ${A} - ${2 * B}Q$, $MC = ${c} + 2Q$. Условие $MR = MC$: $${A - c} = ${2 * B + 2}Q$, $Q = ${Q}$.\n\nб) Цена со спроса: $${A} - ${B} \\cdot ${Q} = ${P}$.\n\nв) $${P} \\cdot ${Q} - (${F} + ${c * Q} + ${Q * Q}) = ${profit}$.`,
+    check: ([q, p, pr]) => near(A - 2 * B * q, c + 2 * q) && near(p, A - B * q) && near(pr, p * q - (F + c * q + q * q)),
+  };
+} });
+// монополистическая конкуренция: наценка по Лернеру при эластичном спросе (много заменителей)
+T.push({ id: 'v-mc-lerner', chapter: 'monopolistic', level: 2, source: 'mcomp-markup', gen: (rand) => {
+  const k = draw(rand, () => ({ c: ri(rand, 12, 60, 2), e: ri(rand, 3, 9) }), ({ c, e }) => (c * e) % (e - 1) === 0);
+  const P = (k.c * k.e) / (k.e - 1);
+  return {
+    statement: `Кофейня при монополистической конкуренции: предельные издержки чашки — ${k.c} руб., эластичность спроса на её кофе по модулю — ${k.e}. Какую цену она назначит по правилу Лернера?`,
+    parts: [{ answer: P, unit: 'руб.', pos: true }],
+    traps: [{ part: 0, value: k.c, text: 'Это цена при совершенной конкуренции. Фирма со своим товаром делает наценку: $P = MC \\cdot |E_d|/(|E_d| - 1)$.' }],
+    solution: `$P = ${k.c} \\cdot ${k.e}/${k.e - 1} = ${P}$ руб. Наценка — $1/|E_d| = 1/${k.e}$ цены: заменителей много, и она скромная.`,
+    check: ([x]) => near((x - k.c) / x, 1 / k.e),
+  };
+} });
+// монополистическая конкуренция: фирм слишком много — убыток в коротком периоде
+T.push({ id: 'v-mc-exit', chapter: 'monopolistic', level: 2, source: 'mcomp-exit', gen: (rand) => {
+  const k = draw(rand, () => { const B = ri(rand, 1, 3); const c = ri(rand, 5, 20, 5); const Q = ri(rand, 4, 10); const F = ri(rand, 200, 600, 50); return { B, c, Q, F, A: c + 2 * (B + 1) * Q }; },
+    ({ B, Q, F }) => (B + 1) * Q * Q < F);
+  const P = k.A - k.B * k.Q; const profit = P * k.Q - (k.F + k.c * k.Q + k.Q * k.Q);
+  return {
+    statement: `Кофеен на улице стало слишком много. Спрос на кофе одной из них $P = ${k.A} - ${k.B === 1 ? '' : k.B}Q$, её издержки $TC = ${k.F} + ${k.c}Q + Q^2$. Какой будет её прибыль при лучшем выпуске (со знаком)?`,
+    parts: [{ answer: profit, unit: 'руб.' }],
+    traps: [{ part: 0, value: -profit, text: 'Знак: средние издержки выше цены — это убыток, прибыль отрицательная.' }],
+    solution: `$MR = ${k.A} - ${2 * k.B}Q = ${k.c} + 2Q$, $Q = ${k.Q}$, $P = ${P}$. Прибыль $${P} \\cdot ${k.Q} - (${k.F} + ${k.c * k.Q} + ${k.Q * k.Q}) = ${profit}$ — убыток выгонит часть кофеен.`,
+    check: ([x]) => near(x, P * k.Q - (k.F + k.c * k.Q + k.Q * k.Q)) && near(k.A - 2 * k.B * k.Q, k.c + 2 * k.Q),
+  };
+} });
+// монополистическая конкуренция: длинное равновесие — касание спроса и средних издержек
+T.push({ id: 'v-mc-long', chapter: 'monopolistic', level: 2, source: 'mcomp-long', gen: (rand) => {
+  const B = ri(rand, 1, 4); const d = 1; const n = ri(rand, 5, 15); const c = ri(rand, 5, 30, 5);
+  const F = (B + d) * n * n; const A = 2 * (B + d) * n + c; const P = A - B * n;
+  return {
+    statement: `При монополистической конкуренции в отрасли свободный вход. Спрос на товар фирмы в длинном равновесии $P = ${A} - ${B === 1 ? '' : B}Q$, её издержки $TC = ${F} + ${c}Q + Q^2$.\n\nа) Сколько выпускает фирма?\n\nб) По какой цене продаёт?`,
+    parts: [{ answer: n, unit: 'ед.', pos: true }, { answer: P, unit: 'руб.', pos: true }],
+    traps: [
+      { part: 0, value: (A - c) / (B + 2), text: 'Это выпуск при $P = MC$. Фирма со своим товаром выбирает $MR = MC$, где $MR = A - 2BQ$.' },
+      { part: 1, value: c + 2 * n, text: 'Это предельные издержки при этом выпуске. Цена — со спроса: она выше $MC$.' },
+    ],
+    solution: `а) $MR = ${A} - ${2 * B}Q = ${c} + 2Q$, откуда $Q = ${n}$.\n\nб) $P = ${A} - ${B} \\cdot ${n} = ${P}$. Проверка: $ATC = ${F}/${n} + ${c} + ${n} = ${P}$ — цена равна средним издержкам, прибыль нулевая, как и должно быть в длинном равновесии.`,
+    check: ([q, p]) => near(A - 2 * B * q, c + 2 * q) && near(p, A - B * q) && near(p, F / q + c + q),
+  };
+} });
 // Курно, симметричный
 T.push({ id: 'v-olig-cournot', chapter: 'oligopoly', level: 1, source: 'olig-cournot-price', gen: (rand) => {
   const c = ri(rand, 5, 40); const q = ri(rand, 10, 40); const a = c + 3 * q; const P = a - 2 * q;

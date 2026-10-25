@@ -249,7 +249,7 @@ export function notificationsOf(learn, now = Date.now(), opts = {}) {
             title: `${v.name} впереди в забеге`, text: `${v.their} опыта против ваших ${v.my}: не хватает ${v.their - v.my + 1}. До финиша ${v.daysLeft} ${plural(v.daysLeft, 'день', 'дня', 'дней')} — один урок может всё решить.` });
         } else if (v.dayNo > 0 && v.lead > 0 && v.their > 0) {
           add({ id: `race-ahead:${r.id}:${day}`, kind: 'friends', icon: 'flag', tone: '#147A45', at: Math.min(now - 60 * 1000, at(day, 12)), go: 'path',
-            title: 'Вы впереди в забеге', text: `${v.my} опыта против ${v.their} у ${v.name}. До финиша ${v.daysLeft} ${plural(v.daysLeft, 'день', 'дня', 'дней')} — держите темп.` });
+            title: 'Вы впереди в забеге', text: `${v.my} опыта против ${v.their} — ${v.name} позади. До финиша ${v.daysLeft} ${plural(v.daysLeft, 'день', 'дня', 'дней')} — держите темп.` });
         }
         if (v.daysLeft === 1 && v.dayNo > 0) {
           add({ id: `race-last:${r.id}`, kind: 'friends', icon: 'hourglass', tone: '#9A7413', at: Math.min(now - 60 * 1000, at(day, 9)), go: 'path', toast: true, push: true,
@@ -257,7 +257,7 @@ export function notificationsOf(learn, now = Date.now(), opts = {}) {
         }
       } else if ((v.status === 'declined' || v.status === 'expired') && r.mine && now - (r.answeredAt || r.at) < 3 * 24 * HOUR) {
         add({ id: `race-no:${r.id}`, kind: 'friends', icon: 'flag', tone: '#8A7F72', at: Math.min(now, r.answeredAt || (r.at + RACE.acceptHours * HOUR)), go: 'path',
-          title: v.status === 'declined' ? `${v.name} не готов к забегу` : 'Приглашение на забег истекло', text: v.status === 'declined' ? 'Позовите позже — или другого друга.' : `${v.name} не ответил за сутки. Позвать можно снова.` });
+          title: v.status === 'declined' ? 'Забег отклонён' : 'Приглашение на забег истекло', text: v.status === 'declined' ? `${v.name}: пока без забега. Позовите позже — или другого друга.` : `${v.name}: ответа не было сутки. Позвать можно снова.` });
       } else if (v.status === 'finished' && !raceClaimed(learn, v)) {
         add({ id: `race-end:${r.id}`, kind: 'friends', icon: 'trophy', tone: '#9A7413', at: at(addDays(v.end, 1), 0), go: 'path', toast: true, push: true,
           title: v.result === 'won' ? 'Забег выигран!' : v.result === 'tie' ? 'Забег: ничья' : 'Забег окончен', text: `Вы — ${v.my} опыта, ${v.name} — ${v.their}. Награда — на Пути.` });
