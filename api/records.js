@@ -3,7 +3,7 @@
    чужим именем в таблицу не встать. Стоимость считает клиент (игра идёт у игрока),
    поэтому сервер проверяет только границы правдоподобия, как и таблица дня. */
 import { getRecords, setRecord, hasKv } from './_lib/store.js';
-import { userBySession } from './_lib/accounts.js';
+import { userBySession, isBlocked, nameForOthers, nameBanned } from './_lib/accounts.js';
 
 const KINDS = new Set(['tycoon']);
 const TOP = 50;
@@ -16,7 +16,8 @@ export function rankRecords(board) {
     .filter((e) => Number.isFinite(e.value))
     .sort((a, b) => b.value - a.value || a.at - b.at);
 }
-const publicRow = (e, i, me) => ({ rank: i + 1, name: e.name, emblem: e.emblem || 'star', login: e.login,
+// грубый ник в таблице не показываем: вместо него логин
+const publicRow = (e, i, me) => ({ rank: i + 1, name: nameForOthers(e.name, e.login), emblem: e.emblem || 'star', login: e.login,
   value: e.value, start: e.start || null, quarters: e.quarters || 0, legacy: e.legacy || 0, you: e.login === me });
 
 async function handleRequest(req, res) {
@@ -35,12 +36,13 @@ async function handleRequest(req, res) {
   catch { return res.status(400).json({ error: 'Некорректный JSON' }); }
   const user = await userBySession(body.session);
   if (!user) return res.status(401).json({ error: 'В таблицу рекордов записывают из профиля' });
+  if (isBlocked(user)) return res.status(403).json({ error: 'Аккаунт заблокирован до смены ника', blocked: true });
   const value = Number(body.value);
   if (!Number.isFinite(value) || value <= 0 || value > MAX_VALUE) return res.status(400).json({ error: 'Некорректный результат' });
   const board = await getRecords(kind);
   const prevRaw = board[user.login];
   const prev = prevRaw ? (typeof prevRaw === 'string' ? JSON.parse(prevRaw) : prevRaw) : null;
-  const entry = { name: user.name, emblem: user.emblem || 'star', value: Math.round(value * 10) / 10,
+  const entry = { name: nameBanned(user) ? user.login : user.name, emblem: user.emblem || 'star', value: Math.round(value * 10) / 10,
     start: START_IDS.has(body.start) ? body.start : null,
     quarters: Math.max(0, Math.min(10000, Math.round(Number(body.quarters) || 0))),
     legacy: Math.max(0, Math.min(1000, Math.round(Number(body.legacy) || 0))), at: Date.now() };

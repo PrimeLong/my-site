@@ -3,6 +3,8 @@ const API = '/api/room';
 const post = async (payload, url = API) => {
   const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
   const data = await r.json();
+  // аккаунт заблокирован до смены ника (api/_lib/accounts.js) — экран блокировки покажет src/account.jsx
+  if (r.status === 403 && data.blocked && typeof window !== 'undefined') window.dispatchEvent(new Event('ems-blocked'));
   if (!r.ok) throw new Error(data.error || 'Ошибка сервера');
   return data;
 };
@@ -140,6 +142,8 @@ export const accountRegister = (fields) => post({ action: 'register', ...fields 
 export const accountLogin = (login, password) => post({ action: 'login', login, password }, ACCOUNT_API);
 export const accountMe = (token) => post({ action: 'me', token }, ACCOUNT_API);
 export const accountUpdate = (token, patch) => post({ action: 'update', token, ...patch }, ACCOUNT_API);
+// владелец требует сменить ник ученика (api/account.js, require-rename)
+export const accountRequireRename = (token, login) => post({ action: 'require-rename', token, login }, ACCOUNT_API);
 export const accountPassword = (token, oldPassword, newPassword) => post({ action: 'password', token, oldPassword, newPassword }, ACCOUNT_API);
 export const accountLogout = (token) => post({ action: 'logout', token }, ACCOUNT_API);
 export const accountRecover = (login, code, newPassword) => post({ action: 'recover', login, code, newPassword }, ACCOUNT_API);

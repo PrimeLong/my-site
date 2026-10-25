@@ -666,6 +666,17 @@ export const DOMINO_CSS = `
   .lm-done { border-left: 3px solid var(--ds-ok); background: var(--ds-ok-bg); color: var(--ds-ok-ink); font-weight: 700; padding: 8px 10px; font-size: 15px; margin: 6px 0; }
   .lm-why { border-left: 3px solid var(--ds-sel-rule); background: color-mix(in srgb, var(--ds-sel-rule) 12%, var(--ds-card)); padding: 8px 10px; font-size: 14.5px; line-height: 1.4; margin: 6px 0; }
   @media (prefers-reduced-motion: reduce) { .lm-slot.on.fresh, .lm-fall { animation: none !important; } .lm-fall { display: none; } }
+  /* домино на широком экране — в две колонки: слева сцена (график и улица), справа цепочка и колода.
+     В одну колонку урок с увеличением не влезал в экран 1920×1080 (отчёт mvmfcaud) */
+  @media (min-width: 1000px) {
+    .ln-inner:has(> .lm-dom) { max-width: 980px; }
+    .lm-dom { display: grid; grid-template-columns: minmax(0, 330px) minmax(0, 1fr); column-gap: 22px; align-items: start; }
+    .lm-dom > .lm-news, .lm-dom > .lm-dom-prompt { grid-column: 1 / -1; }
+    .lm-dom > .lm-scene { grid-column: 1; grid-row: span 4; position: sticky; top: 0; }
+    .lm-dom > .lm-chain, .lm-dom > .lm-done, .lm-dom > .lm-why, .lm-dom > .lm-deck { grid-column: 2; }
+    .lm-dom > .lm-chain { margin-top: 0; }
+    .lm-dom > .lm-deck { justify-content: flex-start; }
+  }
 `;
 // сцена «Домино»: что сделали звенья, выложенные до сих пор
 function dominoScene(inst, placed) {
@@ -746,9 +757,9 @@ export function DominoEx({ inst, resp, setResp, locked, fb, onSubmit, prompt }) 
     setResp(nr);
   };
   return (
-    <div data-testid="domino" data-placed={r.placed.length} data-falls={r.falls.length}>
+    <div className="lm-dom" data-testid="domino" data-placed={r.placed.length} data-falls={r.falls.length}>
       <div className="lm-news"><div className="lm-news-mast">Вестник Инфляции</div><div className="lm-news-head" data-testid="domino-headline">{inst.headline}</div></div>
-      {prompt}
+      <div className="lm-dom-prompt">{prompt}</div>
       <DominoScene inst={inst} sc={sc} />
       <div className="lm-chain" aria-label="Цепочка">
         {inst.chain.map((k, i) => {

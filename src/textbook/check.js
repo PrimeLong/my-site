@@ -15,6 +15,7 @@ import { templatesOf, makeVariant, seeded } from './variants.js';
 import { checkAnswer } from './markdown.js';
 import { sectionProgress } from './study.js';
 import { dayKey } from './progress.js';
+import { addDays, weekOf } from './learn-state.js';
 
 export const EXAMS = {
   micro: { part: 'micro', title: 'Итоговая проверка: Микро' },
@@ -111,16 +112,15 @@ export function weakTopics(progress, k = 3) {
    день, без серий и штрафов. */
 // последние weeks недель по дням, от понедельника
 export function journalWeeks(days, now = Date.now(), weeks = 4) {
-  const today = new Date(now); today.setHours(12, 0, 0, 0);
-  const dow = (today.getDay() + 6) % 7; // понедельник — 0
-  const start = new Date(today); start.setDate(today.getDate() - dow - (weeks - 1) * 7);
+  // дни — по всемирному времени, как и везде (src/textbook/learn-state.js, dayOf)
+  const todayKey = dayKey(now);
+  const start = addDays(weekOf(todayKey), -(weeks - 1) * 7);
   const out = [];
   for (let w = 0; w < weeks; w += 1) {
     const row = [];
     for (let d = 0; d < 7; d += 1) {
-      const day = new Date(start); day.setDate(start.getDate() + w * 7 + d);
-      const key = dayKey(day.getTime());
-      row.push({ key, minutes: (days && days[key]) || 0, future: day.getTime() > today.getTime() });
+      const key = addDays(start, w * 7 + d);
+      row.push({ key, minutes: (days && days[key]) || 0, future: key > todayKey });
     }
     out.push(row);
   }

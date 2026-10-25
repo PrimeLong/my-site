@@ -443,9 +443,10 @@ export function monthChallenge(s, now = Date.now()) {
   const raw = (s.monthPlan || {})[month];
   // план прежних правил держим, только если марка уже получена; иначе — по новым
   const plan = raw && (raw.v === MONTH_PLAN_V || hasClaim(s, key)) ? raw : null;
-  const d = new Date(now); const last = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+  // месяц — по всемирному времени, как и день (src/textbook/learn-state.js)
+  const d = new Date(now); const last = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
   const start = firstDay(s) || day;
-  const from = start.slice(0, 7) === month ? Number(start.slice(8)) : start < month ? 1 : d.getDate();
+  const from = start.slice(0, 7) === month ? Number(start.slice(8)) : start < month ? 1 : d.getUTCDate();
   const span = last - from + 1;
   let kind = (plan && KIND_BY_ID[plan.kind]) || MONTH_KINDS[Math.floor(mix01(`month:${month}`) * MONTH_KINDS.length)];
   // пришёл под конец месяца — испытание постоянства («заниматься 2 дня») было бы пустым: берём объёмное
@@ -466,13 +467,13 @@ export function monthChallenge(s, now = Date.now()) {
   // марка получена — испытание месяца выполнено до конца месяца, нового нет
   const have = hasClaim(s, key) ? target : Math.min(target, kind.have(s, month));
   // сегодня тоже считается: 29-го в 30-дневном месяце осталось два дня
-  const daysLeft = last - d.getDate() + 1;
+  const daysLeft = last - d.getUTCDate() + 1;
   // почему именно столько — чтобы цель читалась как своя, а не взятая с потолка
   const why = plan && plan.why ? plan.why : fromHistory && target === fromHistory ? `В прошлом месяце — ${before}, теперь ${target}: чуть больше.`
     : kind.steady ? kind.steady
       : target === floor && up(byPace) < floor ? `По вашей цели — ${mins} минут в день: испытание чуть больше обычного темпа.`
         : `По вашей цели — ${mins} минут в день, пять дней в неделю.`;
-  return { month, name: `${MONTHS[d.getMonth()]} ${d.getFullYear()}`, id: kind.id, title: kind.title(target), have, target, need: Math.max(0, target - have), unit: kind.unit(Math.max(0, target - have)),
+  return { month, name: `${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`, id: kind.id, title: kind.title(target), have, target, need: Math.max(0, target - have), unit: kind.unit(Math.max(0, target - have)),
     done: have >= target, claimed: hasClaim(s, key), key, coins: MONTH_COINS, daysLeft, why };
 }
 // закрепить испытание месяца: вид, цель и «почему» считаются один раз — при первом показе в месяце

@@ -77,9 +77,11 @@ describe('забег с другом', () => {
     const id = inv.data.races[0].id;
     // ответить может только приглашённый
     expect((await acc({ action: 'race-answer', token: a.token, id, accept: true })).status).toBe(404);
-    // опыт, набранный в день старта до принятия, запоминается — в счёт забега он не идёт
-    const ok = await acc({ action: 'race-answer', token: b.token, id, accept: true, day: '2026-10-19', base: 35 });
-    expect(ok.data.races[0]).toMatchObject({ status: 'active', start: '2026-10-19', mine: false, other: a.login, baseMine: 35, baseTheirs: 0 });
+    // опыт, набранный в день старта до принятия, запоминается — в счёт забега он не идёт;
+    // день старта — сегодня по всемирному времени, день устройства не берётся (перевод часов не сдвигает забег)
+    const ok = await acc({ action: 'race-answer', token: b.token, id, accept: true, day: '2020-01-01', base: 35 });
+    const today = new Date(real + RACE.friendMs + 60000).toISOString().slice(0, 10);
+    expect(ok.data.races[0]).toMatchObject({ status: 'active', start: today, mine: false, other: a.login, baseMine: 35, baseTheirs: 0 });
     expect((await acc({ action: 'race-answer', token: b.token, id, accept: false })).status).toBe(400);
     clock.mockRestore();
   });

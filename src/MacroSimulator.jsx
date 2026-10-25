@@ -17,7 +17,7 @@ import {
 // звуковой движок подгружается по первому клику — в стартовом файле только обёртка
 import { Audio } from './audio/lazy.js';
 import { InflatiaMark, BrandLoader } from './logo.jsx';
-import { AuthModal, ProfileModal, ProfileChip, useAccount, loadAccount, emblemIcon, accountKidsMode, refreshAccount } from './account.jsx';
+import { AuthModal, ProfileModal, ProfileChip, useAccount, loadAccount, emblemIcon, accountKidsMode, refreshAccount, NameGate } from './account.jsx';
 import { isGuest, GUEST_START, GUEST_SAVE } from './lib/guest.js';
 import { checkReturn } from './lib/retention.js';
 import { DS_THEMES, appColors, learnThemeId, dsThemeId, learnMusic, learnSfx, worldMusic, setWorldMusic, worldSfx, setWorldSfx, worldVolume, setWorldVolume, worldThemeId, setWorldTheme } from './ds-tokens.js';
@@ -2267,5 +2267,6 @@ export default function MacroSimulator() {
       </div>
     );
   }
-  return <ScreenErrorBoundary resetKey={screenKey} onMenu={backToMenu}>{wrapped}</ScreenErrorBoundary>;
+  // ник под запретом: окно «Смените ник» или экран блокировки (src/account.jsx) — поверх любого экрана
+  return <ScreenErrorBoundary resetKey={screenKey} onMenu={backToMenu}>{wrapped}<NameGate /></ScreenErrorBoundary>;
 }

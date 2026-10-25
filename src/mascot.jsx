@@ -14,8 +14,10 @@ const EYES = {
   think: (c) => <><circle cx="26" cy="21.5" r="2.5" fill={c} /><circle cx="41" cy="21.5" r="2.5" fill={c} /><path d="M22 17 L28.5 16.2" stroke={c} strokeWidth="1.6" strokeLinecap="round" /></>,
 };
 EYES.wave = EYES.hello;
+/* рот: открыт только в коротких реакциях (радость, праздник); привет и помахать — сомкнутая улыбка
+   (жалоба: «вечно открытый рот» — машущая Инфля на Пути смотрела так часами) */
 const MOUTH = {
-  wave: (c) => <path d="M24.5 29.5 Q32 38.5 39.5 29.5 Z" fill={c} />,
+  wave: (c) => <path d="M25.5 30.6 Q32 36.4 38.5 30.6" fill="none" stroke={c} strokeWidth="2.3" strokeLinecap="round" />,
   hello: (c) => <path d="M26 31 Q32 35.6 38 31" fill="none" stroke={c} strokeWidth="2.2" strokeLinecap="round" />,
   joy: (c) => <path d="M24.5 29.5 Q32 38.5 39.5 29.5 Z" fill={c} />,
   party: (c) => <path d="M23.5 29 Q32 40 40.5 29 Z" fill={c} />,
@@ -30,15 +32,17 @@ const CSS = `
   .infla { transform-origin: 50% 90%; }
   .infla-bob { animation: infla-bob 3.2s ease-in-out infinite; }
   .infla-hop { animation: infla-hop .45s ease-out 1; }
-  /* моргает раз в несколько секунд; машет рукой на приветствии */
-  @keyframes infla-blink { 0%, 92%, 100% { transform: scaleY(1) } 95% { transform: scaleY(.1) } }
-  @keyframes infla-wave { 0%, 100% { transform: rotate(0) } 25% { transform: rotate(-28deg) } 75% { transform: rotate(18deg) } }
+  /* моргает неровно, как живая: в долгом цикле одно моргание и одно двойное, а длина цикла и сдвиг у
+     каждой Инфли свои (--blink, --blink-at) — несколько Инфль на экране не моргают хором и не «по метроному» */
+  @keyframes infla-blink { 0%, 27%, 31%, 74%, 77%, 80%, 83%, 100% { transform: scaleY(1) } 29% { transform: scaleY(.08) } 75.5% { transform: scaleY(.1) } 81.5% { transform: scaleY(.1) } }
+  /* машет — два взмаха и передышка; рука вращается вокруг плеча на краю монеты и от тела не отрывается */
+  @keyframes infla-wave { 0%, 46%, 100% { transform: rotate(0) } 9% { transform: rotate(-24deg) } 19% { transform: rotate(12deg) } 29% { transform: rotate(-20deg) } 38% { transform: rotate(8deg) } }
   @keyframes infla-sway { 0%, 100% { transform: rotate(-3deg) } 50% { transform: rotate(3deg) } }
-  .infla-eyes { transform-box: fill-box; transform-origin: center; animation: infla-blink 4.2s ease-in-out infinite; }
-  .infla-hand { transform-box: fill-box; transform-origin: 20% 90%; animation: infla-wave 1.1s ease-in-out infinite; }
+  .infla-eyes { transform-box: fill-box; transform-origin: center; animation: infla-blink var(--blink, 6.4s) ease-in-out infinite; animation-delay: var(--blink-at, 0s); }
+  .infla-hand { transform-box: view-box; transform-origin: 51px 34.6px; animation: infla-wave 2.6s ease-in-out infinite; }
   /* правая рука занята вещью из лавки — машет левой (зеркально), иначе выходит «третья рука» */
-  @keyframes infla-wave-l { 0%, 100% { transform: rotate(0) } 25% { transform: rotate(28deg) } 75% { transform: rotate(-18deg) } }
-  .infla-hand.left { transform-origin: 80% 90%; animation-name: infla-wave-l; }
+  @keyframes infla-wave-l { 0%, 46%, 100% { transform: rotate(0) } 9% { transform: rotate(24deg) } 19% { transform: rotate(-12deg) } 29% { transform: rotate(20deg) } 38% { transform: rotate(-8deg) } }
+  .infla-hand.left { transform-origin: 13px 34.6px; animation-name: infla-wave-l; }
   .infla-sway { animation: infla-sway 3.6s ease-in-out infinite; }
   /* редкие вещи лавки — живые: шар дышит, орден качается, камни вспыхивают, огранка плывёт */
   @keyframes infla-breathe { 0%, 100% { transform: scale(.78) } 50% { transform: scale(1.12) } }
@@ -261,6 +265,8 @@ export function Mascot({ mood = 'hello', size = 56, label, outfit = null }) {
   // головной убор выше монеты — поле рисунка растёт вверх
   const top = wear.head && OUTFIT[wear.head] ? -12 : 0;
   const motion = m === 'joy' || m === 'party' ? 'infla-hop' : m === 'sleep' ? '' : m === 'wave' ? 'infla-sway' : 'infla-bob';
+  // свой ритм моргания у каждой Инфли: длина цикла 5,2–8,4 с и случайный сдвиг — не хором и не по метроному
+  const blink = React.useMemo(() => ({ '--blink': `${(5.2 + Math.random() * 3.2).toFixed(2)}s`, '--blink-at': `${(-Math.random() * 8).toFixed(2)}s` }), []);
   return (
     <span style={{ display: 'inline-block', lineHeight: 0 }} data-testid="mascot" data-mood={m}>
       <style>{CSS}</style>
@@ -280,15 +286,18 @@ export function Mascot({ mood = 'hello', size = 56, label, outfit = null }) {
         {/* шея — сразу за монетой: стоячий воротник встаёт по бокам, и машущая рука должна быть поверх него */}
         {wear.neck && OUTFIT[wear.neck] && <g data-outfit={wear.neck}>{OUTFIT[wear.neck]}</g>}
         {(m === 'joy' || m === 'party' || m === 'hello') && <><ellipse cx="20" cy="29.5" rx="2.6" ry="1.6" fill="#E07A5F" opacity="0.45" /><ellipse cx="44" cy="29.5" rx="2.6" ry="1.6" fill="#E07A5F" opacity="0.45" /></>}
-        {m === 'sleep' ? EYES[m](ink) : <g className="infla-eyes">{EYES[m](ink)}</g>}
+        {m === 'sleep' ? EYES[m](ink) : <g className="infla-eyes" style={blink}>{EYES[m](ink)}</g>}
+        {/* рука начинается чуть внутри края монеты, и плечо — центр вращения: при взмахе она не отрывается */}
         {m === 'wave' && (wear.hand && OUTFIT[wear.hand] ? (
           <g className="infla-hand left">
-            <path d="M12 34 Q7 30 6 24" fill="none" stroke="#3A2A08" strokeWidth="1.6" strokeLinecap="round" />
+            <path d="M13 34.6 Q7 30.5 6 24" fill="none" stroke="#3A2A08" strokeWidth="1.7" strokeLinecap="round" />
+            <circle cx="13" cy="34.6" r="1.3" fill="#3A2A08" />
             <circle cx="5.5" cy="21.5" r="4" fill="#E8C766" stroke="#3A2A08" strokeWidth="1.2" />
           </g>
         ) : (
           <g className="infla-hand">
-            <path d="M52 34 Q57 30 58 24" fill="none" stroke="#3A2A08" strokeWidth="1.6" strokeLinecap="round" />
+            <path d="M51 34.6 Q57 30.5 58 24" fill="none" stroke="#3A2A08" strokeWidth="1.7" strokeLinecap="round" />
+            <circle cx="51" cy="34.6" r="1.3" fill="#3A2A08" />
             <circle cx="58.5" cy="21.5" r="4" fill="#E8C766" stroke="#3A2A08" strokeWidth="1.2" />
           </g>
         ))}

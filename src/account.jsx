@@ -2,7 +2,7 @@
    в шапке меню. Вынесено из MacroSimulator.jsx; общие вещи (тема, звук, playerId
    устройства и синхронизация прогресса) — оттуда же, те же объекты. */
 import React, { useState } from 'react';
-import { Star, Crown, Landmark, Coins, Shield, Anchor, Factory, Wheat, User, LogIn, LogOut, KeyRound, X, Copy, Check, AlertTriangle } from 'lucide-react';
+import { Star, Crown, Landmark, Coins, Shield, Anchor, Factory, Wheat, User, LogIn, LogOut, KeyRound, X, Copy, Check, AlertTriangle, ShieldAlert } from 'lucide-react';
 import {
   accountRegister, accountLogin, accountMe, accountUpdate, accountPassword, accountLogout, accountRecover, accountRecoveryNew, reportFilter, accountExport, accountDelete,
 } from './lib/client.js';
@@ -43,7 +43,10 @@ export const forgetAccount = () => saveAccount(null);
 /* Детский режим «Мира» (src/lib/age.js): его считает сервер, на устройстве лежит последний
    ответ. Пока ответа нет (профиль заведён до этого правила или нет сети) — режим включён. */
 export const accountKidsMode = (a = loadAccount()) => !a || a.kidsMode !== false;
-const fromProfile = (profile) => ({ name: profile.name, emblem: profile.emblem, kidsMode: profile.kidsMode !== false, leaguePublic: profile.leaguePublic === true });
+/* renameBy — до какого момента сменить ник, нарушающий правила (иначе блок), blocked — срок вышел,
+   nameNextAt — когда ник можно сменить снова (раз в 30 дней). Всё считает сервер (api/_lib/accounts.js). */
+const fromProfile = (profile) => ({ name: profile.name, emblem: profile.emblem, kidsMode: profile.kidsMode !== false, leaguePublic: profile.leaguePublic === true,
+  renameBy: profile.renameBy || null, blocked: profile.blocked === true, nameNextAt: profile.nameNextAt || 0 });
 // при запуске: подтянуть с сервера имя, значок и детский режим
 export const refreshAccount = async () => {
   const a = loadAccount();
@@ -373,6 +376,67 @@ export function AuthModal({ onClose, onDone, reason }) {
   );
 }
 
+// «24 ноября» — по всемирному времени, как считает сервер
+const dayLong = (ts) => new Date(ts).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', timeZone: 'UTC' });
+
+/* НИК ПОД ЗАПРЕТОМ (api/_lib/accounts.js): грубый ник или тот, что потребовал сменить владелец.
+   Пока срок идёт — окно «Смените ник» при запуске (раз за сеанс) и по уведомлению (событие
+   ems-rename); срок вышел — экран блокировки, закрыть нельзя: только сменить ник или выйти. */
+export const RENAME_EVENT = 'ems-rename';
+export function NameGate() {
+  const account = useAccount();
+  const [open, setOpen] = useState(() => { try { return !sessionStorage.getItem('ems-rename-asked'); } catch { return true; } });
+  const [name, setName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  React.useEffect(() => {
+    const blocked = () => { refreshAccount(); };
+    const ask = () => setOpen(true);
+    window.addEventListener('ems-blocked', blocked);
+    window.addEventListener(RENAME_EVENT, ask);
+    return () => { window.removeEventListener('ems-blocked', blocked); window.removeEventListener(RENAME_EVENT, ask); };
+  }, []);
+  if (!account || !account.renameBy) return null;
+  const blocked = account.blocked || account.renameBy <= Date.now();
+  if (!blocked && !open) return null;
+  const later = () => { try { sessionStorage.setItem('ems-rename-asked', '1'); } catch { /* приватный режим */ } setOpen(false); };
+  const submit = async (e) => {
+    e.preventDefault();
+    setBusy(true); setError('');
+    try {
+      const r = await accountUpdate(account.token, { name: name.trim() });
+      saveAccount({ ...loadAccount(), ...fromProfile(r.profile) });
+      Audio.play('stamp'); later();
+    } catch (err) { setError(err.message); } finally { setBusy(false); }
+  };
+  const logout = async () => { await leaveProfile(); window.location.reload(); };
+  return (
+    <DsRoot world={COLOR} style={{ position: 'fixed', inset: 0, background: blocked ? 'var(--ds-bg)' : 'rgba(20,14,6,0.6)', zIndex: 260, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <form role="dialog" aria-modal="true" aria-labelledby="rename-title" data-testid={blocked ? 'name-blocked' : 'name-rename'} className="ds-card ds-rise"
+        style={{ maxWidth: 420, width: '100%', padding: 20 }} onSubmit={submit}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+          <ShieldAlert size={20} color="var(--ds-bad)" aria-hidden="true" />
+          <span id="rename-title" className="ds-h3" style={{ flex: 1 }}>{blocked ? 'Аккаунт заблокирован' : 'Смените ник'}</span>
+          {!blocked && <button type="button" className="ds-icon-btn" aria-label="Закрыть" onClick={later}><X size={20} /></button>}
+        </div>
+        <p style={{ fontSize: 14, lineHeight: 1.55, color: 'var(--ds-ink2)', margin: '0 0 12px' }}>
+          Ник «{account.name}» нарушает правила: его видят другие ученики — в лигах, у друзей и в забегах.{' '}
+          {blocked ? 'Срок на смену вышел. Выберите новый ник — и аккаунт сразу откроется, весь прогресс на месте.'
+            : `Выберите другой до ${dayLong(account.renameBy)} — иначе аккаунт будет заблокирован. Эта смена не считается в лимит «раз в 30 дней».`}
+        </p>
+        <label htmlFor="rename-field" style={{ display: 'block', fontSize: 12, marginBottom: 5 }}>Новый ник</label>
+        <input id="rename-field" className="ds-field" value={name} maxLength={24} autoFocus onChange={(e) => setName(e.target.value)} style={{ width: '100%', marginBottom: 8 }} />
+        {error && <div role="alert" style={{ fontSize: 12, color: 'var(--ds-bad)', marginBottom: 8 }}>{error}</div>}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button type="submit" className="ds-btn ds-btn--primary" data-testid="rename-save" disabled={busy || name.trim().length < 2}>Сменить ник</button>
+          {blocked ? <button type="button" className="ds-btn ds-btn--secondary" onClick={logout}><LogOut size={14} /> Выйти</button>
+            : <button type="button" className="ds-btn ds-btn--secondary" onClick={later}>Позже</button>}
+        </div>
+      </form>
+    </DsRoot>
+  );
+}
+
 /* Профиль: значок, имя, статистика сетевых партий, пароль, код восстановления и выход. */
 export function ProfileModal({ onClose, onSwitched }) {
   const account = useAccount();
@@ -422,6 +486,7 @@ export function ProfileModal({ onClose, onSwitched }) {
     return () => { alive = false; };
   }, []);
   if (!account) return null;
+  const nameLocked = !account.renameBy && account.nameNextAt > Date.now();
   const save = async (patch) => {
     setBusy(true); setError(''); setNote('');
     try {
@@ -486,10 +551,14 @@ export function ProfileModal({ onClose, onSwitched }) {
         </div>
       )}
       <label htmlFor="account-name" style={{ display: 'block', fontSize: 12, marginBottom: 5 }}>Имя в игре</label>
-      <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
-        <input id="account-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={24} className="ds-field" />
-        <button className="ds-btn ds-btn--secondary ds-btn--small" disabled={busy || name.trim() === account.name || name.trim().length < 2}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 5 }}>
+        <input id="account-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={24} className="ds-field" disabled={nameLocked} />
+        <button className="ds-btn ds-btn--secondary ds-btn--small" disabled={busy || nameLocked || name.trim() === account.name || name.trim().length < 2}
           style={{ padding: '6px 12px', fontSize: 12 }} onClick={() => save({ name: name.trim() })}>Сохранить</button>
+      </div>
+      <div data-testid="name-rule" style={{ fontSize: 12, color: account.renameBy ? 'var(--ds-bad)' : 'var(--ds-ink3)', lineHeight: 1.45, marginBottom: 12 }}>
+        {account.renameBy ? `Ник нарушает правила — смените его до ${dayLong(account.renameBy)}, иначе аккаунт будет заблокирован.`
+          : nameLocked ? `Ник меняют раз в 30 дней — следующий раз ${dayLong(account.nameNextAt)}.` : 'Ник можно менять раз в 30 дней.'}
       </div>
       <div style={{ fontSize: 12, marginBottom: 5 }}>Значок</div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>

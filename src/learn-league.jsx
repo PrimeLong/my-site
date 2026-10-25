@@ -10,7 +10,7 @@ import { LEAGUE_BY_ID, LEAGUES, PROMOTE, GROUP, DEMOTE, PLACE_COINS, leagueState
 import { coinsWord, plural } from './learn/rewards.js';
 import { loadAccount, accountKidsMode } from './account.jsx';
 import { accountLeagueNames } from './lib/client.js';
-import { dayOf } from './textbook/learn-state.js';
+import { dayOf, dowOf } from './textbook/learn-state.js';
 import { newsDate } from './learn/news.js';
 import { CoinShower } from './ds-art.jsx';
 
@@ -151,6 +151,19 @@ function RewardSheet({ got, onClose }) {
 // что нужно сейчас — одной карточкой: до повышения, удержаться, выбраться из понижения
 function GoalCard({ st }) {
   const lg = LEAGUE_BY_ID[st.league];
+  // уроков ещё не было — в лиге вас нет: лига открывается первым уроком
+  if (st.noLesson) {
+    const monday = dowOf(dayOf(Date.now())) === 0;
+    return (
+      <div className="lg-goal lg-wait" data-testid="league-goal" data-kind="first">
+        <div className="lg-rest"><span className="lg-wait-ico" aria-hidden="true"><Lock size={20} /></span>
+          <div><b>Лига — после первого урока</b>
+            <div style={{ fontSize: 14, marginTop: 2 }}>Пока вы не прошли ни одного урока, в лигу вас не ставим. Пройдите урок на Пути — и {monday ? 'уже с этой недели' : 'с ближайшего понедельника'} вы в группе из {GROUP} учеников Бронзовой лиги.</div>
+          </div>
+        </div>
+      </div>
+    );
+  }
   // пришли посреди недели: соперники набирают опыт с понедельника — начнём честно, с нуля
   if (st.waiting) {
     return (
@@ -237,10 +250,11 @@ export function LeagueView({ learn, update, now = Date.now() }) {
           <div className="ds-eyebrow">Лига недели</div>
           <h1 data-testid="league-title">{lg.title} лига</h1>
           <div className="lg-place" data-testid="league-status">
-            {st.waiting ? 'Старт — в понедельник' : st.joined ? <>{placeWord(st.me.place)} из {GROUP} · {st.me.xp} опыта</> : 'Вы ещё не в лиге на этой неделе'}
+            {st.noLesson ? 'Откроется после первого урока' : st.waiting ? 'Старт — в понедельник' : st.joined ? <>{placeWord(st.me.place)} из {GROUP} · {st.me.xp} опыта</> : 'Вы ещё не в лиге на этой неделе'}
           </div>
           <div className="lg-when" data-testid="league-when">
-            {st.waiting ? <><Hourglass size={14} aria-hidden="true" /> {newsDate(st.startsOn)} — первая неделя</>
+            {st.noLesson ? <><Lock size={14} aria-hidden="true" /> Сначала — один урок на Пути</>
+              : st.waiting ? <><Hourglass size={14} aria-hidden="true" /> {newsDate(st.startsOn)} — первая неделя</>
               : st.rest ? <><Coffee size={14} aria-hidden="true" /> Перерыв до понедельника</> : <>{st.daysLeft} {plural(st.daysLeft, 'день', 'дня', 'дней')} до итогов</>}
           </div>
         </div>
@@ -285,10 +299,10 @@ export function LeagueView({ learn, update, now = Date.now() }) {
         })}
       </div>
 
-      {st.waiting ? (
+      {st.waiting || st.noLesson ? (
         <Card flat style={{ marginTop: 14, textAlign: 'center', fontSize: 14.5 }} data-testid="league-wait-table">
           <div className="lg-wait-seats" aria-hidden="true">{Array.from({ length: GROUP }, (_, k) => <i key={k} style={{ '--i': k }} />)}</div>
-          Группа из {GROUP} учеников соберётся в понедельник.
+          {st.noLesson ? `Группа из ${GROUP} учеников ждёт вашего первого урока.` : `Группа из ${GROUP} учеников соберётся в понедельник.`}
         </Card>
       ) : (<>
       <h2 className="ds-h2" style={{ fontSize: 18, margin: '14px 0 0' }}>{st.rest ? 'Итоги недели' : 'Ваша группа'}</h2>
@@ -326,7 +340,8 @@ export function LeagueView({ learn, update, now = Date.now() }) {
             <li>По итогам первые {PROMOTE} поднимаются в следующую лигу, последние {DEMOTE} опускаются, остальные остаются.</li>
             <li>Чем выше лига, тем выше темп: в Бронзовой, чтобы остаться, хватает {stayMinutes('bronze')} минут уроков в день, в Серебряной — {stayMinutes('silver')}, в Золотой — {stayMinutes('gold')}, … в Алмазной — {stayMinutes('diamond')}. Подняться — на пару минут больше.</li>
             <li>1–3 место: {PLACE_COINS.join(', ')} монет. Неделя без уроков лигу не меняет.</li>
-            <li>Новичок начинает с ближайшего понедельника: в уже идущую неделю не попадают.</li>
+            <li>Новичок попадает в лигу после первого урока — с ближайшего понедельника: в уже идущую неделю не попадают.</li>
+            <li data-testid="league-utc">Время у всех одно — всемирное (UTC): день и неделя начинаются в полночь по UTC, в Москве — в 03:00. Перевод часов на устройстве ничего не меняет.</li>
           </ul>
         )}
       </div>

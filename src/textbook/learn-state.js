@@ -51,7 +51,20 @@ export const emptyLearn = () => ({
   coins: {}, spent: {}, claimed: {}, owned: {}, skipped: {}, wear: { head: null, face: null, neck: null, hand: null, frame: null, at: 0 }, freezeBuy: {}, frozen: {},
   policyAt: 0, policyOff: 0, policyLapse: 0, premiums: {}, monthPlan: {},
   seen: {}, best: {}, boost: 0, piggy: {}, piggyOut: {}, piggyTop: {}, piggyAdd: {}, garden: {}, harvest: {}, water: {},
+  shown: {},
 });
+/* Показанное ученику — общее для всех его устройств (жалоба: «прошёл юнит на ПК — марка и уведомления
+   повторяются на телефоне»): ключ → когда впервые показали. Префиксы: c: — церемония (марка, печать),
+   n: — уведомление прочитано, t: — плашка уведомления уже всплывала, m: — утренний экран серии дня.
+   Храним последние SHOWN_MAX; при слиянии устройств — объединение, время — более раннее. */
+export const SHOWN_MAX = 600;
+export function markShown(s, keys, now = Date.now()) {
+  const add = keys.filter((k) => okKey(k) && !(s.shown || {})[k]);
+  if (!add.length) return s;
+  return upd(s, { shown: { ...s.shown, ...Object.fromEntries(add.map((k) => [k, now])) } });
+}
+// показанное с префиксом — без префикса: { ключ: время }
+export const shownWith = (s, prefix) => Object.fromEntries(Object.entries((s && s.shown) || {}).filter(([k]) => k.startsWith(prefix)).map(([k, v]) => [k.slice(prefix.length), v]));
 export const PROFILE_GOALS = ['exam', 'olymp', 'uni', 'self'];
 export const PROFILE_MINUTES = [5, 10, 15, 20];
 export const PROFILE_GOAL_LABEL = { exam: 'Поступление в вуз', olymp: 'Олимпиада', uni: 'Первый курс', self: 'Для себя' };
@@ -80,15 +93,27 @@ const TOPIC_WINDOW = 20;
 const MAX_DAILY = 60;
 const MAX_CLAIMED = 500;
 
-// день по местному времени: ГГГГ-ММ-ДД
+/* ОДИН ЧАСОВОЙ ПОЯС НА ВСЁ — всемирное время (UTC). День, неделя и месяц серии, цели дня, лиг,
+   забегов и испытаний месяца начинаются в полночь по UTC — у всех учеников и на сервере, так что
+   перевод часов на устройстве не даёт ни лишнего дня серии, ни лишних часов в лиге или забеге
+   (в Москве день кончается в 03:00). Местное время — только для подписей («в 14:05», приветствие),
+   часа напоминания и отметок «рано утром / поздно вечером» у достижений. */
+// день по всемирному времени: ГГГГ-ММ-ДД
 export const dayOf = (ts) => {
   const d = new Date(ts);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
 };
-const dayTs = (key) => { const [y, mo, d] = key.split('-').map(Number); return new Date(y, mo - 1, d, 12).getTime(); };
+const dayTs = (key) => { const [y, mo, d] = key.split('-').map(Number); return Date.UTC(y, mo - 1, d, 12); };
 export const addDays = (key, n) => dayOf(dayTs(key) + n * DAY);
 // неделя с понедельника: ключ — дата понедельника
-export const weekOf = (key) => { const t = new Date(dayTs(key)); const dow = (t.getDay() + 6) % 7; return addDays(key, -dow); };
+export const weekOf = (key) => { const t = new Date(dayTs(key)); const dow = (t.getUTCDay() + 6) % 7; return addDays(key, -dow); };
+// день недели ключа: понедельник — 0
+export const dowOf = (key) => (new Date(dayTs(key)).getUTCDay() + 6) % 7;
+// начало дня (полночь UTC) и сколько часов дня прошло — для лиг, забегов и «до конца дня»
+export const dayStart = (ts) => { const d = new Date(ts); return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()); };
+export const dayHour = (ts) => (ts - dayStart(ts)) / 3600000;
+// момент «день key, час h» по всемирному времени
+export const dayAt = (key, h = 0) => dayTs(key) + (h - 12) * 3600000;
 
 /* ------------------------------ ЗАПИСИ ------------------------------ */
 const upd = (s, patch) => ({ ...s, ...patch });
@@ -226,8 +251,8 @@ export function finishLesson(s, lessonId, { xp, accuracy, now = Date.now(), coun
   const lessons = lessonId ? { ...s.lessons, [lessonId]: { at: fresh ? now : prev.at, runs: (prev ? prev.runs : 0) + 1, best: Math.max(prev ? prev.best : 0, Math.round(accuracy)), ...(gem ? { diamond: gem } : {}) } } : s.lessons;
   const d = dayEntry(s, day);
   const hour = new Date(now).getHours();
-  // в сегодняшние минуты — только время после полуночи: урок, начатый вчера, не делает новый день наполовину выполненным
-  const sinceMidnight = (now - new Date(new Date(now).setHours(0, 0, 0, 0)).getTime()) / 1000;
+  // в сегодняшние минуты — только время после полуночи (UTC): урок, начатый вчера, не делает новый день наполовину выполненным
+  const sinceMidnight = (now - dayStart(now)) / 1000;
   const entry = {
     ...d, l: d.l + (lessonId ? 1 : 0), n: d.n + (fresh ? 1 : 0), p: d.p + (lessonId && accuracy >= 100 ? 1 : 0), s: d.s + Math.max(0, Math.round(Math.min(900, seconds, sinceMidnight))),
     g: d.g + (kind === 'game' ? 1 : 0), pr: d.pr + (mode === 'practice' ? 1 : 0), h: d.h | (hour < 8 ? 1 : 0) | (hour >= 22 ? 2 : 0),
@@ -315,7 +340,7 @@ export function weekDots(s, now = Date.now()) {
   const insured = new Set(streak(s, now).insuredDays);
   return [6, 5, 4, 3, 2, 1, 0].map((back) => {
     const key = addDays(today, -back);
-    return { day: key, dow: (new Date(dayTs(key)).getDay() + 6) % 7, done: active(s, key), frozen: !!(s.frozen || {})[key] || insured.has(key), today: back === 0 };
+    return { day: key, dow: dowOf(key), done: active(s, key), frozen: !!(s.frozen || {})[key] || insured.has(key), today: back === 0 };
   });
 }
 // самая длинная серия за всю историю (с теми же заморозками)
@@ -530,6 +555,8 @@ function normalizeProgram(r) {
     wear: { ...Object.fromEntries(SLOTS.map((sl) => [sl, okKey(w[sl]) ? RENAMED[w[sl]] || w[sl] : null])), at: cnt(w.at, 1e14) },
     seen: countMap(r.seen, MAX_SEEN, 9999), best: countMap(r.best, MAX_BEST, 1e6), boost: cnt(r.boost, 1e14),
     piggy: piggyMap(r.piggy), piggyOut: piggyMap(r.piggyOut), piggyTop: piggyTopMap(r.piggyTop), piggyAdd: piggyAddMap(r.piggyAdd), garden: gardenMap(r.garden), harvest: harvestMap(r.harvest), water: waterMap(r.water),
+    // показанное: самые свежие SHOWN_MAX по времени
+    shown: Object.fromEntries(Object.entries(tsMap(r.shown, 5000)).sort((a, b) => a[1] - b[1] || (a[0] < b[0] ? -1 : 1)).slice(-SHOWN_MAX)),
   };
 }
 // слияние полей программы: ответы и наряд — более поздние, счётчики дня — по максимуму, награды и покупки — объединение
@@ -556,6 +583,7 @@ function mergeProgram(x, y) {
     garden: Object.fromEntries([...new Set([...Object.keys(x.garden), ...Object.keys(y.garden)])].map((k) => [k, [x.garden[k], y.garden[k]].filter(Boolean).sort()[0]])),
     harvest: minTs(x.harvest, y.harvest),
     water: Object.fromEntries([...new Set([...Object.keys(x.water), ...Object.keys(y.water)])].map((k) => [k, [x.water[k], y.water[k]].filter(Boolean).sort()[0]])),
+    shown: minTs(x.shown, y.shown),
   };
 }
 /* Слияние двух устройств: счётчики — по максимуму (одно и то же занятие не удваивается),

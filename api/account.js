@@ -8,13 +8,14 @@
    при регистрации один раз (и выдаётся заново в профиле по паролю). */
 import { getUser, setUser, setSession, delSession, hasKv, hit, getProfile, getSoloSlots, getTycoonSlots, getRecords, getReports, deleteUserData, setLeagueName, getLeagueNames,
   getUsers, getCards, setCard, getRaces, setRace } from './_lib/store.js';
-import { cleanCard, raceStatus, raceOpen, validDay, MAX_FRIENDS, MAX_PENDING, RACE } from './_lib/friends.js';
+import { cleanCard, raceStatus, raceOpen, MAX_FRIENDS, MAX_PENDING, RACE } from './_lib/friends.js';
 import { isRude, RUDE_NAME } from '../src/lib/moderation.js';
 import { validBirthYear, isKid, needsParent } from '../src/lib/age.js';
 import {
   LOGIN_RE, cleanLogin, hashPassword, checkPassword, newToken, emptyStats, publicProfile, userBySession,
-  newRecoveryCode, hashRecovery, checkRecovery, sessionValue,
+  newRecoveryCode, hashRecovery, checkRecovery, sessionValue, checkName, nameBanned, isBlocked, nameNextAt, nameForOthers, RENAME_DAYS, DAY_MS, NAME_EVERY_DAYS,
 } from './_lib/accounts.js';
+import { isOwner } from './reports.js';
 import { randomUUID } from 'node:crypto';
 
 const EMBLEMS = new Set(['star', 'crown', 'landmark', 'coins', 'shield', 'anchor', 'factory', 'wheat']);
@@ -45,6 +46,11 @@ const RECOVER_PER_HOUR = 10;
 const clientIp = (req) => String((req.headers && (req.headers['x-forwarded-for'] || req.headers['x-real-ip'])) || 'local')
   .split(',')[0].trim().slice(0, 64);
 const storage = () => (hasKv() ? 'kv' : 'memory');
+// заблокированному (не сменил запрещённый ник в срок) — только эти действия
+const BLOCKED_OK = new Set(['me', 'update', 'logout', 'export', 'delete', 'password', 'recovery_new']);
+const BLOCKED_MSG = 'Аккаунт заблокирован: ник нарушает правила. Смените ник — и всё снова откроется.';
+// дата по всемирному времени: «25 ноября»
+const dayText = (ts) => new Date(ts).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', timeZone: 'UTC' });
 // новая сессия устройства — привязана к текущей эпохе пароля
 async function openSession(user) {
   const token = newToken();
@@ -117,7 +123,8 @@ async function handleRequest(req, res) {
     }
     if (user.fails || user.lockLevel) await setUser(login, { ...user, fails: 0, lockLevel: 0, lockUntil: 0 });
     const token = await openSession(user);
-    return res.status(200).json({ token, profile: publicProfile(user), storage: storage() });
+    const checked = await checkName(user.fails || user.lockLevel ? { ...user, fails: 0, lockLevel: 0, lockUntil: 0 } : user);
+    return res.status(200).json({ token, profile: publicProfile(checked), storage: storage() });
   }
 
   // забыл пароль: логин + код восстановления → новый пароль и новый код; все
@@ -140,21 +147,32 @@ async function handleRequest(req, res) {
       epoch: (user.epoch || 0) + 1, fails: 0, lockUntil: 0 };
     await setUser(login, next);
     const token = await openSession(next);
-    return res.status(200).json({ token, profile: publicProfile(next), recoveryCode, storage: storage() });
+    return res.status(200).json({ token, profile: publicProfile(await checkName(next)), recoveryCode, storage: storage() });
   }
 
-  // дальше — только со своей сессией
-  const user = await userBySession(body.token);
+  // дальше — только со своей сессией; запрещённый ник получает срок на смену (api/_lib/accounts.js)
+  const user = await checkName(await userBySession(body.token));
   if (!user) return res.status(401).json({ error: 'Войдите в профиль заново' });
+  // срок на смену ника вышел — можно только сменить ник и распорядиться своими данными
+  if (isBlocked(user) && !BLOCKED_OK.has(action)) return res.status(403).json({ error: BLOCKED_MSG, blocked: true });
 
   if (action === 'me') return res.status(200).json({ profile: publicProfile(user), storage: storage() });
   if (action === 'update') {
     const next = { ...user };
+    if (isBlocked(user) && Object.keys(body).some((k) => !['action', 'token', 'name'].includes(k))) return res.status(403).json({ error: BLOCKED_MSG, blocked: true });
     if (body.name !== undefined) {
       const n = cleanName(body.name);
       if (!n) return res.status(400).json({ error: 'Имя — от 2 до 24 символов' });
       if (isRude(n)) return res.status(400).json({ error: RUDE_NAME });
-      next.name = n;
+      if (n !== user.name) {
+        if (user.renameFor && n === user.renameFor) return res.status(400).json({ error: RUDE_NAME });
+        const wait = nameNextAt(user);
+        if (wait) return res.status(429).json({ error: `Ник можно менять раз в ${NAME_EVERY_DAYS} дней — следующий раз ${dayText(wait)}`, nameNextAt: wait });
+        next.name = n;
+        // прежний ник был запрещён — смена не тратит месячную попытку
+        if (!nameBanned(user)) next.nameAt = Date.now();
+        delete next.renameBy; delete next.renameFor;
+      }
     }
     if (body.emblem !== undefined) { if (!EMBLEMS.has(body.emblem)) return res.status(400).json({ error: 'Нет такого значка' }); next.emblem = body.emblem; }
     /* Год рождения задаётся один раз — профилям, заведённым до этого правила. Поменять его потом
@@ -179,8 +197,20 @@ async function handleRequest(req, res) {
       next.leaguePublic = body.leaguePublic;
     }
     await setUser(user.login, next);
-    if (next.leaguePublic || user.leaguePublic) await setLeagueName(user.login, next.leaguePublic && !isRude(next.name) ? next.name : null);
+    if (next.leaguePublic || user.leaguePublic) await setLeagueName(user.login, next.leaguePublic && !nameBanned(next) ? next.name : null);
     return res.status(200).json({ profile: publicProfile(next) });
+  }
+  /* Владелец требует сменить ник, который фильтр пропустил: у ученика RENAME_DAYS дней, потом блок.
+     Ник, сменённый на тот же самый, не проходит (user.renameFor). */
+  if (action === 'require-rename') {
+    if (!isOwner(user)) return res.status(403).json({ error: 'Только для владельцев' });
+    const login = cleanLogin(body.login);
+    const target = LOGIN_RE.test(login) ? await getUser(login) : null;
+    if (!target) return res.status(404).json({ error: 'Нет такого ученика' });
+    const renameBy = target.renameBy && nameBanned(target) ? target.renameBy : Date.now() + RENAME_DAYS * DAY_MS;
+    await setUser(login, { ...target, renameFor: target.name, renameBy });
+    if (target.leaguePublic) await setLeagueName(login, null);
+    return res.status(200).json({ ok: true, login, name: target.name, renameBy });
   }
   // имена учеников, разрешивших показ в лигах: до тридцати случайных, без своего и без грубых
   if (action === 'league-names') {
@@ -271,8 +301,9 @@ async function handleRequest(req, res) {
     if (!race || race.to !== user.login) return res.status(404).json({ error: 'Приглашения нет' });
     const st = raceStatus(race);
     if (st !== 'pending') return res.status(400).json({ error: st === 'expired' ? 'Сутки на ответ уже прошли' : 'На приглашение уже ответили' });
-    // день старта — местный день того, кто принял: с него идут три дня забега
-    const start = validDay(body.day) ? body.day : new Date().toISOString().slice(0, 10);
+    /* день старта — сегодня по всемирному времени (один часовой пояс на всё, src/textbook/learn-state.js):
+       день, присланный устройством, не берём — иначе переводом часов можно было сдвинуть забег */
+    const start = new Date(Date.now()).toISOString().slice(0, 10);
     /* опыт, набранный в день старта до принятия, в забег не идёт: у принявшего — из его прогресса
        (base), у пригласившего — из его карточки на этот день. Раньше утренний опыт уже стоял в счёте */
     let base = null;
@@ -344,7 +375,8 @@ async function save(user, patch) {
   await setUser(user.login, next);
   return next;
 }
-const friendOut = (login, u, card) => ({ login, name: u.name || login, emblem: u.emblem || 'star', card: card || null });
+// грубый или запрещённый ник другим не показываем — вместо него логин
+const friendOut = (login, u, card) => ({ login, name: nameBanned(u) ? nameForOthers(null, login) : nameForOthers(u.name || login, login), emblem: u.emblem || 'star', card: card || null });
 /* Что видит ученик: друзья с карточками, заявки, забеги. Удалённые профили выпадают сами. */
 async function friendsView(user) {
   const me = links(user);

@@ -6,7 +6,7 @@
    (ems-notify-seen), какие виды включены (ems-notify-prefs) и что уже ушло в браузер
    (ems-notify-pushed). Модуль чистый, кроме этих трёх ключей: его читают колокольчик, центр
    уведомлений, всплывающая плашка и напоминания в браузере (src/learn-notify.jsx), и тесты. */
-import { streak, goalToday, dayOf, addDays } from '../textbook/learn-state.js';
+import { streak, goalToday, dayOf, addDays, dayAt } from '../textbook/learn-state.js';
 import { leagueState, pendingRewards, standings, LEAGUE_BY_ID, LESSON_XP } from './league.js';
 import { gardenPlots, growth, PLANT_BY_ID } from './garden.js';
 import { piggyState, monthChallenge, hasClaim, chestKey, coinsWord, plural } from './rewards.js';
@@ -14,7 +14,7 @@ import { pathState, practiceIds } from './course.js';
 import { placeOf } from '../ds-tokens.js';
 import { NEWS, newsForLearner, learnerSince } from './news.js';
 import { halloween } from './halloween.js';
-import { raceView, raceClaimed } from './friends.js';
+import { raceView, raceClaimed, RACE } from './friends.js';
 
 const HOUR = 3600 * 1000;
 // виды уведомлений: подпись в настройках и включено ли по умолчанию
@@ -60,17 +60,18 @@ export function markPushed(id, now = Date.now()) {
   store.set('ems-notify-pushed', Object.fromEntries(Object.entries(p).sort((a, b) => b[1] - a[1]).slice(0, 200)));
 }
 
-const at = (day, h) => { const [y, m, d] = day.split('-').map(Number); return new Date(y, m - 1, d, h).getTime(); };
 const place = (n) => `${n}-е место`;
 
 /* Уведомления к моменту now. opts.since — первый день ученика (новости до него не «новые»),
    opts.prefs — включённые виды. Каждое: id (одно и то же событие — один id), kind (вид для
    настроек), icon, tone (цвет значка), title, text, at (когда случилось), go (куда ведёт касание:
-   path | league | shop | garden | piggy | tasks | news | friends | book-review), toast — показать плашкой, если появилось,
+   path | league | shop | garden | piggy | tasks | news | friends | book-review | rename), toast — показать плашкой, если появилось,
    пока приложение открыто, push — можно отправить в браузер. */
 export function notificationsOf(learn, now = Date.now(), opts = {}) {
   const prefs = { ...DEFAULT_PREFS, ...opts.prefs };
   const day = dayOf(now);
+  // «день key, час h» по всемирному времени (дни — UTC, src/textbook/learn-state.js); будущее — не позже «сейчас»
+  const at = (key, h) => Math.min(now, dayAt(key, h));
   const hour = new Date(now).getHours();
   const out = [];
   const add = (n) => { if (prefs[n.kind] !== false) out.push(n); };
@@ -216,6 +217,15 @@ export function notificationsOf(learn, now = Date.now(), opts = {}) {
       title: 'Что нового в Инфляции', text: fresh.title });
   }
 
+  /* ник нарушает правила (opts.account — профиль, src/account.jsx): сменить до renameBy, иначе блок.
+     Отключить в настройках нельзя — вида нет в NOTIFY_KINDS. */
+  const acc = opts.account;
+  if (acc && acc.renameBy) {
+    const date = new Date(acc.renameBy).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', timeZone: 'UTC' });
+    add({ id: `rename:${acc.renameBy}`, kind: 'account', icon: 'shield-alert', tone: '#BF3A2B', at: Math.min(now, acc.renameBy - 7 * 24 * HOUR), go: 'rename', toast: true, push: true,
+      title: 'Смените ник', text: `Ник «${acc.name}» нарушает правила. Смените его до ${date} — иначе аккаунт будет заблокирован.` });
+  }
+
   // друзья (opts.friends — ответ сервера, src/lib/friends-store.js): заявки, приглашения на забег, итоги
   const fr = opts.friends;
   if (fr) {
@@ -227,9 +237,27 @@ export function notificationsOf(learn, now = Date.now(), opts = {}) {
       if (v.status === 'incoming') {
         add({ id: `race-inv:${r.id}`, kind: 'friends', icon: 'flag', tone: '#BF3A2B', at: Math.min(now, r.at), go: 'path', toast: true, push: true,
           title: `${v.name} зовёт на забег`, text: `Три дня — кто наберёт больше опыта. Ответить — ещё ${v.hoursLeft} ${plural(v.hoursLeft, 'час', 'часа', 'часов')}.` });
-      } else if (v.status === 'active' && r.mine && r.acceptedAt) {
-        add({ id: `race-go:${r.id}`, kind: 'friends', icon: 'flag', tone: '#BF3A2B', at: Math.min(now, r.acceptedAt), go: 'path', toast: true,
-          title: 'Забег начался', text: `${v.name} принял приглашение: три дня, кто больше опыта.` });
+      } else if (v.status === 'active') {
+        if (r.mine && r.acceptedAt) {
+          add({ id: `race-go:${r.id}`, kind: 'friends', icon: 'flag', tone: '#BF3A2B', at: Math.min(now, r.acceptedAt), go: 'path', toast: true,
+            title: 'Забег начался', text: `${v.name} принимает вызов: три дня, кто больше опыта.` });
+        }
+        /* по ходу забега — не тишина (жалоба: «нет никаких уведомлений о гонке»): друг обогнал — раз в день,
+           пока вы позади; вышли вперёд; последний день — утром, с тем, кто впереди и на сколько */
+        if (v.dayNo > 0 && v.lead < 0) {
+          add({ id: `race-behind:${r.id}:${day}`, kind: 'friends', icon: 'flag', tone: '#BF3A2B', at: Math.min(now - 60 * 1000, at(day, 12)), go: 'path', toast: true, push: true,
+            title: `${v.name} впереди в забеге`, text: `${v.their} опыта против ваших ${v.my}: не хватает ${v.their - v.my + 1}. До финиша ${v.daysLeft} ${plural(v.daysLeft, 'день', 'дня', 'дней')} — один урок может всё решить.` });
+        } else if (v.dayNo > 0 && v.lead > 0 && v.their > 0) {
+          add({ id: `race-ahead:${r.id}:${day}`, kind: 'friends', icon: 'flag', tone: '#147A45', at: Math.min(now - 60 * 1000, at(day, 12)), go: 'path',
+            title: 'Вы впереди в забеге', text: `${v.my} опыта против ${v.their} у ${v.name}. До финиша ${v.daysLeft} ${plural(v.daysLeft, 'день', 'дня', 'дней')} — держите темп.` });
+        }
+        if (v.daysLeft === 1 && v.dayNo > 0) {
+          add({ id: `race-last:${r.id}`, kind: 'friends', icon: 'hourglass', tone: '#9A7413', at: Math.min(now - 60 * 1000, at(day, 9)), go: 'path', toast: true, push: true,
+            title: 'Последний день забега', text: v.lead > 0 ? `Вы впереди на ${v.my - v.their} опыта — не сбавляйте.` : v.lead < 0 ? `${v.name} впереди на ${v.their - v.my} опыта — сегодня ещё можно догнать.` : 'Пока ничья — сегодня всё решится.' });
+        }
+      } else if ((v.status === 'declined' || v.status === 'expired') && r.mine && now - (r.answeredAt || r.at) < 3 * 24 * HOUR) {
+        add({ id: `race-no:${r.id}`, kind: 'friends', icon: 'flag', tone: '#8A7F72', at: Math.min(now, r.answeredAt || (r.at + RACE.acceptHours * HOUR)), go: 'path',
+          title: v.status === 'declined' ? `${v.name} не готов к забегу` : 'Приглашение на забег истекло', text: v.status === 'declined' ? 'Позовите позже — или другого друга.' : `${v.name} не ответил за сутки. Позвать можно снова.` });
       } else if (v.status === 'finished' && !raceClaimed(learn, v)) {
         add({ id: `race-end:${r.id}`, kind: 'friends', icon: 'trophy', tone: '#9A7413', at: at(addDays(v.end, 1), 0), go: 'path', toast: true, push: true,
           title: v.result === 'won' ? 'Забег выигран!' : v.result === 'tie' ? 'Забег: ничья' : 'Забег окончен', text: `Вы — ${v.my} опыта, ${v.name} — ${v.their}. Награда — на Пути.` });

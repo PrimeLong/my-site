@@ -3,7 +3,7 @@
    Модель считается ТОЛЬКО здесь: иначе у игроков разойдутся случайные шоки. */
 import { randomUUID, randomBytes } from 'node:crypto';
 import { getRoom, setRoom, withRoom, hasKv, addPublicRoom, removePublicRoom, listPublicRoomIds } from './_lib/store.js';
-import { userBySession, bumpStats } from './_lib/accounts.js';
+import { userBySession, bumpStats, isBlocked, nameBanned, nameForOthers } from './_lib/accounts.js';
 import { kidsModeOf } from '../src/lib/age.js';
 
 import { makeInitialEconomy, defaultDecisions, simulateQuarter, botCentralBank, botFinanceMinistry,
@@ -685,6 +685,7 @@ async function handleRequest(req, res) {
     // по сети играют только с профилем: место закрепляется за ним
     const user = await userBySession(body.session);
     if (!user) return res.status(401).json({ error: 'Для игры по сети войдите в профиль' });
+    if (isBlocked(user)) return res.status(403).json({ error: 'Аккаунт заблокирован до смены ника', blocked: true });
     let firstTime = false;
     const out = await withRoom(id, (room) => {
       if (!seatsFor(room).includes(seat)) return { error: 'Эта роль недоступна в этом режиме партии', status: 400 };
@@ -698,7 +699,7 @@ async function handleRequest(req, res) {
       const left = { ...room.left }; delete left[user.login];
       const t = token();
       const next = { ...room, seats: { ...room.seats, [seat]: t },
-        names: { ...room.names, [seat]: user.name },
+        names: { ...room.names, [seat]: nameBanned(user) ? nameForOthers(null, user.login) : user.name },
         emblems: { ...room.emblems, [seat]: user.emblem || 'star' },
         accounts: { ...room.accounts, [seat]: user.login }, left,
         everJoined: firstTime ? [...(room.everJoined || []), user.login].slice(-20) : room.everJoined,

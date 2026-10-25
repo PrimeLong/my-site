@@ -10,7 +10,7 @@
    на основном холсте; штрих, который ведут прямо сейчас, — на живом: маркер полупрозрачный, и
    нарисованный кусками он темнел бы на стыках. */
 import React, { useEffect, useRef, useState } from 'react';
-import { PenLine, Highlighter, Eraser, Undo2, Trash2, RotateCcw } from 'lucide-react';
+import { PenLine, Highlighter, Eraser, Undo2, Redo2, Trash2, RotateCcw } from 'lucide-react';
 import { SKETCH, SKETCH_TOOLS, SKETCH_SIZES, SKETCH_COLORS, strokeWidth, addPoint, segmentsOf, pieceAt, pushStroke, restoreStrokes } from './learn/sketch.js';
 import { useReducedMotion } from './ds-art.jsx';
 import { Audio } from './MacroSimulator.jsx';
@@ -33,6 +33,9 @@ const MODES = {
   /* учебник — та же страница, но колонка — весь учебник (.ln-textbook с оглавлением главы), а поле —
      и вкладка, и обёртка учебника (.ln-book) по бокам от него (отчёт: «вот тут как никогда нужно рисование») */
   book: { page: true, host: (el) => el.closest('.ln-root'), fieldSel: '.ln-root > .ln-tab, .ln-root > .ln-tab > .ln-book', col: ':scope > .ln-tab > .ln-book > .ln-textbook', hint: 'Новое: пишите на полях учебника' },
+  /* учебник поверх Пути — открыт кнопкой «Гайд юнита» или из урока: та же запись на полях, только
+     учебник лежит прямо в корне (.ln-root > .ln-book), а не во вкладке (отчёт: «через гайд черновика нет») */
+  bookOver: { page: true, host: (el) => el.closest('.ln-root'), fieldSel: '.ln-root > .ln-book', col: ':scope > .ln-book > .ln-textbook', hint: 'Новое: пишите на полях учебника' },
 };
 
 // курсор из SVG; у ручки кончик — текущего цвета, у маркера и ластика — круг их толщины
@@ -66,21 +69,22 @@ export const SKETCH_CSS = `
   .ln-root[data-sketch], .ln-root[data-sketch] > .ln-tab { cursor: var(--sk-cursor, crosshair); }
   .ln-root[data-sketch] > :not(.ln-tab), .ln-root[data-sketch] > .ln-tab > * { cursor: auto; }
   .ln-root[data-sketching] * { cursor: inherit !important; user-select: none; }
-  .ln-root[data-sketch][data-sketch-mode="book"] > .ln-tab > .ln-book { cursor: var(--sk-cursor, crosshair); }
-  .ln-root[data-sketch][data-sketch-mode="book"] > .ln-tab > .ln-book > * { cursor: auto; }
-  /* учебник: черновик включён — оглавление главы плавно уходит, учебник сужается до колонки текста,
-     и полям для записей достаётся вся освободившаяся ширина */
+  .ln-root[data-sketch][data-sketch-mode="book"] > .ln-tab > .ln-book, .ln-root[data-sketch][data-sketch-mode="bookOver"] > .ln-book { cursor: var(--sk-cursor, crosshair); }
+  .ln-root[data-sketch][data-sketch-mode="book"] > .ln-tab > .ln-book > *, .ln-root[data-sketch][data-sketch-mode="bookOver"] > .ln-book > * { cursor: auto; }
+  /* учебник (во вкладке и поверх Пути): черновик включён — оглавление главы плавно уходит, учебник
+     сужается до колонки текста, и полям для записей достаётся вся освободившаяся ширина */
   @media (min-width: 1024px) {
-    .ln-tab > .ln-book > .ln-textbook.wide { transition: max-width .45s cubic-bezier(.4, 0, .2, 1); }
-    .ln-tab > .ln-book > .ln-textbook.wide .tb-ch-grid { transition: grid-template-columns .45s cubic-bezier(.4, 0, .2, 1), gap .45s cubic-bezier(.4, 0, .2, 1); }
-    .ln-tab > .ln-book > .ln-textbook.wide .tb-ch-aside { min-width: 0; transition: opacity .3s ease, transform .3s ease, visibility 0s; }
-    .ln-root[data-sketch][data-sketch-mode="book"] > .ln-tab > .ln-book > .ln-textbook.wide { max-width: 920px !important; }
-    .ln-root[data-sketch][data-sketch-mode="book"] .ln-textbook.wide .tb-ch-grid { grid-template-columns: 0px minmax(0, 1fr); gap: 0; }
-    .ln-root[data-sketch][data-sketch-mode="book"] .ln-textbook.wide .tb-ch-aside { opacity: 0; transform: translateX(-24px); visibility: hidden; pointer-events: none;
+    .ln-tab > .ln-book > .ln-textbook.wide, .ln-root > .ln-book > .ln-textbook.wide { transition: max-width .45s cubic-bezier(.4, 0, .2, 1); }
+    .ln-book > .ln-textbook.wide .tb-ch-grid { transition: grid-template-columns .45s cubic-bezier(.4, 0, .2, 1), gap .45s cubic-bezier(.4, 0, .2, 1); }
+    .ln-book > .ln-textbook.wide .tb-ch-aside { min-width: 0; transition: opacity .3s ease, transform .3s ease, visibility 0s; }
+    .ln-root[data-sketch][data-sketch-mode="book"] > .ln-tab > .ln-book > .ln-textbook.wide,
+    .ln-root[data-sketch][data-sketch-mode="bookOver"] > .ln-book > .ln-textbook.wide { max-width: 920px !important; }
+    .ln-root[data-sketch][data-sketch-mode^="book"] .ln-textbook.wide .tb-ch-grid { grid-template-columns: 0px minmax(0, 1fr); gap: 0; }
+    .ln-root[data-sketch][data-sketch-mode^="book"] .ln-textbook.wide .tb-ch-aside { opacity: 0; transform: translateX(-24px); visibility: hidden; pointer-events: none;
       transition: opacity .25s ease, transform .3s ease, visibility 0s .3s; }
-    .ln-root[data-sketch][data-sketch-mode="book"] .ln-textbook.wide .tb-ch-main { margin: 0 auto; }
+    .ln-root[data-sketch][data-sketch-mode^="book"] .ln-textbook.wide .tb-ch-main { margin: 0 auto; }
   }
-  @media (prefers-reduced-motion: reduce) { .ln-tab > .ln-book > .ln-textbook.wide, .ln-tab > .ln-book > .ln-textbook.wide .tb-ch-grid, .ln-tab > .ln-book > .ln-textbook.wide .tb-ch-aside { transition: none; } }
+  @media (prefers-reduced-motion: reduce) { .ln-book > .ln-textbook.wide, .ln-book > .ln-textbook.wide .tb-ch-grid, .ln-book > .ln-textbook.wide .tb-ch-aside { transition: none; } }
 
   .sk-dock { position: absolute; left: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); z-index: 7; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
   .sk-glass { border: 1px solid color-mix(in srgb, var(--ds-rule2) 75%, transparent); background: color-mix(in srgb, var(--ds-card) 76%, transparent);
@@ -265,11 +269,24 @@ export function Sketch({ mode = 'lesson' }) {
     if (live.current && live.current.s.tool !== 'eraser') drawLive();
     measure(r);
   };
+  /* отмена и возврат: отменённые штрихи — в стопке undone; Ctrl+Y (или Ctrl+Shift+Z) возвращает
+     последний отменённый (отчёт mvmg73i1). Новый штрих или «Стереть всё» стопку очищают — как в редакторах */
+  const undone = useRef([]);
+  const [redoCount, setRedoCount] = useState(0);
   const undo = () => {
     if (!strokes.current.length) return;
+    undone.current = [...undone.current, strokes.current[strokes.current.length - 1]];
     strokes.current = strokes.current.slice(0, -1);
-    paint(); setCount(strokes.current.length);
+    paint(); setCount(strokes.current.length); setRedoCount(undone.current.length);
   };
+  const redo = () => {
+    if (!undone.current.length) return;
+    const s = undone.current[undone.current.length - 1];
+    undone.current = undone.current.slice(0, -1);
+    strokes.current = pushStroke(strokes.current, s);
+    paint(); setCount(strokes.current.length); setRedoCount(undone.current.length);
+  };
+  const forgetRedo = () => { if (undone.current.length) { undone.current = []; setRedoCount(0); } };
 
   useEffect(() => {
     const r = rootOf();
@@ -318,14 +335,16 @@ export function Sketch({ mode = 'lesson' }) {
       // готовый штрих — на основной холст, живой слой — чистый; черновик переполнен — старейший штрих ушёл, холст заново
       wipeCanvas(liveRef.current);
       if (full) paint(); else drawStroke(mainRef.current.getContext('2d'), L.s, L.ink, markerAlpha(r));
-      setCount(strokes.current.length); setCleared(null);
+      setCount(strokes.current.length); setCleared(null); forgetRedo();
     };
-    // Ctrl+Z — отменить последний штрих (не когда печатают ответ: там своя отмена; и не при скрытом уроке)
+    /* Ctrl+Z — отменить последний штрих, Ctrl+Y или Ctrl+Shift+Z — вернуть отменённый (не когда печатают
+       ответ: там своя отмена; и не при скрытом уроке) */
     const key = (e) => {
-      if (!pick.current.on || !(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey || e.code !== 'KeyZ' || typing(document.activeElement) || !r.clientWidth) return;
-      if (!strokes.current.length) return;
-      e.preventDefault();
-      undo();
+      if (!pick.current.on || !(e.ctrlKey || e.metaKey) || e.altKey || typing(document.activeElement) || !r.clientWidth) return;
+      const isRedo = e.code === 'KeyY' || (e.code === 'KeyZ' && e.shiftKey);
+      const isUndo = e.code === 'KeyZ' && !e.shiftKey;
+      if (isUndo && strokes.current.length) { e.preventDefault(); undo(); }
+      else if (isRedo && undone.current.length) { e.preventDefault(); redo(); }
     };
     r.addEventListener('pointerdown', down);
     r.addEventListener('pointermove', move);
@@ -406,7 +425,7 @@ export function Sketch({ mode = 'lesson' }) {
     if (!strokes.current.length || wiping) return;
     Audio.play('paper');
     const done = () => {
-      setCleared(strokes.current);
+      setCleared(strokes.current); forgetRedo();
       strokes.current = [];
       paint(); setCount(0); setWiping(false);
       if (pick.current.tool === 'eraser') setTool('pen');
@@ -474,6 +493,7 @@ export function Sketch({ mode = 'lesson' }) {
             </div>
             <span className="sk-sep" aria-hidden="true" />
             <button type="button" className="sk-tool" aria-label="Отменить" title="Отменить (Ctrl+Z)" data-testid="sketch-undo" disabled={!count} onClick={() => { Audio.play('tick'); undo(); }}><Undo2 size={18} aria-hidden="true" /></button>
+            <button type="button" className="sk-tool" aria-label="Вернуть" title="Вернуть (Ctrl+Y)" data-testid="sketch-redo" disabled={!redoCount} onClick={() => { Audio.play('tick'); redo(); }}><Redo2 size={18} aria-hidden="true" /></button>
             <button type="button" className="sk-tool" aria-label="Стереть всё" title="Стереть всё" data-testid="sketch-clear" disabled={!count} onClick={wipe}><Trash2 size={18} aria-hidden="true" /></button>
           </div>
         </div>
