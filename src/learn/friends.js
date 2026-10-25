@@ -103,7 +103,7 @@ export function raceView(race, learn, friend, now = Date.now()) {
   const their = Math.max(0, sum(friend && friend.card ? friend.card.xpDays : {}) - (race.baseTheirs || 0));
   const finished = today > end;
   const result = !finished ? null : my > their ? 'won' : my < their ? 'lost' : 'tie';
-  // какой сейчас день забега (0 — ещё не начался: друг в другом часовом поясе принял «завтра»)
+  // какой сейчас день забега (0 — ещё не начался)
   const idx = days.indexOf(today);
   const dayNo = idx >= 0 ? idx + 1 : today > end ? days.length : 0;
   return { ...base, status: finished ? 'finished' : 'active', days, start: race.start, end, my, their, result, dayNo,

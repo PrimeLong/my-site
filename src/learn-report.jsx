@@ -7,11 +7,11 @@
    «скопировать всё» — чтобы отдать их на исправление одним куском. */
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Flag, ArrowLeft, Check, CheckCheck, Copy, RotateCcw, X, Trash2 } from 'lucide-react';
+import { Flag, ArrowLeft, Check, CheckCheck, Copy, RotateCcw, X, Trash2, ShieldAlert } from 'lucide-react';
 import { Audio } from './MacroSimulator.jsx';
 import { Button, IconButton, Card, Sheet, TopBar, Heading } from './ds.jsx';
 import { loadAccount } from './account.jsx';
-import { sendReport, listReports, setReportStatus, setReportsStatus, purgeDoneReports, markAllReportsDone, deleteReport } from './lib/client.js';
+import { sendReport, listReports, setReportStatus, setReportsStatus, purgeDoneReports, markAllReportsDone, deleteReport, accountRequireRename } from './lib/client.js';
 import { isRude, RUDE_MESSAGE } from './lib/moderation.js';
 
 export const REASONS = [
@@ -212,6 +212,16 @@ export function ReportsView({ onBack }) {
   useEffect(load, [status]);
   const mark = async (r, s) => { Audio.play('tick'); try { await setReportStatus(account.token, r.id, s); load(); } catch (e) { setErr(e.message); } };
   const remove = async (r) => { Audio.play('tick'); try { await deleteReport(account.token, r.id); load(); } catch (e) { setErr(e.message); } };
+  /* «Потребовать сменить ник»: у ученика 7 дней, потом блок (api/account.js, require-rename).
+     Грубые ники фильтр ловит сам — кнопка для тех, что он пропустил. */
+  const [renamed, setRenamed] = useState({});
+  const requireRename = async (r) => {
+    Audio.play('tick');
+    try {
+      const out = await accountRequireRename(account.token, r.login);
+      setRenamed((m) => ({ ...m, [r.login]: out.renameBy }));
+    } catch (e) { setErr(e.message); }
+  };
   // разбор пачкой: вставить id исправленных — они уходят в «Разобранные»; разобранные — удалить разом
   const [ids, setIds] = useState('');
   const [batchMsg, setBatchMsg] = useState('');
@@ -291,6 +301,9 @@ export function ReportsView({ onBack }) {
                     ? <Button small variant="ghost" icon={RotateCcw} onClick={() => mark(r, 'new')}>Вернуть в новые</Button>
                     : <Button small variant="secondary" icon={Check} onClick={() => mark(r, 'done')} data-testid="report-done">Разобрано</Button>}
                   <Button small variant="ghost" icon={Trash2} onClick={() => remove(r)} data-testid="report-delete" style={{ marginLeft: 6 }}>Удалить</Button>
+                  {r.login && r.login !== '—' && r.reason !== 'filter' && (renamed[r.login]
+                    ? <span className="ds-faint" style={{ fontSize: 12.5, marginLeft: 8 }} data-testid="report-renamed">Ник «{r.name}» — сменить до {new Date(renamed[r.login]).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', timeZone: 'UTC' })}</span>
+                    : <Button small variant="ghost" icon={ShieldAlert} onClick={() => requireRename(r)} data-testid="report-rename" style={{ marginLeft: 6 }}>Потребовать сменить ник</Button>)}
                 </div>
               </div>
             ))}

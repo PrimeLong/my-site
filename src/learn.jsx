@@ -34,12 +34,16 @@ import {
 import {
   startLesson, recordAttempt, abandonLesson, addMistake, resolveMistake, skipLesson, addHinted, clearHinted, finishLesson, passUnit, lessonDone, lessonXp, streak,
   goalToday, missedYesterday, XP, applyFreezes, setPlacement, dayOf, recordSeen, recordBest, DIAMOND_ACCURACY, streakBonus, gameXp, maxLessonXp, syncStreak, streakNow,
+  markShown, shownWith,
 } from './textbook/learn-state.js';
-import { runCoins, runKey, earn, settle, chestKey, hasClaim, outfitOf, boostActive, chargePremiums, fixMonth } from './learn/rewards.js';
+import { courseGrade, gradeWord } from './learn/grade.js';
+import { READING_BY_UNIT, readingOpen, isRead } from './learn/reading.js';
+import { runCoins, runKey, earn, settle, chestKey, hasClaim, outfitOf, deskOf, boostActive, chargePremiums, fixMonth } from './learn/rewards.js';
+import { DeskDecor, tellAnswer } from './learn-decor.jsx';
 import { pickPhrase, situation, endKind } from './learn/voice.js';
 import { lessonOpts, weakLessons, recommend, courseCtx, theoryNotice } from './learn/program.js';
 import {
-  REWARD_CSS, WalletStat, QuestsCard, MonthCard, TasksEntry, ShopView, ChestSheet, MorningStreak, GainsList, PlacementCard,
+  REWARD_CSS, QuestsCard, MonthCard, TasksEntry, ShopView, ChestSheet, MorningStreak, GainsList, PlacementCard,
 } from './learn-rewards.jsx';
 import { saveResume, dropResume, getResume, takeExpiredResumes, resumeIds } from './learn/resume.js';
 import { pendingMoments, baselineSeen, nextBatch } from './learn/celebrate.js';
@@ -86,6 +90,50 @@ const CSS = `
   .ln-stat { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center; gap: 5px; padding: 7px 4px; border: 1px solid var(--ds-rule2); border-radius: 3px;
     background: var(--ds-card); font: 700 15px var(--ds-mono); white-space: nowrap; box-shadow: inset 0 0 0 2px var(--ds-card), inset 0 0 0 3px var(--ds-rule); }
   .ln-stat small { font: 12px var(--ds-sans); color: var(--ds-ink3); letter-spacing: .04em; }
+  /* оценка в курсе: крупная цифра оценки, слово, точность и полоска пройденного курса с бликом */
+  .ln-read { display: flex; align-items: center; gap: 14px; margin: 14px 0 6px; padding: 12px 14px 12px 12px; border-radius: 18px; background: var(--ds-card);
+    border: 1px solid var(--ds-rule2); box-shadow: 0 10px 24px -20px rgba(40, 24, 8, .5); }
+  .ln-read-spine { flex: none; width: 34px; height: 86px; border-radius: 4px 4px 2px 2px; display: flex; align-items: center; justify-content: center; color: #fff; position: relative;
+    background: linear-gradient(90deg, rgba(0,0,0,.2), transparent 20%, transparent 80%, rgba(0,0,0,.22)), var(--rd); box-shadow: 3px 0 0 -1px color-mix(in srgb, var(--rd) 40%, var(--ds-card)); }
+  .ln-read-spine::before, .ln-read-spine::after { content: ''; position: absolute; left: 4px; right: 4px; height: 2px; background: rgba(255,255,255,.55); }
+  .ln-read-spine::before { top: 9px; } .ln-read-spine::after { bottom: 9px; }
+  .ln-read-spine span { writing-mode: vertical-rl; transform: rotate(180deg); font: 700 12.5px var(--ds-head); letter-spacing: .04em; white-space: nowrap; }
+  .ln-read-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+  .ln-read-title { font: italic 700 19px/1.2 var(--ds-news, 'PT Serif', Georgia, serif); }
+  .ln-read-who { font-size: 13.5px; color: var(--ds-ink2); }
+  .ln-read-lead { font-size: 13.5px; line-height: 1.35; color: var(--ds-ink2); margin-top: 2px; }
+  /* закрытая книга: бледнеет корешок, а не текст — подписи остаются читаемыми (контраст 4,5:1) */
+  .ln-read.locked { background: transparent; }
+  .ln-read.locked .ln-read-spine { filter: grayscale(.85); opacity: .6; }
+  .ln-grade { display: block; margin: -4px 0 14px; padding: 12px 14px 10px; border-radius: 18px; border: 2px solid color-mix(in srgb, var(--u) 30%, var(--ds-rule));
+    background: linear-gradient(135deg, color-mix(in srgb, var(--u) 9%, var(--ds-card)), var(--ds-card) 70%); box-shadow: 0 3px 0 color-mix(in srgb, var(--u) 22%, var(--ds-rule)); }
+  .ln-grade-top { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+  .ln-grade-top .ds-eyebrow { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ln-grade-pct { flex: none; font: 700 13px var(--ds-mono); color: var(--u-ink); }
+  .ds-dark .ln-grade-pct { color: color-mix(in srgb, var(--u) 45%, #fff); }
+  .ln-grade-row { display: flex; align-items: center; gap: 12px; margin: 6px 0 8px; min-width: 0; }
+  .ln-grade-num { flex: none; min-width: 64px; text-align: center; font: 700 34px/1 var(--ds-head); color: var(--u-ink); padding: 6px 8px; border-radius: 14px;
+    background: color-mix(in srgb, var(--u) 12%, var(--ds-card)); box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--u) 22%, transparent); animation: ln-grade-pop .5s cubic-bezier(.3, 1.5, .5, 1) backwards; }
+  .ds-dark .ln-grade-num { color: color-mix(in srgb, var(--u) 45%, #fff); }
+  .ln-grade-num.none { color: var(--ds-ink3); background: var(--ds-card2); box-shadow: none; }
+  @keyframes ln-grade-pop { from { transform: scale(.7); opacity: 0 } }
+  .ln-grade-word { display: flex; flex-direction: column; min-width: 0; }
+  .ln-grade-word b { font: 700 17px/1.2 var(--ds-head); }
+  .ln-grade-word small { font: 13px/1.3 var(--ds-sans); color: var(--ds-ink2); }
+  .ln-grade-bar { position: relative; display: block; height: 10px; border-radius: 999px; overflow: hidden; background: color-mix(in srgb, var(--u) 12%, var(--ds-card2)); }
+  .ln-grade-bar i { position: absolute; inset: 0 auto 0 0; border-radius: inherit; background: linear-gradient(90deg, color-mix(in srgb, var(--u) 70%, #fff), var(--u)); transition: width .8s cubic-bezier(.2, .9, .3, 1);
+    animation: ln-grade-grow 1s cubic-bezier(.2, .9, .3, 1) backwards; }
+  .ln-grade-bar i::after { content: ''; position: absolute; inset: 0; background: linear-gradient(105deg, transparent 30%, rgba(255,255,255,.55) 50%, transparent 70%); background-size: 220% 100%; animation: ln-grade-shine 3.2s ease-in-out 1s 3; }
+  @keyframes ln-grade-grow { from { width: 0 } }
+  @keyframes ln-grade-shine { 0% { background-position: 140% 0 } 60%, 100% { background-position: -60% 0 } }
+  /* телефон: карточка ниже — карта Пути не уезжает под нижнюю панель */
+  @media (max-width: 560px) {
+    .ln-grade { padding: 10px 12px 9px; margin-bottom: 12px; }
+    .ln-grade-row { margin: 4px 0 7px; gap: 10px; }
+    .ln-grade-num { min-width: 54px; font-size: 28px; padding: 4px 6px; }
+    .ln-grade-word b { font-size: 16px; }
+  }
+  @media (prefers-reduced-motion: reduce) { .ln-grade-num, .ln-grade-bar i, .ln-grade-bar i::after { animation: none; } }
   .ln-streak.on { background: color-mix(in srgb, var(--ds-bad) 12%, var(--ds-card)); border-color: color-mix(in srgb, var(--ds-bad) 55%, var(--ds-rule2)); color: var(--ds-bad); }
   .ln-streak.on small { color: inherit; }
   .ln-streak.wait { border-style: dashed; color: var(--ds-ink3); }
@@ -198,6 +246,13 @@ const CSS = `
   .ln-pick-sub { font-size: 13px; color: var(--ds-ink2); line-height: 1.3; }
   /* живая модель на телефоне — свёрнутой строкой; касание раскрывает */
   .ln-fold-row { display: flex; align-items: center; gap: 10px; width: 100%; background: none; border: none; padding: 10px 12px; text-align: left; cursor: pointer; color: var(--ds-ink); font: inherit; }
+  /* знакомство с живой моделью: карточка «Новое» с цветной кромкой и мягким появлением */
+  .ln-model-intro { border-color: color-mix(in srgb, var(--u) 45%, var(--ds-rule)); background: color-mix(in srgb, var(--u) 6%, var(--ds-card)); animation: ln-intro-in .5s cubic-bezier(.2, .9, .3, 1.2) backwards; }
+  @keyframes ln-intro-in { from { opacity: 0; transform: translateY(10px) scale(.98) } }
+  .ln-model-intro-top { display: flex; align-items: center; gap: 12px; }
+  .ln-model-intro-thumb { flex: none; display: grid; place-items: center; border-radius: 12px; background: var(--ds-card); box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--u) 25%, var(--ds-rule)); padding: 4px; }
+  .ln-new-pill { display: inline-block; padding: 2px 7px; margin-right: 4px; border-radius: 999px; background: var(--u); color: #fff; letter-spacing: .06em; }
+  @media (prefers-reduced-motion: reduce) { .ln-model-intro { animation: none; } }
   .ln-fold-row .lm-pips { margin-right: 4px; }
   /* «К карте»: появляется, когда карта уехала за верх экрана */
   .ln-to-map { position: fixed; right: 12px; bottom: calc(84px + env(safe-area-inset-bottom)); z-index: 30; width: 46px; height: 46px; display: inline-flex; align-items: center; justify-content: center;
@@ -248,6 +303,12 @@ const CSS = `
   .ln-stop-title.locked { color: var(--ds-ink3); }
   .ln-skip-tag { font: 700 12px var(--ds-sans); color: var(--ds-ink2); }
   .ln-overlay { position: fixed; inset: 0; z-index: 300; display: flex; flex-direction: column; }
+  /* «предыдущая карточка» — слой под шапкой урока: своё тело с прокруткой и «Вернуться» внизу */
+  .ln-peek { position: absolute; left: 0; right: 0; bottom: 0; z-index: 6; display: flex; flex-direction: column; background: var(--ds-paper); animation: ln-peek-in .28s cubic-bezier(.2, .9, .3, 1); }
+  @keyframes ln-peek-in { from { opacity: 0; transform: translateX(-18px) } }
+  .ln-peek-verdict { margin-top: 12px; padding: 10px 12px; border-radius: 12px; font-size: 15.5px; line-height: 1.45; border-left: 4px solid var(--ds-ok); background: var(--ds-ok-bg); color: var(--ds-ok-ink); }
+  .ln-peek-verdict.bad { border-left-color: var(--ds-bad); background: color-mix(in srgb, var(--ds-bad) 10%, var(--ds-card)); color: var(--ds-ink); }
+  @media (prefers-reduced-motion: reduce) { .ln-peek { animation: none; } }
   .ln-head { display: flex; align-items: center; gap: 10px; padding: calc(10px + env(safe-area-inset-top)) 14px 4px; max-width: 592px; width: 100%; margin: 0 auto; }
   /* огонёк серии верных ответов подряд */
   .ln-fire { position: relative; flex-shrink: 0; display: inline-flex; align-items: center; gap: 3px; height: 28px; padding: 0 10px 0 7px; border-radius: 999px;
@@ -287,6 +348,7 @@ const CSS = `
   @media (max-width: 600px) { .ln-numpad .ds-key { padding: 10px 0; } }
   .ln-skip { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; margin-top: 6px; padding: 9px 8px; background: none; border: none; cursor: pointer; font: 700 14.5px var(--ds-sans); color: var(--ds-ink2); }
   .ln-skip:hover { color: var(--u-ink); }
+  .ln-desk { max-width: 592px; width: 100%; margin: 0 auto; padding: 0 14px; flex: none; }
   .ln-body { flex: 1; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; padding: 14px 16px 24px; }
   .ln-body .ds-rise { animation-name: ln-appear; }
   @keyframes ln-appear { from { opacity: 0; } to { opacity: 1; } }
@@ -304,9 +366,9 @@ const CSS = `
     .ln-body .ds-opt { font-size: 18px; line-height: 1.4; padding: 15px 18px; }
     .ln-body .ds-h1 { font-size: 30px !important; }
   }
-  @media (min-width: 1000px) and (min-height: 836px) { .ln-overlay .ln-head, .ln-overlay .ln-body, .ln-overlay .ln-foot { zoom: 1.1; } }
-  @media (min-width: 1200px) and (min-height: 912px) { .ln-overlay .ln-head, .ln-overlay .ln-body, .ln-overlay .ln-foot { zoom: 1.2; } }
-  @media (min-width: 1400px) and (min-height: 1003px) { .ln-overlay .ln-head, .ln-overlay .ln-body, .ln-overlay .ln-foot { zoom: 1.32; } }
+  @media (min-width: 1000px) and (min-height: 836px) { .ln-overlay .ln-head, .ln-overlay .ln-body, .ln-overlay .ln-foot { zoom: 1.1; } .ln-overlay .ln-desk { max-width: calc(592px * 1.1); padding: 0 calc(14px * 1.1); } }
+  @media (min-width: 1200px) and (min-height: 912px) { .ln-overlay .ln-head, .ln-overlay .ln-body, .ln-overlay .ln-foot { zoom: 1.2; } .ln-overlay .ln-desk { max-width: calc(592px * 1.2); padding: 0 calc(14px * 1.2); } }
+  @media (min-width: 1400px) and (min-height: 1003px) { .ln-overlay .ln-head, .ln-overlay .ln-body, .ln-overlay .ln-foot { zoom: 1.32; } .ln-overlay .ln-desk { max-width: calc(592px * 1.32); padding: 0 calc(14px * 1.32); } }
   /* урок на телефоне — крупнее: экран почти пустой, а читать и попадать пальцем должно быть легко */
   @media (max-width: 600px) {
     .ln-body .ds-text { font-size: 19px; line-height: 1.5; }
@@ -827,6 +889,8 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
   // пройден ли урок раньше — на момент начала (после финиша он уже в прогрессе); был ли уже алмаз
   const [replay] = useState(() => run.mode === 'lesson' && lessonDone(learn, run.lessonId));
   const diamond = !!plan.diamond;
+  // украшение урока из лавки (learn-decor.jsx); гость лавки не видел
+  const desk = guest ? null : deskOf(learn);
   const [gem] = useState(() => !!(run.lessonId && learn.lessons[run.lessonId] && learn.lessons[run.lessonId].diamond));
   const [queue, setQueue] = useState(() => (rs ? rs.queue : plan.items));
   const [pos, setPos] = useState(rs ? rs.pos : 0);
@@ -849,6 +913,12 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
   const [result, setResult] = useState(null);
   const [raceDone, setRaceDone] = useState(false);
   const [term, setTerm] = useState(null);
+  /* «Назад» на одну карточку: предыдущий экран урока — шаг или отвеченное задание с разбором — можно
+     открыть ещё раз и вернуться. Только на один шаг: дальше в прошлое урок не листается (запрос ученика).
+     Текущий экран при этом не закрывается, а прячется — ответ и игра не теряются */
+  const [prevShot, setPrevShot] = useState(null);
+  const [peek, setPeek] = useState(false);
+  const headRef = useRef(null);
   const [anim, setAnim] = useState({ k: 0, kind: null });
   /* Встряска после неверного ответа — перезапуском CSS-анимации на том же узле: обёртка
      упражнения после ответа не пересоздаётся, и раунд мини-игры не теряет свой счёт. */
@@ -972,6 +1042,8 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
     wrongRun.current = r.ok ? 0 : wrongRun.current + 1;
     const say = pickPhrase(situation({ ok: r.ok, streak: r.ok && firstTime ? run3 + 1 : 0, hinted: !!a.hinted[orig], retry: !!cur.retry, wrongRun: wrongRun.current }), said.current);
     setFb({ ok: r.ok, why: r.why, say, skipped: !!r.skipped });
+    // украшение урока отзывается на ответ
+    if (!r.skipped) tellAnswer(r.ok);
   };
   const finish = () => {
     const a = acc.current;
@@ -1034,6 +1106,9 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
   const next = () => {
     Audio.play('paper');
     if (feed && cur && fb) setHistory((h) => [...h, { type: 'q', key: `q:${cur.uid}`, inst: marked, resp, fb }]);
+    // отвеченное задание — «предыдущая карточка» (мини-игру заново не показываем: её не переиграть)
+    if (!feed) setPrevShot(cur && fb && !fb.empty && !GAME_KINDS.includes(cur.kind) ? { type: 'ex', inst: marked, resp, fb } : null);
+    setPeek(false);
     if (pos + 1 >= queue.length) { finish(); return; }
     // вступительный тест: пятёрка юнита провалена — дальше спрашивать незачем
     if (run.mode === 'placement' && cur && placementFailed(plan.items, acc.current.first, cur.placeUnit)) { finish(); return; }
@@ -1131,13 +1206,19 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
     <DsRoot theme={dsThemeId()} accent={color} className="ln-overlay" data-testid="lesson" data-mode={run.mode} data-diamond={diamond ? 'true' : undefined} role="dialog" aria-label={title}
       style={{ display: hidden ? 'none' : undefined }}>
       <ArtStyle /><style>{CSS + PLAY_CSS + FEED_CSS + REPORT_CSS + MODEL_CSS + DOMINO_CSS + (sketch ? SKETCH_CSS : '')}</style>
-      <div className="ln-head">
+      <div className="ln-head" ref={headRef}>
         {stage !== 'done' && <IconButton label="Выйти из урока" icon={X} data-nav="back" onClick={exit} />}
+        {/* на одну карточку назад: идущую мини-игру не прерываем */}
+        {!feed && stage !== 'done' && prevShot && !peek && !(stage === 'work' && cur && GAME_KINDS.includes(cur.kind) && !fb) && (
+          <IconButton label="Назад: предыдущая карточка" icon={ArrowLeft} data-testid="lesson-back" onClick={() => { Audio.play('paper'); setPeek(true); }} />
+        )}
         <ProgressChart answers={log} total={total} pulse={pulse} />
         {/* Инфля надувается с каждым верным ответом подряд и мягко сдувается после ошибки */}
         <StreakFlame n={run3} plus={!(run.mode === 'lesson' && replay && !diamond)} />
         <InflaMeter streak={run3} mood={fb && !fb.empty ? (fb.ok ? 'joy' : 'cheer') : 'hello'} size={34} />
       </div>
+      {/* украшение урока из лавки — живое, его можно трогать */}
+      {desk && stage !== 'done' && <div className="ln-desk"><DeskDecor id={desk} height={48} /></div>}
 
       {asking && (
         <Sheet label="Выйти из урока?" onClose={() => setAsking(false)}>
@@ -1149,6 +1230,38 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
             </div>
           </div>
         </Sheet>
+      )}
+
+      {/* «предыдущая карточка» — слой поверх тела урока (шапка остаётся видна); текущий экран под ним
+          не закрывается: ответ, ход игры и прокрутка целы */}
+      {peek && prevShot && stage !== 'done' && (
+        <div className="ln-peek" style={{ top: headRef.current ? headRef.current.offsetHeight : 64 }}>
+          <div className="ln-body"><div className="ln-inner ds-rise" data-testid="lesson-peek" data-type={prevShot.type}>
+            <div className="ln-kind ds-eyebrow" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <ArrowLeft size={14} aria-hidden="true" />Предыдущая карточка
+            </div>
+            {prevShot.type === 'card' ? (
+              <>
+                <h2 className="ds-h1" style={{ fontSize: 25 }}>{prevShot.heading}</h2>
+                <div className="ds-text" style={{ marginTop: 14 }}><Inline nodes={prevShot.card.text} ctx={noopCtx} /></div>
+                {prevShot.card.remember && <StepRemember tex={prevShot.card.remember} />}
+                {prevShot.card.chart ? <MiniChart type={prevShot.card.chart} attrs={prevShot.card.attrs} /> : prevShot.card.pic ? <Pic name={prevShot.card.pic} /> : null}
+              </>
+            ) : (
+              <>
+                <ExerciseView inst={prevShot.inst} ctx={noopCtx} resp={prevShot.resp} setResp={() => {}} locked fb={prevShot.fb} onSubmit={() => {}} />
+                <div className={`ln-peek-verdict ${prevShot.fb.ok ? 'ok' : 'bad'}`} data-testid="lesson-peek-verdict">
+                  {prevShot.fb.ok ? <b>Вы ответили верно.</b> : <>Правильно: <b>{answerText(prevShot.inst)}</b></>}
+                  {!prevShot.fb.ok && prevShot.fb.why && <div style={{ marginTop: 4 }}><Inline nodes={prevShot.fb.why} ctx={noopCtx} /></div>}
+                  {prevShot.inst.explain && prevShot.inst.kind !== 'open' && <div className="tb-body" style={{ fontSize: 15, marginTop: 6, color: 'inherit' }}><Blocks blocks={prevShot.inst.explain} ctx={noopCtx} /></div>}
+                </div>
+              </>
+            )}
+          </div></div>
+          <div className="ln-foot"><div className="ln-inner">
+            <Button wide variant="secondary" data-testid="lesson-peek-return" autoFocus onClick={() => { Audio.play('paper'); setPeek(false); }}>Вернуться</Button>
+          </div></div>
+        </div>
       )}
 
       {!feed && stage === 'card' && cur && cardFor(cur) && (() => {
@@ -1163,13 +1276,14 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
           : kind === 'story' ? 'История продолжается' : kind === 'listen' ? 'Слушаем дальше' : 'Шаг дальше';
         const go = () => {
           Audio.play('paper');
+          setPrevShot({ type: 'card', card: c, heading, kind }); setPeek(false);
           if (!last) { setCardIdx(cardIdx + 1); return; }
           cardsSeen.current.add(cur.uid); acc.current.itemStart = activeNow(); setCardIdx(0); setStage('work');
         };
         const picture = c.chart ? <MiniChart type={c.chart} attrs={c.attrs} /> : c.pic ? <Pic name={c.pic} /> : null;
         // «Слова» — колода со своими кнопками: вспомнить, открыть, «Знаю» / «Ещё раз»
         if (c.flash) {
-          const done = () => { cardsSeen.current.add(cur.uid); acc.current.itemStart = activeNow(); setCardIdx(0); setStage('work'); };
+          const done = () => { setPrevShot(null); setPeek(false); cardsSeen.current.add(cur.uid); acc.current.itemStart = activeNow(); setCardIdx(0); setStage('work'); };
           return (
             <WordDeck key={cur.uid} cards={list} onDone={done}
               body={(inner) => (
@@ -1607,11 +1721,57 @@ const SEEN_KEY = 'ems-learn-open-seen';
 const readSeen = () => { try { const v = JSON.parse(localStorage.getItem(SEEN_KEY) || 'null'); return Array.isArray(v) ? new Set(v) : null; } catch { return null; } };
 const writeSeen = (set) => { try { localStorage.setItem(SEEN_KEY, JSON.stringify([...set])); } catch { /* приватный режим */ } };
 
+/* Оценка в курсе (src/learn/grade.js): вместо счётчиков опыта и монет — «ваша оценка» от 2 до 5 и
+   полоска пройденного курса. Опыт — в лиге, монеты — в лавке; здесь — главное: как идёт учёба. */
+/* «Чтение» юнита (src/learn/reading.js): книга под уроками — корешок цвета подборки, авторы и одна
+   строка о чём. Открывается после первого урока юнита; прочитанная — «на полке», её можно перечитать. */
+function ReadingCard({ r, learn, open, onOpen }) {
+  const done = isRead(learn, r.id);
+  const authors = [...new Set(r.pages.map((p) => p.author.split(' ').pop()))].join(', ');
+  return (
+    <div className={`ln-read${done ? ' done' : ''}${open ? '' : ' locked'}`} style={{ '--rd': r.color }} data-testid="reading-card" data-reading={r.id} data-state={done ? 'done' : open ? 'open' : 'locked'}>
+      <span className="ln-read-spine" aria-hidden="true"><span>{r.spine}</span></span>
+      <span className="ln-read-main">
+        <span className="ds-eyebrow">Чтение · {r.pages.length} {plural(r.pages.length, 'цитата', 'цитаты', 'цитат')}{done ? ' · на полке' : ''}</span>
+        <span className="ln-read-title">{r.title}</span>
+        <span className="ln-read-who">{authors}</span>
+        <span className="ln-read-lead">{open ? r.lead : 'Откроется после первого урока юнита.'}</span>
+      </span>
+      {open ? (
+        <Button small variant={done ? 'ghost' : 'primary'} icon={done ? Check : BookOpenText} data-testid="reading-open" onClick={() => { Audio.play('paper'); onOpen(); }}>{done ? 'Перечитать' : 'Читать'}</Button>
+      ) : <Lock size={18} color="var(--ds-ink3)" aria-hidden="true" />}
+    </div>
+  );
+}
+
+function GradeCard({ learn }) {
+  // весь курс по урокам — считаем, только когда прогресс поменялся
+  const c = useMemo(() => courseGrade(learn), [learn]);
+  const pct = Math.round(c.share * 100);
+  return (
+    <div className="ln-grade" data-testid="course-grade" data-grade={c.grade == null ? '' : String(c.grade)} data-done={c.done}>
+      <div className="ln-grade-top">
+        <span className="ds-eyebrow">Ваша оценка в курсе экономики</span>
+        <span className="ln-grade-pct" data-testid="course-progress">{pct}% курса</span>
+      </div>
+      <div className="ln-grade-row">
+        <span className={`ln-grade-num${c.grade == null ? ' none' : ''}`} aria-hidden="true">{c.grade == null ? '—' : String(c.grade.toFixed(1)).replace('.', ',')}</span>
+        <span className="ln-grade-word">
+          <b>{c.grade == null ? 'Появится после первого урока' : gradeWord(c.grade)}</b>
+          <small>{c.grade == null ? 'Оценка — по точности ответов в пройденных уроках' : `точность ${c.accuracy}% · ${c.done} из ${c.total} уроков`}</small>
+        </span>
+      </div>
+      <span className="ds-sr">{c.grade == null ? 'Оценки пока нет.' : `Оценка ${String(c.grade).replace('.', ',')} из 5, ${gradeWord(c.grade)}.`} Пройдено {c.done} из {c.total} уроков, {pct}% курса.</span>
+      <span className="ln-grade-bar" aria-hidden="true"><i style={{ width: `${Math.max(c.done ? 2 : 0, pct)}%` }} /></span>
+    </div>
+  );
+}
+
 function TopStats({ learn, bell = null }) {
   const st = streak(learn); const g = goalToday(learn);
-  const totalXp = Object.values(learn.xp).reduce((a, b) => a + b, 0);
   return (
-    // у каждого счётчика подпись для чтения с экрана: значок и сокращение её не заменяют
+    <>
+    {/* у каждого счётчика подпись для чтения с экрана: значок и сокращение её не заменяют */}
     <div className="ln-stats" data-testid="path-stats" role="group" aria-label="Ваш прогресс">
       {/* огонёк: сегодня уже занимались — горит (цветной, с галочкой); ещё нет — блёклый, ждёт урока */}
       <span className={`ln-stat ln-streak${st.today ? ' on' : st.days ? ' wait' : ''}`} data-testid="streak-chip" data-today={String(st.today)}
@@ -1621,11 +1781,11 @@ function TopStats({ learn, bell = null }) {
         <span className="ds-sr">Серия, дней: </span><span data-testid="streak" key={st.days} className="ln-bump">{st.days}</span><small aria-hidden="true">дн.</small>
         <span className="ds-sr">{st.today ? ', сегодня продлена' : st.days ? ', сегодня ещё не продлена' : ''}</span>
       </span>
-      <span className="ln-stat" title="Опыт"><Sparkles size={16} color="var(--u-ink)" aria-hidden="true" /><span className="ds-sr">Опыт: </span><span key={totalXp} className="ln-bump">{totalXp}</span><small aria-hidden="true">опыт</small></span>
-      <WalletStat learn={learn} />
       <span className="ln-stat" title={`Цель дня — ${g.goal} минут занятий`} data-testid="goal" style={{ color: g.done >= g.goal ? 'var(--ds-ok)' : undefined }}><Target size={17} aria-hidden="true" /><span className="ds-sr">Цель дня, минут занятий: </span><span key={Math.min(g.done, g.goal)} className="ln-bump">{Math.min(g.done, g.goal)}</span>/{g.goal}<small aria-hidden="true">мин</small></span>
       {bell}
     </div>
+    <GradeCard learn={learn} />
+    </>
   );
 }
 
@@ -1858,6 +2018,11 @@ function Route({ st, seen, reduced, visible, resumes, onLesson, rec = null, ches
    свёрнута, пока её не откроют; на ПК (side — правая колонка) открыта, но тоже сворачивается,
    и выбор запоминается на устройстве. */
 const MODEL_SIDE_KEY = 'ems-model-side-open';
+/* Знакомство с моделью (жалоба: «живая модель никак не вводится — можно даже не знать, что она есть»):
+   в первый раз под юнитом — карточка «Новое»: что это, как она собирается и кнопка «Открыть модель».
+   «Понятно» или открытие — и дальше обычная строка. Помним по юнитам на устройстве. */
+const MODEL_INTRO_KEY = 'ems-model-intro';
+const introSeen = () => { try { return JSON.parse(localStorage.getItem(MODEL_INTRO_KEY) || '[]'); } catch { return []; } };
 function ModelFold({ unitId, learn, side = false }) {
   const [open, setOpenRaw] = useState(() => {
     if (!side) return false;
@@ -1869,6 +2034,32 @@ function ModelFold({ unitId, learn, side = false }) {
   };
   const prog = modelProgress(unitId, learn);
   const gap = side ? 0 : 10;
+  const [intro, setIntro] = useState(() => !introSeen().includes(unitId));
+  const dismiss = () => {
+    setIntro(false);
+    try { localStorage.setItem(MODEL_INTRO_KEY, JSON.stringify([...new Set([...introSeen(), unitId])])); } catch { /* приватный режим */ }
+  };
+  if (intro && !open) {
+    return (
+      <Card className="ln-model-intro" style={{ marginTop: gap }} data-testid="model-intro">
+        <div className="ln-model-intro-top">
+          <span className="ln-model-intro-thumb"><ModelThumb empty={!prog.open} supply={modelParts(unitId, learn).some((x) => x.id === 'supply' && x.open)} /></span>
+          <span style={{ minWidth: 0 }}>
+            <span className="ds-eyebrow" style={{ display: 'block' }}><span className="ln-new-pill">Новое</span> Живая модель юнита</span>
+            <span className="ds-h3" style={{ display: 'block', marginTop: 2 }}>Рынок, который можно покрутить</span>
+          </span>
+        </div>
+        <div className="ds-text" style={{ fontSize: 15, marginTop: 8 }}>
+          Каждый урок юнита добавляет в модель деталь: спрос, предложение, налог. Двигайте ползунки — и смотрите, как меняются цена, очередь и выручка кофейни.
+          {' '}{prog.open ? `Уже собрано: ${prog.open} из ${prog.total} ${plural(prog.total, 'детали', 'деталей', 'деталей')}.` : 'Первая деталь появится после первого урока юнита.'}
+        </div>
+        <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+          {prog.open > 0 && <Button small data-testid="model-intro-open" onClick={() => { Audio.play('paper'); dismiss(); setOpen(true); }}>Открыть модель</Button>}
+          <Button small variant="ghost" data-testid="model-intro-ok" onClick={() => { Audio.play('tick'); dismiss(); }}>Понятно</Button>
+        </div>
+      </Card>
+    );
+  }
   if (open) {
     return (
       <Card style={{ marginTop: gap }} data-testid="model-open">
@@ -2051,7 +2242,7 @@ function Collapse({ closing, children }) {
   return <div ref={ref} className="ln-unit-body">{children}</div>;
 }
 
-function PathView({ learn, update, onLesson, onStart, onOpenBook, onChest, onTasks, visible, homeTick = 0, folded: foldReq = null, bell = null, races = null }) {
+function PathView({ learn, update, onLesson, onStart, onOpenBook, onChest, onTasks, onRead = () => {}, visible, homeTick = 0, folded: foldReq = null, bell = null, races = null }) {
   const states = pathState(learn);
   const rec = recommend(learn, states);
   const recTitle = rec ? LESSON_BY_ID[rec.lessonId].title : null;
@@ -2249,6 +2440,7 @@ function PathView({ learn, update, onLesson, onStart, onOpenBook, onChest, onTas
               {hasModel(u.id) && !wide && <ModelFold unitId={u.id} learn={learn} />}
               <Route st={st} seen={seen} reduced={reduced} visible={visible} resumes={resumes} onLesson={onLesson} rec={rec ? rec.lessonId : null} spooky={halloweenOn(dayOf(Date.now()))}
                 chest={st.complete ? { unitId: u.id, opened: hasClaim(learn, chestKey(u.id)) } : null} onChest={onChest} />
+              {READING_BY_UNIT[u.id] && <ReadingCard r={READING_BY_UNIT[u.id]} learn={learn} open={readingOpen(st)} onOpen={() => onRead(READING_BY_UNIT[u.id].id)} />}
             </Collapse>
           )}
         </section>
@@ -2328,6 +2520,7 @@ function TasksView({ learn, onStart, onOpenBook, onBack }) {
 const ProfileView = React.lazy(() => import('./learn-profile.jsx').then((m) => ({ default: m.ProfileView })));
 const SettingsView = React.lazy(() => import('./learn-profile.jsx').then((m) => ({ default: m.SettingsView })));
 const NewsView = React.lazy(() => import('./learn-news.jsx'));
+const ReadingView = React.lazy(() => import('./learn-reading.jsx'));
 const Lazy = ({ children }) => <React.Suspense fallback={<BrandLoader compact text="Открываем" />}>{children}</React.Suspense>;
 const Celebration = React.lazy(() => import('./learn-celebrate.jsx'));
 /* Церемонии (src/learn/celebrate.js): что из полученного ещё не праздновали. Показанное помнит
@@ -2335,7 +2528,9 @@ const Celebration = React.lazy(() => import('./learn-celebrate.jsx'));
    navigator.webdriver) — без сцен, если тест сам их не включил (ems-celebrate-test): сцена во весь
    экран перехватывала бы касания остальных проверок. */
 const CELEBRATED_KEY = 'ems-celebrated';
-function useCelebrations(learn) {
+/* Показанное — ещё и в профиле (learn.shown, ключи c:…): церемония, показанная на одном устройстве,
+   не повторяется на другом (жалоба: «прошёл юнит на ПК — марка дублируется на телефоне») */
+function useCelebrations(learn, update) {
   const [seen, setSeen] = useState(() => {
     try {
       if (typeof navigator !== 'undefined' && navigator.webdriver && localStorage.getItem('ems-celebrate-test') !== '1') return null;
@@ -2346,13 +2541,17 @@ function useCelebrations(learn) {
       return base;
     } catch { return null; }
   });
-  const pending = useMemo(() => (seen ? pendingMoments(learn, seen) : []), [learn, seen]);
-  const mark = (keys) => setSeen((m) => {
-    const next = { ...m };
-    keys.forEach((k) => { next[k] = Date.now(); });
-    try { localStorage.setItem(CELEBRATED_KEY, JSON.stringify(next)); } catch { /* приватный режим */ }
-    return next;
-  });
+  const synced = useMemo(() => shownWith(learn, 'c:'), [learn.shown]); // eslint-disable-line react-hooks/exhaustive-deps
+  const pending = useMemo(() => (seen ? pendingMoments(learn, { ...seen, ...synced }) : []), [learn, seen, synced]);
+  const mark = (keys) => {
+    setSeen((m) => {
+      const next = { ...m };
+      keys.forEach((k) => { next[k] = Date.now(); });
+      try { localStorage.setItem(CELEBRATED_KEY, JSON.stringify(next)); } catch { /* приватный режим */ }
+      return next;
+    });
+    update((s) => markShown(s, keys.map((k) => `c:${k}`)));
+  };
   // больше трёх подряд — лишние без сцен
   useEffect(() => { const { skip } = nextBatch(pending); if (skip.length) mark(skip.map((m) => m.key)); }, [pending]); // eslint-disable-line react-hooks/exhaustive-deps
   return [pending[0] || null, (m) => mark([m.key])];
@@ -2380,6 +2579,8 @@ function GuestSave({ learn, afterLesson = false }) {
 export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReopened = () => {}, onThemeChange = () => {}, onBookOver = () => {}, closeTick = 0, bookHome = 0, pathHome = 0, guest = false, firstLesson = false, onFirstLesson = () => {}, onTab = () => {} }) {
   const [learn, update] = useLearn();
   const [run, setRun] = useState(null);
+  // «Чтение» юнита — подборка цитат поверх Пути (src/learn-reading.jsx)
+  const [reading, setReading] = useState(null);
   const sketchBook = useMedia(SKETCH_BOOK_QUERY);
   const [sheet, setSheet] = useState(null);
   const [book, setBook] = useState(null);
@@ -2412,11 +2613,14 @@ export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReo
     if (tab !== 'path') return false;
     const today = dayOf(Date.now());
     let seen = null; try { seen = localStorage.getItem(MORNING_KEY); localStorage.setItem(MORNING_KEY, today); } catch { /* приватный режим */ }
-    return seen !== today && streak(loadProgress().learn).days >= 1;
+    // утренний экран сегодня уже показали на другом устройстве — второй раз не нужен
+    const p = loadProgress().learn;
+    return seen !== today && !(p.shown || {})[`m:${today}`] && streak(p).days >= 1;
   });
-  const notify = useNotify(learn);
+  useEffect(() => { if (morning) update((s) => markShown(s, [`m:${dayOf(Date.now())}`])); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const notify = useNotify(learn, update);
   // церемония — когда ученик не занят: не в уроке, не в карточке урока, сундуке или утреннем экране
-  const [moment, celebrated] = useCelebrations(learn);
+  const [moment, celebrated] = useCelebrations(learn, update);
   const celebrate = moment && !run && !sheet && !chest && !morning ? moment : null;
   const [toast, toastDone] = useToasts(notify, !!run || !!sheet || !!chest || morning || bell || !!celebrate);
   useBrowserReminders(notify);
@@ -2448,6 +2652,8 @@ export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReo
     setBell(false);
     // повторение учебника — сразу страница «Повторение» учебника, поверх любой вкладки
     if (n.go === 'book-review') { openBook({ kind: 'review' }); return; }
+    // ник под запретом — окно смены ника (src/account.jsx, NameGate)
+    if (n.go === 'rename') { window.dispatchEvent(new Event('ems-rename')); return; }
     const want = { path: 'path', tasks: 'path', league: 'league', shop: 'shop', garden: 'shop', piggy: 'shop', news: 'news', friends: 'profile' }[n.go] || 'path';
     const extra = n.go === 'tasks' ? { tasks: true } : n.go === 'friends' ? { friends: true } : n.id.startsWith('chest:') ? { chest: n.id.slice(6) } : null;
     if (n.go === 'garden' || n.go === 'piggy') setShopFocus((f) => ({ n: f.n + 1, to: n.go }));
@@ -2484,6 +2690,8 @@ export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReo
       {book && (
         <div className="ln-book" data-testid="learn-book">
           <TextbookScreen key={bookKey} startPage={book.page} resume={book.resume} onExit={() => setBook(null)} {...bookHandlers} {...bookReports} />
+          {/* черновик на полях — и в учебнике, открытом «Гайдом юнита» или из урока; пока идёт урок, у урока свой */}
+          {sketchBook && !run && <><style>{SKETCH_CSS}</style><Sketch key={bookKey} mode="bookOver" /></>}
         </div>
       )}
       {/* пока идёт урок или открыт учебник, экран под ними недоступен ни с клавиатуры, ни для чтения с экрана */}
@@ -2491,7 +2699,7 @@ export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReo
         {tab === 'path' && !tasks && guest && <GuestSave learn={learn} />}
         {tab === 'path' && !tasks && <PathView learn={learn} update={update} onLesson={setSheet} onStart={start} onOpenBook={openBook} onChest={setChest}
           onTasks={() => { setTasks(true); window.scrollTo(0, 0); }} visible={!over} homeTick={pathHome} folded={folded}
-          bell={<BellButton count={notify.unread.length} onClick={() => setBell(true)} />} races={raceCards.length ? raceCards : null} />}
+          bell={<BellButton count={notify.unread.length} onClick={() => setBell(true)} />} races={raceCards.length ? raceCards : null} onRead={setReading} />}
         {tab === 'path' && tasks && <TasksView learn={learn} onStart={start} onOpenBook={openBook} onBack={() => { Audio.play('paper'); setTasks(false); window.scrollTo(0, 0); }} />}
         {tab === 'book' && <div className="ln-book" data-testid="book-tab"><TextbookScreen asTab homeTick={bookHome} {...bookHandlers} {...bookReports} />
           {/* черновик на полях учебника — на широком экране с мышью; пока идёт урок, у урока свой */}
@@ -2508,7 +2716,7 @@ export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReo
       {friendsPage && !friendLogin && <FriendsPage data={friends} onBack={() => setFriendsPage(false)} onOpen={(l) => setFriendLogin(l)} />}
       {friendLogin && <FriendProfile login={friendLogin} data={friends} learn={learn} update={update} myWear={outfit} onBack={() => setFriendLogin(null)} />}
       {bell && <NotifyCenter notify={notify} onClose={() => setBell(false)} onGo={goNotify} />}
-      {toast && <NotifyToast n={toast} onGo={(n) => { toastDone(); goNotify(n); }} onClose={toastDone} />}
+      {toast && <NotifyToast n={toast} onGo={(n) => { toastDone(); goNotify(n); }} onClose={toastDone} onRead={(n) => notify.markOne(n.id)} />}
       {reports && <ReportsView onBack={() => { Audio.play('paper'); setReports(false); }} />}
       {analytics && <AnalyticsView onBack={() => { Audio.play('paper'); setAnalytics(false); }} />}
       {chest && <ChestSheet unitId={chest} place={placeOf(chest).place} learn={learn} update={update}
@@ -2518,6 +2726,7 @@ export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReo
         onGo={() => { celebrated(celebrate); onTab('profile'); }} /></React.Suspense>}
       {sheet && <LessonSheet l={sheet} learn={learn} weak={weakLessons(learn).some((w) => w.id === sheet.id)} onStart={start} onClose={() => setSheet(null)} onOpenBook={openBook}
         onSkip={(id) => { Audio.play('paper'); update((s) => skipLesson(s, id)); setSheet(null); }} />}
+      {reading && <Lazy><ReadingView id={reading} learn={learn} update={update} onClose={() => setReading(null)} /></Lazy>}
       {run && <Runner key={JSON.stringify({ ...run, resume: !!run.resume })} run={run} learn={learn} update={update} hidden={!!book} guest={guest}
         onClose={() => setRun(null)} onOpenBook={(page) => openBook(page)} />}
     </DsRoot>

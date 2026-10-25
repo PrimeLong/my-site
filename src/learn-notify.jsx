@@ -12,18 +12,20 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Bell, BellRing, ArrowLeft, ChevronRight, CheckCheck, X, Flame, Map as MapIcon, Target, Trophy, TrendingDown, ArrowDown, ArrowUp, Hourglass, Sprout, Droplet, PiggyBank,
-  Package, Repeat, CalendarDays, ShieldCheck, Newspaper, Sparkles, Croissant, Stamp, Scale, Moon, Palette, MonitorSmartphone, Headphones, BookOpen, Landmark, BarChart3,
+  Package, Repeat, CalendarDays, ShieldCheck, ShieldAlert, Newspaper, Sparkles, Croissant, Stamp, Scale, Moon, Palette, MonitorSmartphone, Headphones, BookOpen, Landmark, BarChart3,
   Gauge, Store, Anchor, Shirt, WandSparkles, Settings,
   Ghost, Users, Flag, UserPlus, Gem,
   Wallet, MessageCircle, Lamp, Coins, TrendingUp, Gamepad2,
 } from 'lucide-react';
 import { IconButton, TopBar } from './ds.jsx';
+import { useReducedMotion } from './ds-art.jsx';
 import { Mascot } from './mascot.jsx';
-import { Audio } from './MacroSimulator.jsx';
+import { Audio, useAccount } from './MacroSimulator.jsx';
 import { notificationsOf, unreadOf, readSeen, markSeen, readPrefs, writePrefs, firstDayOf, agoText, readPushed, markPushed, readToasted, markToasted } from './learn/notify.js';
 import { leagueState, LEAGUE_BY_ID } from './learn/league.js';
 import { useFriends } from './lib/friends-store.js';
 import { loadProgress, reviewQueue } from './textbook/progress.js';
+import { markShown, shownWith } from './textbook/learn-state.js';
 
 export const NOTIFY_CSS = `
   /* колокольчик: квадратная кнопка рядом со счётчиками; новое — точка-счётчик и лёгкое покачивание */
@@ -52,7 +54,9 @@ export const NOTIFY_CSS = `
   .nt-group { font: 700 12px/1.3 var(--ds-sans); letter-spacing: .14em; text-transform: uppercase; color: var(--ds-ink3); margin: 16px 2px 8px; }
   .nt-item { display: grid; grid-template-columns: 42px minmax(0, 1fr) auto; gap: 2px 12px; align-items: center; width: 100%; text-align: left; font: inherit; color: inherit;
     background: var(--ds-card); border: 2px solid var(--ds-rule); border-radius: 16px; padding: 11px 12px; margin: 0 0 8px; cursor: pointer; position: relative;
-    box-shadow: 0 2px 0 var(--ds-rule); animation: nt-in .38s ease-out both; animation-delay: calc(min(var(--i, 0), 10) * 45ms); transition: transform .12s ease, border-color .15s; }
+    box-shadow: 0 2px 0 var(--ds-rule); animation: nt-in .38s ease-out backwards; animation-delay: calc(min(var(--i, 0), 10) * 45ms); transition: transform .12s ease, border-color .15s, translate .2s ease;
+    touch-action: pan-y; }
+  .nt-hint { font-size: 13px; text-align: center; margin: 2px 8px 6px; }
   .nt-item:hover { border-color: var(--ds-rule2); }
   .nt-item:active { transform: translateY(1px) scale(.995); }
   .nt-item[data-unread="true"] { border-color: color-mix(in srgb, var(--t) 40%, var(--ds-rule)); background: color-mix(in srgb, var(--t) 6%, var(--ds-card)); }
@@ -70,7 +74,7 @@ export const NOTIFY_CSS = `
   .nt-toast { position: fixed; top: calc(10px + env(safe-area-inset-top)); left: 50%; z-index: 400; width: min(520px, calc(100vw - 24px)); transform: translateX(-50%);
     display: grid; grid-template-columns: 38px minmax(0, 1fr) auto; gap: 0 10px; align-items: center; padding: 10px 8px 10px 10px; border-radius: 16px; cursor: pointer;
     background: var(--ds-card); border: 2px solid color-mix(in srgb, var(--t) 45%, var(--ds-rule)); box-shadow: 0 12px 30px -8px rgba(40,20,0,.35);
-    animation: nt-drop .45s cubic-bezier(.2,1.3,.4,1) both; }
+    animation: nt-drop .45s cubic-bezier(.2,1.3,.4,1) backwards; touch-action: pan-y; transition: translate .2s ease; }
   .nt-toast.out { animation: nt-lift .3s ease-in both; }
   .nt-toast .nt-ico { width: 38px; height: 38px; border-radius: 12px; grid-row: auto; }
   .nt-toast .nt-title { padding: 0; font-size: 15px; }
@@ -154,7 +158,7 @@ export const NOTIFY_CSS = `
 // значки уведомлений и новостей: имя → компонент
 const ICON = {
   flame: Flame, map: MapIcon, target: Target, trophy: Trophy, 'trending-down': TrendingDown, 'arrow-down': ArrowDown, 'arrow-up': ArrowUp, hourglass: Hourglass,
-  sprout: Sprout, droplet: Droplet, piggy: PiggyBank, chest: Package, repeat: Repeat, calendar: CalendarDays, shield: ShieldCheck, newspaper: Newspaper,
+  sprout: Sprout, droplet: Droplet, piggy: PiggyBank, chest: Package, repeat: Repeat, calendar: CalendarDays, shield: ShieldCheck, 'shield-alert': ShieldAlert, newspaper: Newspaper,
   sparkles: Sparkles, croissant: Croissant, stamp: Stamp, scale: Scale, moon: Moon, palette: Palette, devices: MonitorSmartphone, headphones: Headphones, book: BookOpen,
   landmark: Landmark, chart: BarChart3, gauge: Gauge, store: Store, anchor: Anchor, shirt: Shirt, wand: WandSparkles, bell: Bell, settings: Settings,
   pumpkin: Ghost, ghost: Ghost, fire: Flame, users: Users, flag: Flag, 'user-plus': UserPlus, gem: Gem, wallet: Wallet, message: MessageCircle,
@@ -164,7 +168,9 @@ export const NIcon = ({ name, size = 20, ...rest }) => { const I = ICON[name] ||
 
 /* Уведомления для экранов: список к текущей минуте (обновляется раз в минуту и при возвращении на
    вкладку), непрочитанные, настройки. leaguePlace — место в лиге сейчас (для плашки «вы поднялись»). */
-export function useNotify(learn) {
+/* Прочитанное и показанное плашкой — и на устройстве (быстро), и в профиле (learn.shown, n: и t:):
+   прочитали уведомление на ПК — на телефоне оно уже не «новое» и не всплывает второй раз. */
+export function useNotify(learn, update = null) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     if (typeof document === 'undefined') return undefined;
@@ -181,17 +187,28 @@ export function useNotify(learn) {
   const friends = useFriends();
   // учебник: сколько задач ждут повторения — прогресс учебника читаем на «сейчас» (раз в минуту и после уроков)
   const bookDue = useMemo(() => { try { return reviewQueue(loadProgress(), now).due.length; } catch { return 0; } }, [now]);
-  const list = useMemo(() => notificationsOf(learn, now, { prefs, since: firstDayOf(learn, now), friends, bookDue }), [learn, now, prefs, friends, bookDue]);
-  const unread = useMemo(() => unreadOf(list, seen), [list, seen]);
+  // ник под запретом — уведомление «Смените ник» (src/account.jsx)
+  const account = useAccount();
+  const rename = account && account.renameBy ? { renameBy: account.renameBy, name: account.name } : null;
+  const renameKey = rename ? `${rename.renameBy}:${rename.name}` : '';
+  const list = useMemo(() => notificationsOf(learn, now, { prefs, since: firstDayOf(learn, now), friends, bookDue, account: rename }), [learn, now, prefs, friends, bookDue, renameKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  const syncedSeen = useMemo(() => shownWith(learn, 'n:'), [learn.shown]); // eslint-disable-line react-hooks/exhaustive-deps
+  const syncedToast = useMemo(() => shownWith(learn, 't:'), [learn.shown]); // eslint-disable-line react-hooks/exhaustive-deps
+  const allSeen = useMemo(() => ({ ...seen, ...syncedSeen }), [seen, syncedSeen]);
+  const unread = useMemo(() => unreadOf(list, allSeen), [list, allSeen]);
+  const share = (prefix, ids) => { if (update && ids.length) update((s) => markShown(s, ids.map((id) => `${prefix}${id}`))); };
   const leaguePlace = useMemo(() => {
     if (!Object.values(learn.xp || {}).some((x) => x > 0)) return null;
     const ls = leagueState(learn, now);
     return ls.rest || !ls.joined ? null : { place: ls.me.place, league: ls.league, week: ls.week };
   }, [learn, now]);
   return {
-    list, unread, seen, prefs, now, leaguePlace,
-    markAll: () => setSeen(markSeen(list.map((n) => n.id))),
-    markOne: (id) => setSeen(markSeen([id])),
+    list, unread, seen: allSeen, prefs, now, leaguePlace,
+    markAll: () => { const ids = list.filter((n) => !allSeen[n.id]).map((n) => n.id); setSeen(markSeen(list.map((n) => n.id))); share('n:', ids); },
+    markOne: (id) => { setSeen(markSeen([id])); if (!allSeen[id]) share('n:', [id]); },
+    // плашка уже всплывала — на этом устройстве или на другом
+    toasted: (id) => !!(readToasted()[id] || syncedToast[id]),
+    markToasted: (id) => { markToasted(id); share('t:', [id]); },
     setPrefs: (p) => { writePrefs(p); setPrefsState(readPrefs()); },
   };
 }
@@ -207,10 +224,56 @@ export function BellButton({ count, onClick, testid = 'bell' }) {
   );
 }
 
-function NoteRow({ n, unread, i, now, onGo }) {
+/* Смахнуть вбок — прочитано: строка едет за пальцем (или мышью), отпустили дальше порога — улетает
+   и отмечается прочитанной; ближе — возвращается на место. Вертикальная прокрутка не мешает: жест
+   начинается, только когда сдвиг вбок больше, чем вверх-вниз. После жеста нажатие не срабатывает. */
+export function useSwipe(onCommit, { threshold = 80, axis = 'x' } = {}) {
+  const st = useRef(null);
+  const moved = useRef(false);
+  const [dx, setDx] = useState(0);
+  const [gone, setGone] = useState(0);
+  const reduced = useReducedMotion();
+  const onPointerDown = (e) => {
+    if (gone || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    st.current = { x: e.clientX, y: e.clientY, id: e.pointerId, on: false };
+    moved.current = false;
+  };
+  const onPointerMove = (e) => {
+    const s = st.current;
+    if (!s || e.pointerId !== s.id) return;
+    const ddx = e.clientX - s.x; const ddy = e.clientY - s.y;
+    const main = axis === 'x' ? ddx : Math.min(0, ddy);
+    if (!s.on) {
+      if (Math.abs(axis === 'x' ? ddx : ddy) < 8) return;
+      if (axis === 'x' ? Math.abs(ddx) <= Math.abs(ddy) : ddy >= 0) { st.current = null; return; }
+      s.on = true; moved.current = true;
+      try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* указатель уже отпущен */ }
+    }
+    setDx(main);
+  };
+  const onPointerUp = (e) => {
+    const s = st.current; st.current = null;
+    if (!s || !s.on || e.pointerId !== s.id) return;
+    if (Math.abs(dx) > threshold) {
+      const dir = dx > 0 ? 1 : -1;
+      setGone(dir);
+      Audio.play('paper');
+      setTimeout(onCommit, reduced ? 0 : 220);
+    } else setDx(0);
+  };
+  // после смахивания нажатие (click) не открывает уведомление
+  const onClickCapture = (e) => { if (moved.current) { e.stopPropagation(); e.preventDefault(); moved.current = false; } };
+  // сдвиг — свойством translate: оно складывается с transform элемента (плашка центрируется через transform)
+  const style = gone ? { translate: axis === 'x' ? `${gone * 110}% 0` : '0 -130%', opacity: 0, transition: 'translate .22s ease-in, opacity .22s ease-in' }
+    : dx ? { translate: axis === 'x' ? `${dx}px 0` : `0 ${dx}px`, opacity: Math.max(0.35, 1 - Math.abs(dx) / 260), transition: 'none' } : null;
+  return { handlers: { onPointerDown, onPointerMove, onPointerUp, onPointerCancel: onPointerUp, onClickCapture }, style, swiping: !!dx || !!gone };
+}
+
+function NoteRow({ n, unread, i, now, onGo, onRead }) {
+  const swipe = useSwipe(() => onRead(n));
   return (
-    <button type="button" className="nt-item" style={{ '--t': n.tone, '--i': i }} data-unread={String(unread)} data-testid="notify-item" data-kind={n.kind} data-id={n.id}
-      onClick={() => { Audio.play('click'); onGo(n); }}>
+    <button type="button" className="nt-item" style={{ '--t': n.tone, '--i': i, ...swipe.style }} data-unread={String(unread)} data-testid="notify-item" data-kind={n.kind} data-id={n.id}
+      {...swipe.handlers} onClick={() => { Audio.play('click'); onGo(n); }}>
       <span className="nt-ico"><NIcon name={n.icon} size={21} /></span>
       <span className="nt-title">{n.title}</span>
       <ChevronRight size={18} className="nt-go" aria-hidden="true" />
@@ -222,11 +285,13 @@ function NoteRow({ n, unread, i, now, onGo }) {
 /* Центр уведомлений: «Новые» — то, что не открывали; «Ранее» — прочитанное, но ещё актуальное.
    Всё, что было на экране, при закрытии становится прочитанным. */
 export function NotifyCenter({ notify, onClose, onGo }) {
-  const [fresh] = useState(() => new Set(notify.unread.map((n) => n.id)));
+  const [fresh, setFresh] = useState(() => new Set(notify.unread.map((n) => n.id)));
   const ref = useRef(notify); ref.current = notify;
   useEffect(() => () => ref.current.markAll(), []);
   const news = notify.list.filter((n) => fresh.has(n.id));
   const old = notify.list.filter((n) => !fresh.has(n.id));
+  // смахнули — прочитано: из «Новых» уходит в «Ранее», счётчик на колокольчике уменьшается сразу
+  const read = (n) => { notify.markOne(n.id); setFresh((s) => { const t = new Set(s); t.delete(n.id); return t; }); };
   return (
     <div className="nt-page" data-testid="notifications" role="dialog" aria-label="Уведомления">
       <div className="nt-page-in">
@@ -241,9 +306,10 @@ export function NotifyCenter({ notify, onClose, onGo }) {
         ) : (
           <>
             {news.length > 0 && <div className="nt-group">Новые · {news.length}</div>}
-            {news.map((n, i) => <NoteRow key={n.id} n={n} unread i={i} now={notify.now} onGo={onGo} />)}
+            {news.map((n, i) => <NoteRow key={n.id} n={n} unread i={i} now={notify.now} onGo={onGo} onRead={read} />)}
+            {news.length > 0 && <div className="ds-faint nt-hint" data-testid="notify-swipe-hint">Смахните уведомление вбок — оно станет прочитанным.</div>}
             {old.length > 0 && <div className="nt-group">Ранее</div>}
-            {old.map((n, i) => <NoteRow key={n.id} n={n} unread={false} i={i + news.length} now={notify.now} onGo={onGo} />)}
+            {old.map((n, i) => <NoteRow key={`old:${n.id}`} n={n} unread={false} i={i + news.length} now={notify.now} onGo={onGo} onRead={() => {}} />)}
           </>
         )}
         <div className="ds-faint" style={{ fontSize: 13, textAlign: 'center', margin: '16px 8px 0' }}>Какие уведомления приходят и напоминание в браузере — в профиле, под шестерёнкой.</div>
@@ -253,15 +319,18 @@ export function NotifyCenter({ notify, onClose, onGo }) {
 }
 
 /* Плашка сверху: одно событие, касание — туда, где можно действовать; сама уезжает через 5 секунд. */
-export function NotifyToast({ n, onGo, onClose }) {
+export function NotifyToast({ n, onGo, onClose, onRead = () => {} }) {
   const [out, setOut] = useState(false);
+  // смахнули плашку вбок — она прочитана и уходит (как в центре уведомлений)
+  const swipe = useSwipe(() => { onRead(n); onClose(); });
   useEffect(() => {
+    if (swipe.swiping) return undefined;
     const t1 = setTimeout(() => setOut(true), 5000);
     const t2 = setTimeout(onClose, 5300);
     return () => { clearTimeout(t1); clearTimeout(t2); };
-  }, [n.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [n.id, swipe.swiping]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
-    <div className={`nt-toast${out ? ' out' : ''}`} style={{ '--t': n.tone }} role="status" aria-live="polite" data-testid="notify-toast" data-id={n.id}
+    <div className={`nt-toast${out ? ' out' : ''}`} style={{ '--t': n.tone, ...swipe.style }} role="status" aria-live="polite" data-testid="notify-toast" data-id={n.id} {...swipe.handlers}
       onClick={() => { Audio.play('click'); onGo(n); }}>
       <span className="nt-ico"><NIcon name={n.icon} size={19} /></span>
       <span style={{ minWidth: 0 }}><span className="nt-title" style={{ display: 'block' }}>{n.title}</span><span className="nt-text">{n.text}</span></span>
@@ -281,8 +350,7 @@ export function useToasts(notify, busy) {
   useEffect(() => {
     const ids = notify.list.map((n) => n.id);
     if (known.current === null) { known.current = new Set(ids); return; }
-    const toasted = readToasted();
-    const fresh = notify.list.filter((n) => n.toast && !known.current.has(n.id) && !notify.seen[n.id] && !toasted[n.id]);
+    const fresh = notify.list.filter((n) => n.toast && !known.current.has(n.id) && !notify.seen[n.id] && !notify.toasted(n.id));
     ids.forEach((id) => known.current.add(id));
     if (fresh.length) setQueue((q) => [...q, ...fresh.filter((n) => !q.some((x) => x.id === n.id))]);
   }, [notify.list]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -291,7 +359,7 @@ export function useToasts(notify, busy) {
     if (!lp) { place.current = null; return; }
     const was = place.current;
     place.current = lp;
-    if (was && was.week === lp.week && was.league === lp.league && lp.place < was.place && !readToasted()[`lg-up:${lp.week}:${lp.place}`]) {
+    if (was && was.week === lp.week && was.league === lp.league && lp.place < was.place && !notify.toasted(`lg-up:${lp.week}:${lp.place}`)) {
       const lg = LEAGUE_BY_ID[lp.league];
       setQueue((q) => [...q, { id: `lg-up:${lp.week}:${lp.place}`, kind: 'league', icon: 'arrow-up', tone: '#147A45', go: 'league', at: Date.now(),
         title: `Вы поднялись на ${lp.place}-е место`, text: `${lg.title} лига: ${was.place - lp.place > 1 ? `сразу на ${was.place - lp.place} ${was.place - lp.place < 5 ? 'места' : 'мест'} выше` : 'на одно место выше'}.` }]);
@@ -301,7 +369,7 @@ export function useToasts(notify, busy) {
   const live = queue.filter((n) => n.id.startsWith('lg-up:') || notify.list.some((x) => x.id === n.id));
   const cur = !busy && live.length ? live[0] : null;
   // показали — запомнили: та же плашка больше не всплывёт, прочитана она или нет
-  useEffect(() => { if (cur) markToasted(cur.id); }, [cur && cur.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (cur) notify.markToasted(cur.id); }, [cur && cur.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const done = () => setQueue((q) => q.filter((n) => n !== cur && live.includes(n)));
   return [cur, done];
 }

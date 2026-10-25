@@ -405,7 +405,8 @@ const BUDGET_LABEL = { out: 'Доход вырос', in: 'Доход упал', 
 const ELASTIC_LABEL = { in: 'Неэластичный: выручка растёт', el: 'Эластичный: выручка падает' };
 const COSTS_LABEL = { fc: 'Постоянные: поднялись только средние', vc: 'Переменные: поднялись все три кривые' };
 const POWER_LABEL = { pt: 'Ценополучатель: цена с рынка, P = MC', mp: 'Власть над ценой: цена выше MC' };
-const effectLabel = (chart, eff) => (chart === 'budget' ? BUDGET_LABEL[eff] : chart === 'elastic' ? ELASTIC_LABEL[eff] : chart === 'costs' ? COSTS_LABEL[eff] : chart === 'power' ? POWER_LABEL[eff] : EFFECT_LABEL[eff]);
+const MARKUP_LABEL = { lo: 'Заменителей больше: спрос эластичнее, наценка ниже', hi: 'Товар заметнее: спрос менее эластичен, наценка выше' };
+const effectLabel = (chart, eff) => (chart === 'budget' ? BUDGET_LABEL[eff] : chart === 'elastic' ? ELASTIC_LABEL[eff] : chart === 'costs' ? COSTS_LABEL[eff] : chart === 'power' ? POWER_LABEL[eff] : chart === 'markup' ? MARKUP_LABEL[eff] : EFFECT_LABEL[eff]);
 const BUDGET0 = { I: 100, px: 1.25, py: 1.25 };
 const MARKET_STEP = 16;
 // состояние графика после карточки: сдвиги понемногу забываются, чтобы график не уезжал за край
@@ -416,6 +417,8 @@ function applyEffect(chart, st, eff) {
   if (chart === 'costs') return { fc: eff === 'fc' ? 1 : eff ? 0 : st.fc, vc: eff === 'vc' ? 1 : eff ? 0 : st.vc };
   // рыночная власть: спрос на товар фирмы — горизонтальный у ценополучателя, падающий у монополиста
   if (chart === 'power') return { m: eff === 'mp' ? 1 : eff === 'pt' ? 0 : st.m };
+  // наценка при монополистической конкуренции: событие делает спрос на товар фирмы чуть круче или положе — шаг, а не скачок
+  if (chart === 'markup') return { m: clampN(st.m + (eff === 'hi' ? 0.22 : eff === 'lo' ? -0.22 : 0), 0.12, 1) };
   if (chart === 'market') {
     const d = { D: st.D * 0.6, S: st.S * 0.6 };
     if (eff) d[eff[0]] = clampN(d[eff[0]] + (eff[1] === '+' ? MARKET_STEP : -MARKET_STEP), -32, 32);
@@ -441,7 +444,7 @@ function applyEffect(chart, st, eff) {
   if (eff === 'y') t = clampN(t + 0.16, 0.08, 0.92);
   return { rx, ry, t };
 }
-const startState = (chart) => (chart === 'market' ? { D: 0, S: 0 } : chart === 'budget' ? { ...BUDGET0 } : chart === 'elastic' ? { e: 1 } : chart === 'costs' ? { fc: 0, vc: 0 } : chart === 'power' ? { m: 0.5 } : { rx: 100, ry: 100, t: 0.5 });
+const startState = (chart) => (chart === 'market' ? { D: 0, S: 0 } : chart === 'budget' ? { ...BUDGET0 } : chart === 'elastic' ? { e: 1 } : chart === 'costs' ? { fc: 0, vc: 0 } : chart === 'power' || chart === 'markup' ? { m: 0.5 } : { rx: 100, ry: 100, t: 0.5 });
 // плавный переход к новому состоянию графика (при «уменьшить движение» — сразу)
 function useTween(target, ms = 420) {
   const reduced = useReducedMotion();
@@ -551,7 +554,9 @@ function CostsGameChart({ st }) {
 /* Рыночная власть: спрос на товар фирмы. У ценополучателя он горизонтален на уровне рыночной цены —
    фирма продаёт там, где цена равна MC. У монополиста спрос падает, предельная выручка MR ниже
    него, выпуск — где MR = MC, а цена со спроса выше MC: между ними — наценка. m — от 0 к 1. */
-function PowerGameChart({ st }) {
+/* markup — та же картинка для игры «Наценка ниже или выше?» (монополистическая конкуренция): спрос
+   никогда не горизонтален, каждое событие делает его чуть положе (больше заменителей) или круче */
+function PowerGameChart({ st, markup: mk = false }) {
   const W = 300; const H = 200; const L = 34; const B = 26; const T = 10; const R = 12;
   const QM = 12; const PM = 64;
   const sx = (q) => L + (Math.max(0, Math.min(q, QM)) / QM) * (W - L - R); const sy = (p) => H - B - (Math.max(0, Math.min(p, PM)) / PM) * (H - B - T);
@@ -564,8 +569,8 @@ function PowerGameChart({ st }) {
   const halo = { stroke: 'var(--ds-paper)', strokeWidth: 4, paintOrder: 'stroke', strokeLinejoin: 'round' };
   return (
     <svg className="lp-chart lp-game-chart" viewBox={`0 0 ${W} ${H}`} role="img"
-      aria-label={m > 0.5 ? `Власть над ценой: цена ${Math.round(p)} выше предельных издержек на ${markup}` : 'Ценополучатель: цена с рынка равна предельным издержкам'}
-      data-testid="game-chart" data-chart="power" data-state={JSON.stringify({ m: Math.round(m * 100) / 100, markup })}>
+      aria-label={mk ? `Наценка над предельными издержками: ${markup}` : m > 0.5 ? `Власть над ценой: цена ${Math.round(p)} выше предельных издержек на ${markup}` : 'Ценополучатель: цена с рынка равна предельным издержкам'}
+      data-testid="game-chart" data-chart={mk ? 'markup' : 'power'} data-state={JSON.stringify({ m: Math.round(m * 100) / 100, markup })}>
       <rect x={sx(0)} y={sy(p)} width={sx(q) - sx(0)} height={Math.max(0, sy(mc(q)) - sy(p))} fill="var(--u)" opacity={0.14 * m} />
       <path d={line(mc, 0, 9.6)} fill="none" stroke="var(--ds-ok)" strokeWidth="2.5" />
       <path d={line(mr, 0, Math.min(QM, 6))} fill="none" stroke="var(--ds-ink3)" strokeWidth="2" strokeDasharray="5 4" opacity={m} />
@@ -582,7 +587,7 @@ function PowerGameChart({ st }) {
       <text x={sx(1)} y={sy(dem(1)) - 8} className="lp-ax" style={{ fill: 'var(--u-ink)', fontWeight: 700, ...halo }}>спрос</text>
       {m > 0.15 && <text x={sx(Math.min(QM, 5.6)) + 4} y={sy(mr(5.6)) + 12} className="lp-ax" style={{ opacity: m, ...halo }}>MR</text>}
       {m > 0.15 && <text x={sx(q) + 12} y={(sy(p) + sy(mc(q))) / 2 + 4} className="lp-ax" style={{ opacity: m, fill: 'var(--u-ink)', fontWeight: 700, ...halo }}>наценка +{markup}</text>}
-      <text x={W - R - 4} y={T + 14} textAnchor="end" className="lp-ax" style={{ fill: m > 0.5 ? 'var(--u-ink)' : 'var(--ds-ok)', fontWeight: 700, ...halo }}>{m > 0.5 ? 'цена выше MC' : 'цена = MC'}</text>
+      <text x={W - R - 4} y={T + 14} textAnchor="end" className="lp-ax" style={{ fill: m > 0.5 ? 'var(--u-ink)' : 'var(--ds-ok)', fontWeight: 700, ...halo }}>{mk ? (m > 0.5 ? 'мало заменителей' : 'много заменителей') : m > 0.5 ? 'цена выше MC' : 'цена = MC'}</text>
     </svg>
   );
 }
@@ -700,7 +705,7 @@ export function GameRound({ inst, onDone, locked, result = null, best = 0, intro
   const chart = inst.chart === 'market'
     ? <><MarketChart m={inst.market} shift={{ D: shown.D || 0, S: shown.S || 0 }} ghost eq label="Рынок в игре: спрос и предложение" /><PriceTicker prices={prices} /></>
     : inst.chart === 'ppf' ? <PpfGameChart st={shown} /> : inst.chart === 'budget' ? <BudgetGameChart st={shown} /> : inst.chart === 'elastic' ? <ElasticGameChart st={shown} />
-      : inst.chart === 'costs' ? <CostsGameChart st={shown} /> : inst.chart === 'power' ? <PowerGameChart st={shown} /> : null;
+      : inst.chart === 'costs' ? <CostsGameChart st={shown} /> : inst.chart === 'power' ? <PowerGameChart st={shown} /> : inst.chart === 'markup' ? <PowerGameChart st={shown} markup /> : null;
   return (
     <div data-testid="game" data-phase={phase} className="lp-game">
       {phase === 'ready' && (

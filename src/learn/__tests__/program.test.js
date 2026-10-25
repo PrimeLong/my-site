@@ -174,8 +174,8 @@ describe('вступительный тест', () => {
     plan.items.forEach((it) => expect(['swipe', 'rush']).not.toContain(it.kind));
   });
   it('юнит открыт, если в пятёрке не больше одной ошибки; первая проваленная пятёрка останавливает', () => {
-    expect(placementOpened(plan.items, answer({}))).toEqual(['scarcity', 'supply-demand', 'elasticity', 'market-failures', 'money-banks', 'inflation', 'consumer', 'costs', 'competition-monopoly']);
-    expect(placementOpened(plan.items, answer({ 'supply-demand': 1 }))).toEqual(['scarcity', 'supply-demand', 'elasticity', 'market-failures', 'money-banks', 'inflation', 'consumer', 'costs', 'competition-monopoly']);
+    expect(placementOpened(plan.items, answer({}))).toEqual(['scarcity', 'supply-demand', 'elasticity', 'market-failures', 'money-banks', 'inflation', 'consumer', 'costs', 'competition-monopoly', 'monopolistic']);
+    expect(placementOpened(plan.items, answer({ 'supply-demand': 1 }))).toEqual(['scarcity', 'supply-demand', 'elasticity', 'market-failures', 'money-banks', 'inflation', 'consumer', 'costs', 'competition-monopoly', 'monopolistic']);
     expect(placementOpened(plan.items, answer({ 'supply-demand': 2 }))).toEqual(['scarcity']);
     expect(placementOpened(plan.items, answer({ scarcity: 2 }))).toEqual([]);
     const first = answer({ scarcity: 2 });
@@ -252,7 +252,8 @@ describe('лавка и заморозки', () => {
     const total = OUTFITS.reduce((a, o) => a + o.crowns, 0);
     // цены — от заработка курса (docs/mechanics.md): вся лавка — больше двух курсов
     expect(total).toBeGreaterThan(2 * courseIncome().total);
-    expect(new Set(OUTFITS.map((o) => o.slot))).toEqual(new Set(['head', 'face', 'neck', 'hand', 'frame']));
+    // desk — украшения урока (src/learn/__tests__/decor.test.js)
+    expect(new Set(OUTFITS.map((o) => o.slot))).toEqual(new Set(['head', 'face', 'neck', 'hand', 'frame', 'desk']));
     expect(OUTFITS.filter((o) => o.rare).length).toBeGreaterThanOrEqual(3);
   });
   it('витрина дня: шесть некупленных обычных вещей, одинаковая у всех и меняется по дням; скидка дня — 30% на одну', () => {

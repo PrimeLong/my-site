@@ -18,7 +18,7 @@
    ответов показывает, можно ли себе доверять: 60% «уверенных» верных — повод перечитать главу.
    В той же таблице живут и вопросы на вспоминание в конце разделов («совпало / не совпало»):
    у них то же расписание повторения, но без оценки уверенности. */
-import { emptyLearn, normalizeLearn, mergeLearn } from './learn-state.js';
+import { emptyLearn, normalizeLearn, mergeLearn, dayOf } from './learn-state.js';
 
 export const TEXTBOOK_PROGRESS_KEY = 'ems-textbook-v1';
 export const REVIEW_DAYS = [2, 5, 12];
@@ -26,11 +26,8 @@ const DAY = 24 * 3600 * 1000;
 
 export const emptyProgress = () => ({ read: {}, unread: {}, problems: {}, last: null, lastAt: 0, days: {}, learn: emptyLearn() });
 
-// журнал занятий: день по местному времени и ещё одна минута в нём
-export const dayKey = (ts) => {
-  const d = new Date(ts);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-};
+// журнал занятий: день по всемирному времени (как dayOf в learn-state.js) и ещё одна минута в нём
+export const dayKey = (ts) => dayOf(ts);
 const MAX_DAYS = 120;
 export const addStudyMinute = (p, now = Date.now()) => {
   const key = dayKey(now); const days = p.days || {};

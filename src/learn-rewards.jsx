@@ -14,16 +14,17 @@ import { Button, IconButton, Card, Heading, Row, Sheet } from './ds.jsx';
 import { halloween, seasonLeftText, WEB_FRAME } from './learn/halloween.js';
 import { Rosette, Medal, CoinShower, CountUp, Chest, Guilloche } from './ds-art.jsx';
 import { ShopSwitch, RateWeek } from './learn-rate.jsx';
+import { DeskDecor } from './learn-decor.jsx';
 // сад — отдельный ленивый чанк: грузится, только когда открыли «Сад»
 const GardenView = React.lazy(() => import('./learn-garden.jsx').then((m) => ({ default: m.GardenView })));
 import {
-  balance, rateOn, rateHistory, priceOf, buy, setWear, outfitOf, FREEZE, BOOST, OUTFITS, OUTFIT_BY_ID, SLOT_LABEL, shopDay, boostActive, DEAL_OFF, questsFor, QUEST_ICON, monthChallenge, monthStamps, policyInfo, takePolicy, cancelPolicy, PREMIUM,
+  balance, rateOn, rateHistory, priceOf, buy, setWear, outfitOf, deskOf, FREEZE, BOOST, WARDROBE, OUTFIT_BY_ID, SLOT_LABEL, shopDay, boostActive, DEAL_OFF, questsFor, QUEST_ICON, monthChallenge, monthStamps, policyInfo, takePolicy, cancelPolicy, PREMIUM,
   chestCoins, chestKey, hasClaim, openChest, achievementsOf, coinsWord, plural, greetingAt, COIN, PIGGY, piggyState, piggyPut, piggyTake, piggyAdd, topupRate, piggyValue, forgone, REAL_RATE, realCurve, weekRate,
   goalCoins,
 } from './learn/rewards.js';
 import { skillLevel, LEVEL_NAME, LEVEL_TEXT } from './learn/program.js';
 import {
-  dayOf, addDays, streak, ownedFreezes, weekDots, setProfile, PROFILE_GOALS, PROFILE_MINUTES, PROFILE_GOAL_LABEL, goalMinutes, goalToday, pendingGoal,
+  dayOf, addDays, dayStart, streak, ownedFreezes, weekDots, setProfile, PROFILE_GOALS, PROFILE_MINUTES, PROFILE_GOAL_LABEL, goalMinutes, goalToday, pendingGoal,
 } from './textbook/learn-state.js';
 
 export const REWARD_CSS = `
@@ -230,6 +231,9 @@ export const REWARD_CSS = `
   .rw-item[data-rare="true"][data-owned="true"] { animation: none; }
   @keyframes rw-shine { 0%, 55% { background-position: 130% 0, 0 0 } 100% { background-position: -30% 0, 0 0 } }
   .rw-note { font: italic 12px/1.3 var(--ds-sans); color: var(--ds-ink2); }
+  .rw-desk-items { grid-template-columns: repeat(auto-fill, minmax(min(100%, 230px), 1fr)); }
+  .rw-desk-stage { width: 100%; border-radius: 4px; background: repeating-linear-gradient(0deg, transparent 0 15px, var(--ds-rule) 15px 16px), var(--ds-paper); padding-top: 4px; }
+  .rw-desk-tag { background: linear-gradient(135deg, #2E5F8A, #4D7C0F); }
   .rw-price s { color: var(--ds-ink3); font-weight: 400; margin-right: 4px; }
   .rw-goal { height: 5px; width: 100%; border-radius: 3px; background: var(--ds-rule); overflow: hidden; }
   .rw-goal > i { display: block; height: 100%; background: #8A2F45; }
@@ -406,21 +410,24 @@ function RateChart({ hist }) {
 }
 
 /* ------------------------------ ЛАВКА ------------------------------ */
-// до полуночи — когда обновится витрина
-const untilMidnight = (now) => { const d = new Date(now); const m = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getTime() - now; const hh = Math.floor(m / 3600000); const mm = Math.floor((m % 3600000) / 60000); return `${hh} ч ${mm} мин`; };
+// до полуночи по всемирному времени — когда обновится витрина
+const untilMidnight = (now) => { const m = dayStart(now) + 24 * 3600000 - now; const hh = Math.floor(m / 3600000); const mm = Math.floor((m % 3600000) / 60000); return `${hh} ч ${mm} мин`; };
 // карточка вещи: Инфля в ней, цена по курсу (со скидкой — старая зачёркнута), купить / надеть
 function ShopItem({ o, learn, day, wear, b, onBuy, onToggle, deal = false, goal = false, hw = null }) {
-  const owned = !!(learn.owned || {})[o.id]; const on = wear[o.slot] === o.id;
+  const desk = o.slot === 'desk';
+  const owned = !!(learn.owned || {})[o.id]; const on = (desk ? deskOf(learn) : wear[o.slot]) === o.id;
   const price = priceOf(o.id, day, learn); const full = priceOf(o.id, day);
   return (
     <div className="rw-item" data-testid="shop-item" data-item={o.id} data-owned={String(owned)} data-on={String(on)} data-deal={deal ? 'true' : undefined} data-rare={o.rare && !o.season ? 'true' : undefined} data-season={o.season || undefined}>
       {deal && !owned && <span className="rw-deal" data-testid="shop-deal">−{Math.round(DEAL_OFF * 100)}%</span>}
-      {o.season ? <span className="rw-rare rw-season"><Ghost size={11} aria-hidden="true" />хеллоуин</span> : o.rare && <span className="rw-rare"><Gem size={11} aria-hidden="true" />редкое</span>}
-      <Mascot mood="hello" size={o.rare ? 62 : 50} outfit={{ [o.slot]: o.id }} label={`Инфля: ${o.title}`} />
+      {o.season ? <span className="rw-rare rw-season"><Ghost size={11} aria-hidden="true" />хеллоуин</span> : desk ? <span className="rw-rare rw-desk-tag"><Gem size={11} aria-hidden="true" />в урок</span> : o.rare && <span className="rw-rare"><Gem size={11} aria-hidden="true" />редкое</span>}
+      {/* украшение урока — живое прямо на витрине: его можно потрогать до покупки */}
+      {desk ? <div className="rw-desk-stage"><DeskDecor id={o.id} height={64} preview label={`${o.title}: потрогайте`} /></div>
+        : <Mascot mood="hello" size={o.rare ? 62 : 50} outfit={{ [o.slot]: o.id }} label={`Инфля: ${o.title}`} />}
       <div style={{ fontWeight: 700, fontSize: 13.5, lineHeight: 1.25 }}>{o.title}</div>
       {o.note && <div className="rw-note">{o.note}</div>}
       {owned
-        ? <Button small variant={on ? 'secondary' : 'primary'} onClick={() => onToggle(o)}>{on ? 'Снять' : 'Надеть'}</Button>
+        ? <Button small variant={on ? 'secondary' : 'primary'} onClick={() => onToggle(o)} data-testid={desk ? 'desk-toggle' : undefined}>{on ? (desk ? 'Убрать из уроков' : 'Снять') : (desk ? 'Повесить в уроки' : 'Надеть')}</Button>
         : o.reward ? <>
           {/* награда события: не продаётся — собирается тыквами за уроки */}
           <div className="rw-forgone" data-testid="shop-reward">Не продаётся: {hw ? `тыкв ${hw.pumpkins} из ${hw.goal}` : 'награда за 13 тыкв'}</div>
@@ -477,7 +484,7 @@ function PolicyCard({ learn, update, now, b, onMsg }) {
    «Без вещи» — снять с этого места, «Снять всё» — всё сразу. Открыто место последней покупки. */
 function Wardrobe({ learn, wear, onWear }) {
   const owned = learn.owned || {};
-  const list = OUTFITS.filter((o) => owned[o.id]);
+  const list = WARDROBE.filter((o) => owned[o.id]);
   const slots = Object.keys(SLOT_LABEL);
   const latest = list.slice().sort((a, b) => (owned[b.id] || 0) - (owned[a.id] || 0))[0];
   const [slot, setSlot] = useState(latest ? latest.slot : slots[0]);
@@ -518,7 +525,7 @@ function Wardrobe({ learn, wear, onWear }) {
               </div>
             </>
           ) : <div className="ds-sub" style={{ fontSize: 14.5 }}>Пока пусто — купленные вещи будут здесь, и их можно будет примерить.</div>}
-          <div className="ds-sub" style={{ fontSize: 13, marginTop: 10 }} data-testid="wardrobe-count">В гардеробе вещей: {list.length} из {OUTFITS.length}.</div>
+          <div className="ds-sub" style={{ fontSize: 13, marginTop: 10 }} data-testid="wardrobe-count">В гардеробе вещей: {list.length} из {WARDROBE.length}.</div>
         </div>
       </div>
     </Card>
@@ -546,9 +553,10 @@ export function ShopView({ learn, update, now = Date.now(), focus = null }) {
     if (!r.ok) { Audio.play('down'); setMsg({ ok: false, text: r.reason }); return; }
     Audio.play('register');
     update(() => r.s, { settle: true });
-    setMsg({ ok: true, text: id === BOOST.id ? `Двойной опыт на ${BOOST.minutes} минут — за ${r.price} ${coinsWord(r.price)}.` : `Куплено за ${r.price} ${coinsWord(r.price)} — Инфля уже в обновке.` });
+    setMsg({ ok: true, text: id === BOOST.id ? `Двойной опыт на ${BOOST.minutes} минут — за ${r.price} ${coinsWord(r.price)}.`
+      : OUTFIT_BY_ID[id].slot === 'desk' ? `Куплено за ${r.price} ${coinsWord(r.price)} — украшение уже висит в уроках.` : `Куплено за ${r.price} ${coinsWord(r.price)} — Инфля уже в обновке.` });
   };
-  const toggle = (o) => { Audio.play('paper'); update((s) => setWear(s, o.slot, wear[o.slot] === o.id ? null : o.id, now)); };
+  const toggle = (o) => { Audio.play('paper'); update((s) => setWear(s, o.slot, (s.wear || {})[o.slot] === o.id ? null : o.id, now)); };
   const putOn = (slot, id) => { Audio.play('paper'); update((s) => setWear(s, slot, id, now)); };
   const itemProps = { learn, day, wear, b, onBuy: doBuy, onToggle: toggle };
   return (
@@ -619,6 +627,11 @@ export function ShopView({ learn, update, now = Date.now(), focus = null }) {
         <Heading level={3} title="Витрина ювелира" sub="Редкие вещи — всегда здесь. На них копят: полоска показывает, сколько уже собрано." />
         <div className="rw-items" style={{ margin: '10px 0 16px' }} data-testid="shop-rare">
           {today.rare.map((id) => <ShopItem key={id} o={OUTFIT_BY_ID[id]} goal {...itemProps} />)}
+        </div>
+
+        <Heading level={3} title="Украшения урока" sub="Висят над заданием в каждом уроке: живые — их можно потрогать, и они отзываются на ваши ответы. Самое дорогое в лавке." />
+        <div className="rw-items rw-desk-items" style={{ margin: '10px 0 16px' }} data-testid="shop-desk">
+          {today.desk.map((id) => <ShopItem key={id} o={OUTFIT_BY_ID[id]} goal {...itemProps} />)}
         </div>
 
         <Heading level={3} title="Гардероб" sub="Примерочная: по одной вещи на голову, лицо, шею, в руку и рамку. Касание — надеть или снять." />

@@ -72,8 +72,7 @@ export function pushCard(card) {
   const json = JSON.stringify(card);
   let sent = null; try { sent = localStorage.getItem(CARD_KEY); } catch { /* приватный режим */ }
   // раз в день — даже без перемен: по карточке друзья видят, что вы в сети
-  const d = new Date();
-  const key = `${a.login}:${d.getFullYear()}-${d.getMonth()}-${d.getDate()}:${json}`;
+  const key = `${a.login}:${new Date().toISOString().slice(0, 10)}:${json}`;
   if (sent === key) return;
   accountCard(a.token, card).then(() => { try { localStorage.setItem(CARD_KEY, key); } catch { /* приватный режим */ } }).catch(() => {});
 }
