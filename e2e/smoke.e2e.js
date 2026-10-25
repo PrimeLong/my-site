@@ -4584,3 +4584,43 @@ test('учебник из гайда юнита: черновик на поля�
   await expect(page.getByTestId('sketch-toggle')).toBeVisible();
   expect(errors).toEqual([]);
 });
+
+test('«Чтение»: книга под уроками юнита — после первого урока; цитаты, «найдите в цитате», полка и опыт один раз', async ({ page }) => {
+  await page.addInitScript(() => {
+    if (localStorage.getItem('ems-textbook-v1')) return;
+    localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons: { 'sc-i1': { at: Date.now() - 86400000, runs: 1, best: 90 } } } }));
+  });
+  const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
+  const card = page.locator('[data-testid=reading-card][data-reading="read-choice"]');
+  await expect(card).toHaveAttribute('data-state', 'open');
+  await expect(card).toContainText('Роббинс, Соуэлл, Смит');
+  await card.getByTestId('reading-open').click();
+  const reading = page.getByTestId('reading');
+  await expect(reading).toBeVisible();
+  for (let k = 1; k <= 3; k += 1) {
+    const p = reading.getByTestId('reading-page');
+    await expect(p).toHaveAttribute('data-page', String(k));
+    await expect(page.getByTestId('reading-next')).toBeDisabled();
+    // «найдите в цитате» — касание слова; выбор — вариант
+    if (await p.getAttribute('data-kind') === 'mark') await p.locator('[data-testid=reading-word][data-hit="1"]').first().click();
+    else await p.locator('[data-testid=reading-opt][data-ok]').click();
+    await expect(page.getByTestId('reading-feedback')).toHaveAttribute('data-ok', 'true');
+    await page.getByTestId('reading-next').click();
+  }
+  await expect(page.getByTestId('reading-done')).toContainText('Книга на полке');
+  await expect(page.getByTestId('reading-done')).toContainText('+12 опыта');
+  await expect(page.locator('[data-testid=reading-book][data-done="true"]')).toHaveCount(1);
+  await expect(page.getByTestId('reading-keep')).toContainText('Роббинс');
+  await page.getByTestId('reading-finish').click();
+  await expect(reading).toHaveCount(0);
+  await expect(card).toHaveAttribute('data-state', 'done');
+  expect(await page.evaluate(() => !!JSON.parse(localStorage.getItem('ems-textbook-v1')).learn.read['read-choice'])).toBe(true);
+  // перечитать можно, опыт — уже нет; «Найдите в цитате» с ошибкой — верные слова подчёркнуты
+  await card.getByTestId('reading-open').click();
+  await reading.locator('[data-testid=reading-word]:not([data-hit])').first().click();
+  await expect(page.getByTestId('reading-feedback')).toHaveAttribute('data-ok', 'false');
+  await expect(page.getByTestId('reading-feedback')).toContainText('Нужные слова подчёркнуты');
+  await page.getByTestId('reading-close').click();
+  await expect(reading).toHaveCount(0);
+  expect(errors).toEqual([]);
+});

@@ -37,6 +37,7 @@ import {
   markShown, shownWith,
 } from './textbook/learn-state.js';
 import { courseGrade, gradeWord } from './learn/grade.js';
+import { READING_BY_UNIT, readingOpen, isRead } from './learn/reading.js';
 import { runCoins, runKey, earn, settle, chestKey, hasClaim, outfitOf, boostActive, chargePremiums, fixMonth } from './learn/rewards.js';
 import { pickPhrase, situation, endKind } from './learn/voice.js';
 import { lessonOpts, weakLessons, recommend, courseCtx, theoryNotice } from './learn/program.js';
@@ -89,6 +90,19 @@ const CSS = `
     background: var(--ds-card); font: 700 15px var(--ds-mono); white-space: nowrap; box-shadow: inset 0 0 0 2px var(--ds-card), inset 0 0 0 3px var(--ds-rule); }
   .ln-stat small { font: 12px var(--ds-sans); color: var(--ds-ink3); letter-spacing: .04em; }
   /* оценка в курсе: крупная цифра оценки, слово, точность и полоска пройденного курса с бликом */
+  .ln-read { display: flex; align-items: center; gap: 14px; margin: 14px 0 6px; padding: 12px 14px 12px 12px; border-radius: 18px; background: var(--ds-card);
+    border: 1px solid var(--ds-rule2); box-shadow: 0 10px 24px -20px rgba(40, 24, 8, .5); }
+  .ln-read-spine { flex: none; width: 34px; height: 86px; border-radius: 4px 4px 2px 2px; display: flex; align-items: center; justify-content: center; color: #fff; position: relative;
+    background: linear-gradient(90deg, rgba(0,0,0,.2), transparent 20%, transparent 80%, rgba(0,0,0,.22)), var(--rd); box-shadow: 3px 0 0 -1px color-mix(in srgb, var(--rd) 40%, var(--ds-card)); }
+  .ln-read-spine::before, .ln-read-spine::after { content: ''; position: absolute; left: 4px; right: 4px; height: 2px; background: rgba(255,255,255,.55); }
+  .ln-read-spine::before { top: 9px; } .ln-read-spine::after { bottom: 9px; }
+  .ln-read-spine span { writing-mode: vertical-rl; transform: rotate(180deg); font: 700 12.5px var(--ds-head); letter-spacing: .04em; white-space: nowrap; }
+  .ln-read-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+  .ln-read-title { font: italic 700 19px/1.2 var(--ds-news, 'PT Serif', Georgia, serif); }
+  .ln-read-who { font-size: 13.5px; color: var(--ds-ink2); }
+  .ln-read-lead { font-size: 13.5px; line-height: 1.35; color: var(--ds-ink3); margin-top: 2px; }
+  .ln-read.locked { opacity: .78; }
+  .ln-read.locked .ln-read-spine { filter: grayscale(.85); opacity: .6; }
   .ln-grade { display: block; margin: -4px 0 14px; padding: 12px 14px 10px; border-radius: 18px; border: 2px solid color-mix(in srgb, var(--u) 30%, var(--ds-rule));
     background: linear-gradient(135deg, color-mix(in srgb, var(--u) 9%, var(--ds-card)), var(--ds-card) 70%); box-shadow: 0 3px 0 color-mix(in srgb, var(--u) 22%, var(--ds-rule)); }
   .ln-grade-top { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
@@ -1700,6 +1714,27 @@ const writeSeen = (set) => { try { localStorage.setItem(SEEN_KEY, JSON.stringify
 
 /* Оценка в курсе (src/learn/grade.js): вместо счётчиков опыта и монет — «ваша оценка» от 2 до 5 и
    полоска пройденного курса. Опыт — в лиге, монеты — в лавке; здесь — главное: как идёт учёба. */
+/* «Чтение» юнита (src/learn/reading.js): книга под уроками — корешок цвета подборки, авторы и одна
+   строка о чём. Открывается после первого урока юнита; прочитанная — «на полке», её можно перечитать. */
+function ReadingCard({ r, learn, open, onOpen }) {
+  const done = isRead(learn, r.id);
+  const authors = [...new Set(r.pages.map((p) => p.author.split(' ').pop()))].join(', ');
+  return (
+    <div className={`ln-read${done ? ' done' : ''}${open ? '' : ' locked'}`} style={{ '--rd': r.color }} data-testid="reading-card" data-reading={r.id} data-state={done ? 'done' : open ? 'open' : 'locked'}>
+      <span className="ln-read-spine" aria-hidden="true"><span>{r.spine}</span></span>
+      <span className="ln-read-main">
+        <span className="ds-eyebrow">Чтение · {r.pages.length} {plural(r.pages.length, 'цитата', 'цитаты', 'цитат')}{done ? ' · на полке' : ''}</span>
+        <span className="ln-read-title">{r.title}</span>
+        <span className="ln-read-who">{authors}</span>
+        <span className="ln-read-lead">{open ? r.lead : 'Откроется после первого урока юнита.'}</span>
+      </span>
+      {open ? (
+        <Button small variant={done ? 'ghost' : 'primary'} icon={done ? Check : BookOpenText} data-testid="reading-open" onClick={() => { Audio.play('paper'); onOpen(); }}>{done ? 'Перечитать' : 'Читать'}</Button>
+      ) : <Lock size={18} color="var(--ds-ink3)" aria-hidden="true" />}
+    </div>
+  );
+}
+
 function GradeCard({ learn }) {
   // весь курс по урокам — считаем, только когда прогресс поменялся
   const c = useMemo(() => courseGrade(learn), [learn]);
@@ -2198,7 +2233,7 @@ function Collapse({ closing, children }) {
   return <div ref={ref} className="ln-unit-body">{children}</div>;
 }
 
-function PathView({ learn, update, onLesson, onStart, onOpenBook, onChest, onTasks, visible, homeTick = 0, folded: foldReq = null, bell = null, races = null }) {
+function PathView({ learn, update, onLesson, onStart, onOpenBook, onChest, onTasks, onRead = () => {}, visible, homeTick = 0, folded: foldReq = null, bell = null, races = null }) {
   const states = pathState(learn);
   const rec = recommend(learn, states);
   const recTitle = rec ? LESSON_BY_ID[rec.lessonId].title : null;
@@ -2396,6 +2431,7 @@ function PathView({ learn, update, onLesson, onStart, onOpenBook, onChest, onTas
               {hasModel(u.id) && !wide && <ModelFold unitId={u.id} learn={learn} />}
               <Route st={st} seen={seen} reduced={reduced} visible={visible} resumes={resumes} onLesson={onLesson} rec={rec ? rec.lessonId : null} spooky={halloweenOn(dayOf(Date.now()))}
                 chest={st.complete ? { unitId: u.id, opened: hasClaim(learn, chestKey(u.id)) } : null} onChest={onChest} />
+              {READING_BY_UNIT[u.id] && <ReadingCard r={READING_BY_UNIT[u.id]} learn={learn} open={readingOpen(st)} onOpen={() => onRead(READING_BY_UNIT[u.id].id)} />}
             </Collapse>
           )}
         </section>
@@ -2475,6 +2511,7 @@ function TasksView({ learn, onStart, onOpenBook, onBack }) {
 const ProfileView = React.lazy(() => import('./learn-profile.jsx').then((m) => ({ default: m.ProfileView })));
 const SettingsView = React.lazy(() => import('./learn-profile.jsx').then((m) => ({ default: m.SettingsView })));
 const NewsView = React.lazy(() => import('./learn-news.jsx'));
+const ReadingView = React.lazy(() => import('./learn-reading.jsx'));
 const Lazy = ({ children }) => <React.Suspense fallback={<BrandLoader compact text="Открываем" />}>{children}</React.Suspense>;
 const Celebration = React.lazy(() => import('./learn-celebrate.jsx'));
 /* Церемонии (src/learn/celebrate.js): что из полученного ещё не праздновали. Показанное помнит
@@ -2533,6 +2570,8 @@ function GuestSave({ learn, afterLesson = false }) {
 export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReopened = () => {}, onThemeChange = () => {}, onBookOver = () => {}, closeTick = 0, bookHome = 0, pathHome = 0, guest = false, firstLesson = false, onFirstLesson = () => {}, onTab = () => {} }) {
   const [learn, update] = useLearn();
   const [run, setRun] = useState(null);
+  // «Чтение» юнита — подборка цитат поверх Пути (src/learn-reading.jsx)
+  const [reading, setReading] = useState(null);
   const sketchBook = useMedia(SKETCH_BOOK_QUERY);
   const [sheet, setSheet] = useState(null);
   const [book, setBook] = useState(null);
@@ -2651,7 +2690,7 @@ export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReo
         {tab === 'path' && !tasks && guest && <GuestSave learn={learn} />}
         {tab === 'path' && !tasks && <PathView learn={learn} update={update} onLesson={setSheet} onStart={start} onOpenBook={openBook} onChest={setChest}
           onTasks={() => { setTasks(true); window.scrollTo(0, 0); }} visible={!over} homeTick={pathHome} folded={folded}
-          bell={<BellButton count={notify.unread.length} onClick={() => setBell(true)} />} races={raceCards.length ? raceCards : null} />}
+          bell={<BellButton count={notify.unread.length} onClick={() => setBell(true)} />} races={raceCards.length ? raceCards : null} onRead={setReading} />}
         {tab === 'path' && tasks && <TasksView learn={learn} onStart={start} onOpenBook={openBook} onBack={() => { Audio.play('paper'); setTasks(false); window.scrollTo(0, 0); }} />}
         {tab === 'book' && <div className="ln-book" data-testid="book-tab"><TextbookScreen asTab homeTick={bookHome} {...bookHandlers} {...bookReports} />
           {/* черновик на полях учебника — на широком экране с мышью; пока идёт урок, у урока свой */}
@@ -2678,6 +2717,7 @@ export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReo
         onGo={() => { celebrated(celebrate); onTab('profile'); }} /></React.Suspense>}
       {sheet && <LessonSheet l={sheet} learn={learn} weak={weakLessons(learn).some((w) => w.id === sheet.id)} onStart={start} onClose={() => setSheet(null)} onOpenBook={openBook}
         onSkip={(id) => { Audio.play('paper'); update((s) => skipLesson(s, id)); setSheet(null); }} />}
+      {reading && <Lazy><ReadingView id={reading} learn={learn} update={update} onClose={() => setReading(null)} /></Lazy>}
       {run && <Runner key={JSON.stringify({ ...run, resume: !!run.resume })} run={run} learn={learn} update={update} hidden={!!book} guest={guest}
         onClose={() => setRun(null)} onOpenBook={(page) => openBook(page)} />}
     </DsRoot>

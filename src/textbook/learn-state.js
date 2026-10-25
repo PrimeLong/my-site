@@ -51,7 +51,7 @@ export const emptyLearn = () => ({
   coins: {}, spent: {}, claimed: {}, owned: {}, skipped: {}, wear: { head: null, face: null, neck: null, hand: null, frame: null, at: 0 }, freezeBuy: {}, frozen: {},
   policyAt: 0, policyOff: 0, policyLapse: 0, premiums: {}, monthPlan: {},
   seen: {}, best: {}, boost: 0, piggy: {}, piggyOut: {}, piggyTop: {}, piggyAdd: {}, garden: {}, harvest: {}, water: {},
-  shown: {},
+  shown: {}, read: {},
 });
 /* Показанное ученику — общее для всех его устройств (жалоба: «прошёл юнит на ПК — марка и уведомления
    повторяются на телефоне»): ключ → когда впервые показали. Префиксы: c: — церемония (марка, печать),
@@ -62,6 +62,12 @@ export function markShown(s, keys, now = Date.now()) {
   const add = keys.filter((k) => okKey(k) && !(s.shown || {})[k]);
   if (!add.length) return s;
   return upd(s, { shown: { ...s.shown, ...Object.fromEntries(add.map((k) => [k, now])) } });
+}
+/* «Чтение» (src/learn/reading.js): прочитанные подборки цитат — id → когда впервые дочитали. Опыт
+   за чтение начисляется один раз, на полке — книга. Общее для всех устройств. */
+export function markRead(s, id, now = Date.now()) {
+  if (!okKey(id) || (s.read || {})[id]) return s;
+  return upd(s, { read: { ...s.read, [id]: now } });
 }
 // показанное с префиксом — без префикса: { ключ: время }
 export const shownWith = (s, prefix) => Object.fromEntries(Object.entries((s && s.shown) || {}).filter(([k]) => k.startsWith(prefix)).map(([k, v]) => [k.slice(prefix.length), v]));
@@ -556,6 +562,7 @@ function normalizeProgram(r) {
     seen: countMap(r.seen, MAX_SEEN, 9999), best: countMap(r.best, MAX_BEST, 1e6), boost: cnt(r.boost, 1e14),
     piggy: piggyMap(r.piggy), piggyOut: piggyMap(r.piggyOut), piggyTop: piggyTopMap(r.piggyTop), piggyAdd: piggyAddMap(r.piggyAdd), garden: gardenMap(r.garden), harvest: harvestMap(r.harvest), water: waterMap(r.water),
     // показанное: самые свежие SHOWN_MAX по времени
+    read: tsMap(r.read, 200),
     shown: Object.fromEntries(Object.entries(tsMap(r.shown, 5000)).sort((a, b) => a[1] - b[1] || (a[0] < b[0] ? -1 : 1)).slice(-SHOWN_MAX)),
   };
 }
@@ -584,6 +591,7 @@ function mergeProgram(x, y) {
     harvest: minTs(x.harvest, y.harvest),
     water: Object.fromEntries([...new Set([...Object.keys(x.water), ...Object.keys(y.water)])].map((k) => [k, [x.water[k], y.water[k]].filter(Boolean).sort()[0]])),
     shown: minTs(x.shown, y.shown),
+    read: minTs(x.read, y.read),
   };
 }
 /* Слияние двух устройств: счётчики — по максимуму (одно и то же занятие не удваивается),
