@@ -6,20 +6,28 @@
      наклонять мышью или пальцем — по ней бежит голографический блик.
    - «Новая печать»: на лист грамоты опускается латунная печать на деревянной ручке, удар — сургуч
      растекается и брызгает, печать поднимается — под ней тиснёный знак с блеском и искрами.
+   - «Итоги недели» (лига): кольцо из двадцати мест группы загорается по одному — зона повышения
+     зелёная, понижения красная, — ваше место вспыхивает цветом лиги, в центре щит лиги; повышение —
+     стрелка взлетает, щит переворачивается в новую лигу и сыплется конфетти; понижение — стрелка
+     падает, щит переворачивается вниз, без конфетти; остались — щит встряхивается на месте.
    Касание по сцене до конца постановки — сразу к финалу. «Уменьшить движение» — сразу финал.
    Отдельный ленивый чанк: грузится, только когда есть что праздновать. */
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { ArrowRight, Award, Gift } from 'lucide-react';
+import { ArrowRight, ArrowUp, ArrowDown, Award, Gift } from 'lucide-react';
 import { Engraving, Medal, Stamp, CountUp, useReducedMotion } from './ds-art.jsx';
 import { ACH_ICON, MONTH_ART, MONTH_ABBR } from './award-art.js';
 import { albumItems, monthItems } from './learn/collections.js';
 import { coinsWord } from './learn/rewards.js';
+import { LEAGUE_BY_ID, LEAGUES, GROUP, PROMOTE, DEMOTE } from './learn/league.js';
+import { LeagueBadge } from './learn-league.jsx';
 import { Audio } from './MacroSimulator.jsx';
 
 // раскадровка, мс: когда что происходит в сцене марки и в сцене печати
 const POST = { fly: 0, draw: 650, fill: 1900, mark: 2450, text: 2850, album: 3250, buttons: 3700 };
 // печать: ручка опускается с 450 мс, удар — на середине её пути (1400), подъём — с 1700
 const SEAL = { paper: 100, tool: 450, slam: 1400, lift: 1750, text: 2500, buttons: 3150 };
+// итоги лиги: места зажигаются с 200 мс по 45 мс, своё — вспышкой, потом стрелка и смена щита
+const LG = { ring: 200, step: 45, me: 1300, arrow: 1750, flip: 2150, text: 2700, buttons: 3350 };
 
 const CSS = `
   .cb { position: fixed; inset: 0; z-index: 450; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0; overflow: hidden;
@@ -153,7 +161,29 @@ const CSS = `
   @media (min-width: 900px) and (min-height: 760px) { .cb-body { zoom: 1.3; } }
   @media (min-width: 1300px) and (min-height: 900px) { .cb-body { zoom: 1.45; } }
   @media (max-height: 700px) { .cb-stage { transform: scale(.8); margin: -30px 0; } .cb-title { font-size: 30px; } .cb-btns { margin-top: 16px; } }
-  @media (prefers-reduced-motion: reduce) { .cb *, .cb { animation: none !important; transition: none !important; } .cb-confetti, .cb-tool, .cb-tool-shadow { display: none; } }
+  /* итоги лиги: кольцо мест, щит в центре, стрелка */
+  .cb-ring { position: absolute; inset: 0; }
+  .cb-ring circle { animation: cb-pop .35s cubic-bezier(.3, 1.6, .5, 1) var(--at) backwards; transform-box: fill-box; transform-origin: center; }
+  .cb-ring .me { animation: cb-pop .35s cubic-bezier(.3, 1.6, .5, 1) var(--at) backwards, cb-me 1.6s ease-in-out calc(var(--at) + .4s) infinite; }
+  @keyframes cb-me { 50% { transform: scale(1.35) } }
+  .cb-ring-halo { animation: cb-halo 1s ease-out var(--at) backwards; transform-box: fill-box; transform-origin: center; }
+  @keyframes cb-halo { from { opacity: .9; transform: scale(.4) } to { opacity: 0; transform: scale(2.6) } }
+  .cb-shield { position: relative; width: 112px; height: 126px; perspective: 600px; }
+  .cb-shield > * { position: absolute; inset: 0; display: grid; place-items: center; backface-visibility: hidden; filter: drop-shadow(0 14px 18px rgba(0,0,0,.45)); }
+  .cb-shield-old { animation: cb-shield-out .45s ease-in var(--at) forwards; }
+  .cb-shield-new { animation: cb-shield-in .55s cubic-bezier(.2, 1.4, .4, 1) calc(var(--at) + .4s) backwards; }
+  @keyframes cb-shield-out { to { transform: rotateY(90deg) scale(.9) } }
+  @keyframes cb-shield-in { from { transform: rotateY(-90deg) scale(.9) } }
+  .cb-shield-stay { animation: cb-stay .6s ease-in-out var(--at) backwards; }
+  @keyframes cb-stay { 25% { transform: rotate(-8deg) } 50% { transform: rotate(6deg) } 75% { transform: rotate(-3deg) } }
+  .cb-place { position: absolute; left: 50%; bottom: 46px; transform: translateX(-50%); padding: 4px 12px; border-radius: 999px; white-space: nowrap;
+    background: rgba(0,0,0,.42); border: 1px solid rgba(255,255,255,.28); font: 700 15px var(--ds-mono); animation: cb-pop .4s cubic-bezier(.3, 1.6, .5, 1) var(--at) backwards; }
+  .cb-arrow { position: absolute; left: calc(50% + 44px); top: calc(50% - 74px); width: 40px; height: 40px; display: grid; place-items: center; border-radius: 50%; color: #fff;
+    animation: cb-arrow-up .9s cubic-bezier(.2, .9, .3, 1) var(--at) backwards; }
+  .cb-arrow.down { animation-name: cb-arrow-down; }
+  @keyframes cb-arrow-up { from { opacity: 0; transform: translateY(70px) scale(.6) } }
+  @keyframes cb-arrow-down { from { opacity: 0; transform: translateY(-70px) scale(.6) } }
+  @media (prefers-reduced-motion: reduce) { .cb *, .cb { animation: none !important; transition: none !important; } .cb-confetti, .cb-tool, .cb-tool-shadow { display: none; } .cb-shield-old { display: none; } }
 `;
 
 // предсказуемый «случай» — у одной и той же награды один и тот же рисунок конфетти
@@ -265,7 +295,7 @@ function Scene({ tone, label, seed, confettiAt, stage, shakeAt, eyebrow, title, 
       <div className="cb-glow" aria-hidden="true" />
       <div className="cb-rays" aria-hidden="true" />
       <div className="cb-grain" aria-hidden="true" />
-      {!reduced && <Confetti seed={seed} at={confettiAt} />}
+      {!reduced && confettiAt != null && <Confetti seed={seed} at={confettiAt} />}
       <div className="cb-body">
       <div className={`cb-shaker ${shakeAt != null ? 'cb-shake' : ''}`} style={{ '--at': `${shakeAt || 0}ms` }}><div className="cb-stage">{stage}</div></div>
       <div className="cb-text">
@@ -405,7 +435,58 @@ function SealScene({ m, onDone, onGo }) {
   );
 }
 
+/* Итоги недели лиги: двадцать мест кольцом (1 — сверху, по часовой), щит лиги в центре и смена лиги. */
+const placeWord = (n) => `${n}-е место`;
+// «Бронзовая» → «в Бронзовой лиге»
+const inLeague = (lg) => `в ${lg.title.replace(/ая$/, 'ой')} лиге`;
+function LeagueScene({ m, onDone, onGo }) {
+  const h = m.it;
+  const from = LEAGUE_BY_ID[h.league]; const to = LEAGUE_BY_ID[h.to] || from;
+  const moved = h.to !== h.league; const up = moved && LEAGUES.findIndex((l) => l.id === h.to) > LEAGUES.findIndex((l) => l.id === h.league);
+  const meAt = LG.me;
+  useCues([[meAt, 'tick'], ...(moved ? [[LG.flip + 400, up ? 'register' : 'down']] : [[LG.flip, 'paper']]), [LG.text + 500, h.coins ? 'coin' : 'paper']]);
+  const R = 118; const C = 150;
+  const dots = Array.from({ length: GROUP }, (_, k) => {
+    const place = k + 1; const a = (-90 + k * (360 / GROUP)) * (Math.PI / 180);
+    const zone = place <= PROMOTE ? 'up' : place > GROUP - DEMOTE ? 'down' : 'stay';
+    return { place, x: C + R * Math.cos(a), y: C + R * Math.sin(a), zone };
+  });
+  const ZONE = { up: '#7BD389', stay: 'rgba(255,255,255,.55)', down: '#F08A7E' };
+  const title = up ? 'Повышение!' : moved ? 'Понижение' : 'Остаётесь в лиге';
+  const sub = up ? `${placeWord(h.place)} из ${GROUP} ${inLeague(from)} — дальше ${to.title} лига. Новая неделя — с понедельника.`
+    : moved ? `${placeWord(h.place)} из ${GROUP}: следующая неделя — ${inLeague(to)}. Вернуться можно за одну неделю.`
+      : `${placeWord(h.place)} из ${GROUP} — ${from.title} лига и на следующей неделе.`;
+  return (
+    <Scene tone={to.color} label={`Итоги недели: ${title}`} seed={hashOf(m.key)} confettiAt={up ? LG.flip + 400 : null} shakeAt={moved ? LG.flip + 380 : null} testid="celebrate"
+      onDone={onDone} onGo={onGo}
+      stage={(
+        <div data-testid="celebrate-league" data-move={up ? 'up' : moved ? 'down' : 'stay'} data-place={h.place} style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center' }}>
+          <svg className="cb-ring" viewBox="0 0 300 300" aria-hidden="true">
+            {dots.map((d) => (d.place === h.place
+              ? <g key={d.place}>
+                  <circle className="cb-ring-halo" cx={d.x} cy={d.y} r="11" fill={to.color} style={{ '--at': `${meAt}ms` }} />
+                  <circle className="me" cx={d.x} cy={d.y} r="10" fill="#fff" stroke={from.color} strokeWidth="4" style={{ '--at': `${meAt}ms` }} />
+                </g>
+              : <circle key={d.place} cx={d.x} cy={d.y} r="5" fill={ZONE[d.zone]} style={{ '--at': `${LG.ring + (d.place - 1) * LG.step}ms` }} />))}
+          </svg>
+          <div className="cb-shield" data-testid="celebrate-shield" data-league={to.id}>
+            {moved ? <>
+              <div className="cb-shield-old" style={{ '--at': `${LG.flip}ms` }}><LeagueBadge id={from.id} size={100} /></div>
+              <div className="cb-shield-new" style={{ '--at': `${LG.flip}ms` }}><LeagueBadge id={to.id} size={100} /></div>
+            </> : <div className="cb-shield-stay" style={{ '--at': `${LG.flip}ms` }}><LeagueBadge id={from.id} size={100} /></div>}
+          </div>
+          <div className="cb-place" style={{ '--at': `${meAt}ms` }} data-testid="celebrate-place">№ {h.place} из {GROUP}</div>
+          {moved && <div className={`cb-arrow${up ? '' : ' down'}`} style={{ '--at': `${LG.arrow}ms`, background: up ? '#2E8B57' : '#B0413E' }} aria-hidden="true">{up ? <ArrowUp size={24} /> : <ArrowDown size={24} />}</div>}
+        </div>
+      )}
+      eyebrow={`Итоги недели · ${from.title} лига`} title={title} textAt={LG.text} sub={sub}
+      extra={h.coins ? <><Coins n={h.coins} at={LG.text + 570} /><div className="cb-sub" style={{ marginTop: 8, fontSize: 14 }}>Награда ждёт в лиге — заберите её там.</div></> : null}
+      buttonsAt={LG.buttons} primary="Дальше" secondary="К лиге" />
+  );
+}
+
 export default function Celebration({ moment, learn, onDone, onGo }) {
+  if (moment.kind === 'league') return <LeagueScene key={moment.key} m={moment} onDone={onDone} onGo={onGo} />;
   if (moment.kind === 'seal') return <SealScene key={moment.key} m={moment} onDone={onDone} onGo={onGo} />;
   if (moment.kind === 'month') return <MonthScene key={moment.key} m={moment} learn={learn} onDone={onDone} onGo={onGo} />;
   return <AlbumScene key={moment.key} m={moment} learn={learn} onDone={onDone} onGo={onGo} />;

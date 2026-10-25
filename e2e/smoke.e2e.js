@@ -2794,10 +2794,11 @@ test('вход: программа — вступительный тест, су
   await expect(page.getByTestId('path')).toBeVisible();
   // ответы при регистрации — в программе ученика: цель дня — 15 минут занятий
   await expect(page.getByTestId('goal')).toContainText('0/15');
-  // наверху Пути — оценка в курсе вместо опыта и монет: до первого урока её нет
+  // наверху Пути — уровень в курсе вместо опыта и монет: до первого урока — A1, 0 ед.
   await expect(page.getByTestId('wallet-balance')).toHaveCount(0);
-  await expect(page.getByTestId('course-grade')).toHaveAttribute('data-done', '0');
-  await expect(page.getByTestId('course-grade')).toContainText('Появится после первого урока');
+  await expect(page.getByTestId('course-level')).toHaveAttribute('data-done', '0');
+  await expect(page.getByTestId('course-level')).toHaveAttribute('data-band', 'A1');
+  await expect(page.getByTestId('course-points')).toHaveText('0из 1000 ед.');
   await expect(page.getByTestId('chest')).toHaveCount(0);
   // задания дня и испытание месяца — экран «Задания» с карточки наверху Пути; испытание считается от цели в минутах
   await expect(page.getByTestId('quests')).toHaveCount(0);
@@ -4485,7 +4486,7 @@ test('лига: до первого урока ученика в лиге нет
   expect(errors).toEqual([]);
 });
 
-test('Путь: наверху — оценка в курсе экономики и полоска прогресса вместо опыта и монет', async ({ page }) => {
+test('Путь: наверху — уровень в курсе по шкале A1…C2 в условных единицах и шкала курса', async ({ page }) => {
   await page.addInitScript(() => {
     if (localStorage.getItem('ems-textbook-v1')) return;
     const at = Date.now() - 86400000;
@@ -4493,11 +4494,15 @@ test('Путь: наверху — оценка в курсе экономики
     localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons: Object.fromEntries(ids.map((id) => [id, { at, runs: 1, best: 90 }])) } }));
   });
   const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
-  const grade = page.getByTestId('course-grade');
+  const grade = page.getByTestId('course-level');
   await expect(grade).toHaveAttribute('data-done', '4');
-  await expect(grade).toHaveAttribute('data-grade', '4.7');
-  await expect(grade).toContainText('Ваша оценка в курсе экономики');
-  await expect(grade).toContainText('отлично');
+  // 4 урока из 14 юнита «Мастерская» (100 ед.) на 90%: 4 × 100/14 × 0,97 ≈ 28 ед.
+  await expect(grade).toHaveAttribute('data-band', 'A1');
+  await expect(grade).toHaveAttribute('data-points', '28');
+  await expect(grade).toContainText('Ваш уровень в курсе экономики');
+  await expect(page.getByTestId('course-next')).toContainText('до A2 — 57 ед. · 4 из 104 уроков');
+  await expect(grade.locator('.ln-scale-seg')).toHaveCount(6);
+  await expect(grade.locator('.ln-scale-seg.on')).toHaveText('A1');
   await expect(page.getByTestId('wallet-balance')).toHaveCount(0);
   // на узком телефоне подписи не вылезают за рамку
   // текст для чтения с экрана обрезан нарочно — его не считаем
@@ -4676,5 +4681,33 @@ test('украшения урока: своя витрина с живыми п�
   await startLesson(page, 'sc-l1', /Начать|Продолжить|Повторить/);
   await expect(page.getByTestId('lesson')).toBeVisible();
   await expect(page.getByTestId('lesson-decor')).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+/* ------------------------------ ВЫПУСК 26 ОКТЯБРЯ ------------------------------ */
+test('лига: неделя кончилась — церемония «Итоги недели»: кольцо мест, щит меняется на новую лигу, «К лиге»', async ({ page }) => {
+  await withTestFlag(page);
+  await page.clock.setFixedTime(new Date('2026-10-19T10:00:00Z'));
+  await page.addInitScript(() => {
+    localStorage.setItem('ems-celebrate-test', '1');
+    if (localStorage.getItem('ems-textbook-v1')) return;
+    localStorage.setItem('ems-celebrated', '{}');
+    const at = Date.parse('2026-10-12T08:00:00Z');
+    localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons: { 'sc-i1': { at, runs: 1, best: 90 } }, xp: { '2026-10-12': 900, '2026-10-13': 900 }, done: { '2026-10-12': 1, '2026-10-13': 1 } } }));
+  });
+  const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
+  const scene = page.getByTestId('celebrate');
+  await expect(scene).toHaveAttribute('aria-label', 'Итоги недели: Повышение!');
+  const lg = scene.getByTestId('celebrate-league');
+  await expect(lg).toHaveAttribute('data-move', 'up');
+  await expect(lg).toHaveAttribute('data-place', '1');
+  await expect(scene.getByTestId('celebrate-shield')).toHaveAttribute('data-league', 'silver');
+  await expect(scene.getByTestId('celebrate-place')).toHaveText('№ 1 из 20');
+  await scene.click({ position: { x: 8, y: 8 } });
+  await expect(scene.getByTestId('celebrate-coins')).toHaveAttribute('data-value', '50');
+  await expect(scene).toContainText('1-е место из 20 в Бронзовой лиге — дальше Серебряная лига');
+  await scene.getByTestId('celebrate-go').click();
+  await expect(page.getByTestId('league')).toBeVisible();
+  await expect(page.getByTestId('celebrate')).toHaveCount(0);
   expect(errors).toEqual([]);
 });

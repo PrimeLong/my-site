@@ -5,16 +5,27 @@
    устройство запоминает всё уже полученное без сцен: церемония — для того, что получено сейчас,
    а не для истории. Старше трёх дней — тоже без сцены. */
 import { albumItems, sealItems, monthItems } from './collections.js';
+import { leagueState, LEAGUE_DAYS } from './league.js';
+import { addDays } from '../textbook/learn-state.js';
 
 export const CELEBRATE = { fresh: 3 * 86400000, batch: 3 };
-// порядок сцен: марка юнита, марка месяца, печати — по времени получения
-const ORDER = { album: 0, month: 1, seal: 2 };
+// порядок сцен: марка юнита, марка месяца, итоги лиги, печати — по времени получения
+const ORDER = { album: 0, month: 1, league: 2, seal: 3 };
+/* Итоги недели лиги — тоже церемония (жалоба: «хочется отдельную анимацию по завершению лиги»): неделя
+   кончилась (суббота позади, в воскресенье — перерыв), место и переход известны. Момент — полночь по
+   Гринвичу после последнего дня недели; ключ lg:<неделя>. */
+export const leagueEnd = (week) => Date.parse(`${addDays(week, LEAGUE_DAYS)}T00:00:00Z`);
+export function leagueMoments(learn, now = Date.now()) {
+  return leagueState(learn, now).history.filter((h) => leagueEnd(h.week) <= now)
+    .map((h) => ({ key: `lg:${h.week}`, kind: 'league', at: leagueEnd(h.week), it: h }));
+}
 
 export function momentsOf(learn, now = Date.now()) {
   const out = [];
   albumItems(learn).forEach((it) => { if (it.got) out.push({ key: `u:${it.id}`, kind: 'album', at: it.at, it }); });
   monthItems(learn, now).forEach((it) => { if (it.got) out.push({ key: it.id, kind: 'month', at: it.at, it }); });
   sealItems(learn).forEach((it) => { if (it.got) out.push({ key: `a:${it.id}`, kind: 'seal', at: it.at, it }); });
+  leagueMoments(learn, now).forEach((m) => out.push(m));
   return out;
 }
 // ещё не показанные и свежие — по порядку сцен

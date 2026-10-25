@@ -209,8 +209,12 @@ export function soldToday(s, id, now = Date.now()) {
     .filter(([k]) => { const v = (s.garden || {})[k.slice(5)]; return v && parse(v).plant === id; }).length;
 }
 export const marketFactor = (s, id, now = Date.now()) => Math.max(MARKET_FLOOR, 1 - MARKET_DROP * soldToday(s, id, now));
-/* цена урожая сейчас: семена × редкость × насыщение спроса за день × спрос недели (от ставки
-   центробанка: высокая ставка — люди копят, цены ниже), в кронах и в монетах по курсу дня (вниз) */
+/* цена урожая сейчас: семена × редкость × спрос недели СБОРА × насыщение спроса за день, в кронах и
+   в монетах по курсу дня (вниз). Спрос недели — от ставки центробанка: высокая ставка — люди копят,
+   цветы покупают хуже. Цена в кронах назначается при сборе и дальше не меняется: собрали в неделю
+   высокой ставки — урожай так и останется дешёвым, сколько его ни держи. Поэтому выгодно растить,
+   когда ставка низкая, и не растить, когда высокая (docs/mechanics.md, «Сад»). Ещё не собранное —
+   по спросу сегодняшней недели: таким оно будет, если собрать сейчас. */
 export function salePrice(s, at, now = Date.now()) {
   const v = (s.garden || {})[at];
   if (!v) return null;
@@ -218,7 +222,8 @@ export function salePrice(s, at, now = Date.now()) {
   const p = PLANT_BY_ID[id];
   if (!p) return null;
   const factor = marketFactor(s, id, now);
-  const demand = weekDemand(dayOf(now));
+  const picked = (s.harvest || {})[at];
+  const demand = weekDemand(dayOf(picked || now));
   const crowns = p.crowns * GRADE_BY_ID[gradeOf(at)].mult * factor * demand;
   return { crowns: Math.round(crowns * 10) / 10, coins: Math.floor(crowns * rateOn(dayOf(now))), factor, demand };
 }

@@ -24,7 +24,8 @@ import { DS_THEMES, appColors, learnThemeId, dsThemeId, learnMusic, learnSfx, wo
 import { DsRoot, Tabs, Button } from './ds.jsx';
 import { loadProgress as loadTextbookProgress, saveProgress as saveTextbookProgress, mergeTextbook, TEXTBOOK_PROGRESS_KEY } from './textbook/progress.js';
 import { BookLinkContext } from './booklink-context.js';
-import { LATEST_NEWS, readNewsSeen, newsForLearner, learnerSince } from './learn/news.js';
+import { LATEST_NEWS, readNewsSeen, newsForLearner, learnerSince, readFeedSeenAt, friendNewsSince } from './learn/news.js';
+import { friendsState } from './lib/friends-store.js';
 // профиль игрока живёт в src/account.jsx; сетевой экран и партия берут его отсюда
 export { AuthModal, useAccount, emblemIcon, forgetAccount, loadAccount, accountKidsMode, EMBLEMS } from './account.jsx';
 
@@ -1166,8 +1167,10 @@ function BottomNav({ tab, onTab, onReselect = null }) {
   const inMore = MORE_TABS.find((t) => t.id === tab);
   // свежий выпуск «Что нового» ещё не открывали — точка на «⋯» и плашка «новое» у «Новостей»;
   // выпуск, вышедший до первого дня ученика, — не новость: новичку новое всё
-  const newsNew = React.useMemo(() => !readNewsSeen()[LATEST_NEWS.id] && newsForLearner(LATEST_NEWS, learnerSince(loadTextbookProgress().learn)), // eslint-disable-next-line react-hooks/exhaustive-deps
-    [tab, menu]);
+  // и новое от друзей (печать, юнит, забег) после прошлого открытия ленты — тоже точка
+  const newsNew = React.useMemo(() => (!readNewsSeen()[LATEST_NEWS.id] && newsForLearner(LATEST_NEWS, learnerSince(loadTextbookProgress().learn)))
+    || friendNewsSince(((friendsState() || {}).friends) || [], readFeedSeenAt()), // eslint-disable-next-line react-hooks/exhaustive-deps
+  [tab, menu]);
   const tabs = [
     { id: 'path', icon: Route, label: 'Путь' },
     { id: 'book', icon: BookOpenText, label: 'Учебник' },

@@ -36,7 +36,7 @@ import {
   goalToday, missedYesterday, XP, applyFreezes, setPlacement, dayOf, recordSeen, recordBest, DIAMOND_ACCURACY, streakBonus, gameXp, maxLessonXp, syncStreak, streakNow,
   markShown, shownWith,
 } from './textbook/learn-state.js';
-import { courseGrade, gradeWord } from './learn/grade.js';
+import { courseLevel, BANDS, SCALE_MAX } from './learn/grade.js';
 import { READING_BY_UNIT, readingOpen, isRead } from './learn/reading.js';
 import { runCoins, runKey, earn, settle, chestKey, hasClaim, outfitOf, deskOf, boostActive, chargePremiums, fixMonth } from './learn/rewards.js';
 import { DeskDecor, tellAnswer } from './learn-decor.jsx';
@@ -109,21 +109,31 @@ const CSS = `
     background: linear-gradient(135deg, color-mix(in srgb, var(--u) 9%, var(--ds-card)), var(--ds-card) 70%); box-shadow: 0 3px 0 color-mix(in srgb, var(--u) 22%, var(--ds-rule)); }
   .ln-grade-top { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
   .ln-grade-top .ds-eyebrow { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .ln-grade-pct { flex: none; font: 700 13px var(--ds-mono); color: var(--u-ink); }
+  .ln-grade-pct { flex: none; margin-left: auto; display: flex; flex-direction: column; align-items: flex-end; font: 700 13px var(--ds-mono); color: var(--u-ink); }
+  .ln-grade-pct b { font: 700 22px/1 var(--ds-mono); }
+  .ln-grade-pct small { font: 400 11.5px var(--ds-sans); color: var(--ds-ink2); white-space: nowrap; margin-top: 2px; }
   .ds-dark .ln-grade-pct { color: color-mix(in srgb, var(--u) 45%, #fff); }
   .ln-grade-row { display: flex; align-items: center; gap: 12px; margin: 6px 0 8px; min-width: 0; }
   .ln-grade-num { flex: none; min-width: 64px; text-align: center; font: 700 34px/1 var(--ds-head); color: var(--u-ink); padding: 6px 8px; border-radius: 14px;
     background: color-mix(in srgb, var(--u) 12%, var(--ds-card)); box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--u) 22%, transparent); animation: ln-grade-pop .5s cubic-bezier(.3, 1.5, .5, 1) backwards; }
   .ds-dark .ln-grade-num { color: color-mix(in srgb, var(--u) 45%, #fff); }
-  .ln-grade-num.none { color: var(--ds-ink3); background: var(--ds-card2); box-shadow: none; }
   @keyframes ln-grade-pop { from { transform: scale(.7); opacity: 0 } }
   .ln-grade-word { display: flex; flex-direction: column; min-width: 0; }
   .ln-grade-word b { font: 700 17px/1.2 var(--ds-head); }
   .ln-grade-word small { font: 13px/1.3 var(--ds-sans); color: var(--ds-ink2); }
-  .ln-grade-bar { position: relative; display: block; height: 10px; border-radius: 999px; overflow: hidden; background: color-mix(in srgb, var(--u) 12%, var(--ds-card2)); }
-  .ln-grade-bar i { position: absolute; inset: 0 auto 0 0; border-radius: inherit; background: linear-gradient(90deg, color-mix(in srgb, var(--u) 70%, #fff), var(--u)); transition: width .8s cubic-bezier(.2, .9, .3, 1);
-    animation: ln-grade-grow 1s cubic-bezier(.2, .9, .3, 1) backwards; }
-  .ln-grade-bar i::after { content: ''; position: absolute; inset: 0; background: linear-gradient(105deg, transparent 30%, rgba(255,255,255,.55) 50%, transparent 70%); background-size: 220% 100%; animation: ln-grade-shine 3.2s ease-in-out 1s 3; }
+  /* шкала курса: полоса с заливкой и под ней подписи ступеней — каждая в своём отрезке */
+  .ln-scale { position: relative; display: block; height: 30px; }
+  .ln-scale-bar { position: absolute; left: 0; right: 0; top: 0; height: 10px; border-radius: 999px; overflow: hidden; background: color-mix(in srgb, var(--u) 12%, var(--ds-card2)); }
+  .ln-scale-bar i { position: absolute; inset: 0 auto 0 0; border-radius: inherit; background: linear-gradient(90deg, color-mix(in srgb, var(--u) 70%, #fff), var(--u)); transition: width .8s cubic-bezier(.2, .9, .3, 1);
+    animation: ln-grade-grow 1s cubic-bezier(.2, .9, .3, 1) backwards; overflow: hidden; }
+  .ln-scale-seg { position: absolute; top: 12px; height: 16px; display: flex; align-items: center; justify-content: center; font: 700 11.5px var(--ds-mono); color: var(--ds-ink3);
+    border-left: 1px solid var(--ds-rule2); }
+  .ln-scale-seg:first-of-type { border-left: 0; }
+  .ln-scale-seg.past { color: var(--ds-ink2); }
+  .ln-scale-seg.on { color: var(--u-ink); }
+  .ds-dark .ln-scale-seg.on { color: color-mix(in srgb, var(--u) 45%, #fff); }
+  .ln-scale-seg.on::before { content: ''; position: absolute; left: 50%; top: -6px; width: 6px; height: 6px; margin-left: -3px; border-radius: 50%; background: var(--u); }
+  .ln-scale-bar i::after { content: ''; position: absolute; inset: 0; background: linear-gradient(105deg, transparent 30%, rgba(255,255,255,.55) 50%, transparent 70%); background-size: 220% 100%; animation: ln-grade-shine 3.2s ease-in-out 1s 3; }
   @keyframes ln-grade-grow { from { width: 0 } }
   @keyframes ln-grade-shine { 0% { background-position: 140% 0 } 60%, 100% { background-position: -60% 0 } }
   /* телефон: карточка ниже — карта Пути не уезжает под нижнюю панель */
@@ -133,7 +143,7 @@ const CSS = `
     .ln-grade-num { min-width: 54px; font-size: 28px; padding: 4px 6px; }
     .ln-grade-word b { font-size: 16px; }
   }
-  @media (prefers-reduced-motion: reduce) { .ln-grade-num, .ln-grade-bar i, .ln-grade-bar i::after { animation: none; } }
+  @media (prefers-reduced-motion: reduce) { .ln-grade-num, .ln-scale-bar i, .ln-scale-bar i::after { animation: none; } }
   .ln-streak.on { background: color-mix(in srgb, var(--ds-bad) 12%, var(--ds-card)); border-color: color-mix(in srgb, var(--ds-bad) 55%, var(--ds-rule2)); color: var(--ds-bad); }
   .ln-streak.on small { color: inherit; }
   .ln-streak.wait { border-style: dashed; color: var(--ds-ink3); }
@@ -1744,25 +1754,33 @@ function ReadingCard({ r, learn, open, onOpen }) {
   );
 }
 
+/* Уровень в курсе — шкала A1…C2 в условных единицах (src/learn/grade.js): ступень крупно, сколько
+   набрано и сколько до следующей ступени, под ней — вся шкала курса отрезками ступеней. */
 function GradeCard({ learn }) {
-  // весь курс по урокам — считаем, только когда прогресс поменялся
-  const c = useMemo(() => courseGrade(learn), [learn]);
-  const pct = Math.round(c.share * 100);
+  const c = useMemo(() => courseLevel(learn), [learn]);
+  const fill = (c.points / SCALE_MAX) * 100;
   return (
-    <div className="ln-grade" data-testid="course-grade" data-grade={c.grade == null ? '' : String(c.grade)} data-done={c.done}>
+    <div className="ln-grade" data-testid="course-level" data-band={c.band.id} data-points={c.points} data-done={c.done}>
       <div className="ln-grade-top">
-        <span className="ds-eyebrow">Ваша оценка в курсе экономики</span>
-        <span className="ln-grade-pct" data-testid="course-progress">{pct}% курса</span>
+        <span className="ds-eyebrow">Ваш уровень в курсе экономики</span>
       </div>
       <div className="ln-grade-row">
-        <span className={`ln-grade-num${c.grade == null ? ' none' : ''}`} aria-hidden="true">{c.grade == null ? '—' : String(c.grade.toFixed(1)).replace('.', ',')}</span>
+        <span className="ln-grade-num" aria-hidden="true" key={c.band.id}>{c.band.id}</span>
         <span className="ln-grade-word">
-          <b>{c.grade == null ? 'Появится после первого урока' : gradeWord(c.grade)}</b>
-          <small>{c.grade == null ? 'Оценка — по точности ответов в пройденных уроках' : `точность ${c.accuracy}% · ${c.done} из ${c.total} уроков`}</small>
+          <b>{c.band.title}</b>
+          <small data-testid="course-next">{c.next ? `до ${c.next.id} — ${c.toNext} ед.` : 'вершина шкалы'}{c.done ? ` · ${c.done} из ${c.total} уроков` : ' · единицы — за уроки'}</small>
         </span>
+        <span className="ln-grade-pct" data-testid="course-points" aria-hidden="true"><b>{c.points}</b><small>из {SCALE_MAX} ед.</small></span>
       </div>
-      <span className="ds-sr">{c.grade == null ? 'Оценки пока нет.' : `Оценка ${String(c.grade).replace('.', ',')} из 5, ${gradeWord(c.grade)}.`} Пройдено {c.done} из {c.total} уроков, {pct}% курса.</span>
-      <span className="ln-grade-bar" aria-hidden="true"><i style={{ width: `${Math.max(c.done ? 2 : 0, pct)}%` }} /></span>
+      <span className="ds-sr">Уровень {c.band.id}, «{c.band.title}»: {c.points} условных единиц из {SCALE_MAX}.{c.next ? ` До ${c.next.id} — ${c.toNext}.` : ''} Пройдено {c.done} из {c.total} уроков.</span>
+      {/* шкала: отрезок на каждую ступень, ширина — по её единицам; набранное — заливка, своя ступень ярче */}
+      <span className="ln-scale" aria-hidden="true">
+        <span className="ln-scale-bar"><i style={{ width: `${Math.max(c.points ? 1.5 : 0, fill)}%` }} /></span>
+        {BANDS.map((b, k) => {
+          const to = (BANDS[k + 1] ? BANDS[k + 1].from : SCALE_MAX);
+          return <span key={b.id} className={`ln-scale-seg${b === c.band ? ' on' : c.points >= to ? ' past' : ''}`} style={{ left: `${(b.from / SCALE_MAX) * 100}%`, width: `${((to - b.from) / SCALE_MAX) * 100}%` }}>{b.id}</span>;
+        })}
+      </span>
     </div>
   );
 }
@@ -2723,7 +2741,7 @@ export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReo
         onClose={(opened) => { setChest(null); if (opened) setFolded({ n: Date.now(), unit: chest }); }} />}
       {morning && !run && <MorningStreak learn={learn} onClose={() => setMorning(false)} />}
       {celebrate && <React.Suspense fallback={null}><Celebration moment={celebrate} learn={learn} onDone={() => celebrated(celebrate)}
-        onGo={() => { celebrated(celebrate); onTab('profile'); }} /></React.Suspense>}
+        onGo={() => { celebrated(celebrate); onTab(celebrate.kind === 'league' ? 'league' : 'profile'); }} /></React.Suspense>}
       {sheet && <LessonSheet l={sheet} learn={learn} weak={weakLessons(learn).some((w) => w.id === sheet.id)} onStart={start} onClose={() => setSheet(null)} onOpenBook={openBook}
         onSkip={(id) => { Audio.play('paper'); update((s) => skipLesson(s, id)); setSheet(null); }} />}
       {reading && <Lazy><ReadingView id={reading} learn={learn} update={update} onClose={() => setReading(null)} /></Lazy>}

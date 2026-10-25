@@ -24,7 +24,7 @@ import {
 } from './learn/rewards.js';
 import { skillLevel, LEVEL_NAME, LEVEL_TEXT } from './learn/program.js';
 import {
-  dayOf, addDays, dayStart, streak, ownedFreezes, weekDots, setProfile, PROFILE_GOALS, PROFILE_MINUTES, PROFILE_GOAL_LABEL, goalMinutes, goalToday, pendingGoal,
+  dayOf, addDays, dayStart, streak, ownedFreezes, weekDots, rolloverLocal, setProfile, PROFILE_GOALS, PROFILE_MINUTES, PROFILE_GOAL_LABEL, goalMinutes, goalToday, pendingGoal,
 } from './textbook/learn-state.js';
 
 export const REWARD_CSS = `
@@ -312,6 +312,7 @@ export function QuestsCard({ learn, now = Date.now(), testid = 'quests' }) {
         <div className="ds-h3">Задания дня</div>
         <span className="ds-num ds-faint" style={{ fontSize: 13 }} data-testid="quests-done">{done} из 3</span>
       </div>
+      <div className="ds-sub" style={{ fontSize: 12.5, margin: '-2px 0 6px' }} data-testid="quests-utc">Новые — в {rolloverLocal(now)} по вашему времени (полночь по Гринвичу)</div>
       <div>
         {quests.map((q) => {
           const Icon = Q_ICON[QUEST_ICON[q.id]] || Target;
@@ -602,7 +603,7 @@ export function ShopView({ learn, update, now = Date.now(), focus = null }) {
             </div>
           );
         })()}
-        <Heading level={3} title="Витрина дня" sub={`Обновится через ${untilMidnight(now)}. На одну вещь — скидка дня ${Math.round(DEAL_OFF * 100)}%.`} />
+        <Heading level={3} title="Витрина дня" sub={`Обновится через ${untilMidnight(now)} — в ${rolloverLocal(now)} по вашему времени (полночь по Гринвичу). На одну вещь — скидка дня ${Math.round(DEAL_OFF * 100)}%.`} />
         <div className="rw-items" style={{ margin: '10px 0 16px' }} data-testid="shop-showcase">
           {today.showcase.map((id) => <ShopItem key={id} o={OUTFIT_BY_ID[id]} deal={id === today.deal} {...itemProps} />)}
           {!today.showcase.length && <div className="ds-sub" style={{ gridColumn: '1 / -1', fontSize: 14.5 }}>Всё обычное уже ваше — дальше только витрина ювелира.</div>}

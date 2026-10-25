@@ -2,7 +2,7 @@
    в своё место «desk» и не попадают ни на Инфлю, ни в гардероб; физика каждой вещицы остаётся в
    полосе, успокаивается и засыпает (в покое — ни кадра), а ответ её будит. */
 import { describe, it, expect } from 'vitest';
-import { OUTFITS, OUTFIT_BY_ID, DESK_ITEMS, WARDROBE, RATE_MAX, courseIncome, shopDay, buy, setWear, outfitOf, deskOf, earn, achievementsOf } from '../rewards.js';
+import { OUTFITS, OUTFIT_BY_ID, DESK_ITEMS, WARDROBE, RATE_MAX, courseIncome, shopDay, buy, setWear, outfitOf, deskOf, earn, ACHIEVEMENTS } from '../rewards.js';
 import { emptyLearn, normalizeLearn, mergeLearn, dayOf } from '../../textbook/learn-state.js';
 import { decorModel, decorStep, kick, DECOR_IDS } from '../../learn-decor.jsx';
 
@@ -34,7 +34,8 @@ describe('украшения урока в лавке', () => {
     expect(deskOf(setWear(r.s, 'desk', null, T))).toBe(null);
     expect(deskOf(setWear(r.s, 'desk', 'desk-mobile', T))).toBe('desk-cradle');
     expect(deskOf(setWear(r.s, 'hand', 'desk-cradle', T))).toBe('desk-cradle');
-    expect(achievementsOf(r.s).find((a) => a.id === 'rare').done).toBeFalsy();
+    expect(ACHIEVEMENTS.find((a) => a.id === 'rare').test(r.s)).toBe(false);
+    expect(ACHIEVEMENTS.find((a) => a.id === 'rare').test(buy(rich, 'crown', T).s)).toBe(true);
   });
   it('надетое переживает нормализацию и слияние устройств', () => {
     const rich = earn(emptyLearn(), 20000, null, T);
@@ -95,5 +96,24 @@ describe('физика вещиц', () => {
     kick(m, true);
     settle(m, H);
     m.coins.forEach((c) => expect(Math.cos(c.spin)).toBeGreaterThan(0.99));
+  });
+});
+
+describe('колыбель: несколько шариков сразу', () => {
+  it('взяли второй слева — подняты два; отпустили — справа вылетают два', async () => {
+    const { holdCradle, cradleGroup } = await import('../../learn-decor.jsx');
+    const H = 48; const m = decorModel('desk-cradle', 400, H);
+    expect(cradleGroup(m, 1, -1).group).toHaveLength(2);
+    expect(cradleGroup(m, 3, 1).group).toHaveLength(2);
+    expect(cradleGroup(m, 2, -1).group).toHaveLength(3);
+    expect(cradleGroup(m, 2, 1).left).toBe(false);
+    expect(holdCradle(m, 1, -m.L * 0.6)).toBe(2);
+    expect(m.balls[0].a).toBeCloseTo(m.balls[1].a);
+    expect(m.balls[0].a).toBeLessThan(-0.3);
+    m.balls.forEach((b) => { b.drag = false; });
+    let out3 = 0; let out4 = 0;
+    for (let k = 0; k < 45; k += 1) { decorStep(m, 1 / 60, H); out3 = Math.max(out3, m.balls[3].a); out4 = Math.max(out4, m.balls[4].a); }
+    expect(out4).toBeGreaterThan(0.25);
+    expect(out3).toBeGreaterThan(0.25);
   });
 });

@@ -121,6 +121,10 @@ export const dayStart = (ts) => { const d = new Date(ts); return Date.UTC(d.getU
 export const dayHour = (ts) => (ts - dayStart(ts)) / 3600000;
 // момент «день key, час h» по всемирному времени
 export const dayAt = (key, h = 0) => dayTs(key) + (h - 12) * 3600000;
+/* Новый день — в полночь по Гринвичу (UTC); на часах устройства это, например, 03:00 в Москве. Подписи
+   «по Гринвичу» на экранах (задания дня, лига, витрина, настройки) берут местное время отсюда. */
+export const rolloverLocal = (now = Date.now()) => { const t = new Date(dayStart(now) + 86400000); return `${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}`; };
+export const UTC_NOTE = 'Дни, серия, задания, лиги и забеги считаются по Гринвичу (UTC) — у всех одинаково.';
 
 /* ------------------------------ ЗАПИСИ ------------------------------ */
 const upd = (s, patch) => ({ ...s, ...patch });
@@ -257,6 +261,7 @@ export function finishLesson(s, lessonId, { xp, accuracy, now = Date.now(), coun
   const gem = (prev && prev.diamond) || (diamond && accuracy >= DIAMOND_ACCURACY ? now : 0);
   const lessons = lessonId ? { ...s.lessons, [lessonId]: { at: fresh ? now : prev.at, runs: (prev ? prev.runs : 0) + 1, best: Math.max(prev ? prev.best : 0, Math.round(accuracy)), ...(gem ? { diamond: gem } : {}) } } : s.lessons;
   const d = dayEntry(s, day);
+  // «Ранняя пташка» и «Сова» — по часам устройства (местное время), а не по UTC: утро у каждого своё
   const hour = new Date(now).getHours();
   // в сегодняшние минуты — только время после полуночи (UTC): урок, начатый вчера, не делает новый день наполовину выполненным
   const sinceMidnight = (now - dayStart(now)) / 1000;

@@ -142,7 +142,7 @@ export const OUTFITS = [
      физикой: их можно трогать, и они отзываются на ответы. Самое дорогое в лавке; своя витрина,
      в гардеробе их нет — надеть и снять можно прямо на витрине. */
   { id: 'desk-bunting', slot: 'desk', title: 'Гирлянда флажков', note: 'Потяните — флажки закачаются; верный ответ — порыв ветра', crowns: 1300, rare: true },
-  { id: 'desk-cradle', slot: 'desk', title: 'Колыбель Ньютона', note: 'Оттяните крайний шарик — удар пройдёт по ряду; верный ответ щёлкает сам', crowns: 1500, rare: true },
+  { id: 'desk-cradle', slot: 'desk', title: 'Колыбель Ньютона', note: 'Оттяните один шарик или сразу несколько — столько же вылетит с другой стороны; верный ответ щёлкает сам', crowns: 1500, rare: true },
   { id: 'desk-mobile', slot: 'desk', title: 'Мобиле из монет', note: 'Коснитесь монетки — закрутится; верный ответ — все вспыхнут', crowns: 1650, rare: true },
   /* ХЕЛЛОУИН (src/learn/halloween.js): продаются только в сезон, с 16 октября по 2 ноября, — своей
      витриной, не на витрине дня; купленное остаётся навсегда. «Паутину» не купить: она — награда
@@ -397,8 +397,8 @@ export const ACHIEVEMENTS = [
   { id: 'shop', icon: 'shopping', title: 'Первая покупка', text: 'Куплено что-то в лавке', how: 'Купите что-нибудь в лавке', coins: 10, test: (s) => Object.keys(s.owned || {}).length > 0 || Object.keys(s.freezeBuy || {}).length > 0 || (s.policyAt || 0) > 0 },
   { id: 'wardrobe', icon: 'shirt', title: 'Гардероб', text: 'У Инфли три наряда', how: 'Соберите Инфле три наряда', coins: 20, test: (s) => Object.keys(s.owned || {}).length >= 3 },
   { id: 'rare', icon: 'gem', title: 'Коллекционер', text: 'Куплена редкая вещь из витрины ювелира', how: 'Купите редкую вещь в витрине ювелира', coins: 100, test: (s) => Object.keys(s.owned || {}).some((id) => OUTFIT_BY_ID[id] && OUTFIT_BY_ID[id].rare && OUTFIT_BY_ID[id].slot !== 'desk') },
-  { id: 'early', icon: 'sunrise', title: 'Ранняя пташка', text: 'Урок до восьми утра', how: 'Пройдите урок до восьми утра', coins: 10, test: (s) => Object.values(s.daily || {}).some((d) => d.h & 1) },
-  { id: 'owl', icon: 'moon', title: 'Сова', text: 'Урок после десяти вечера', how: 'Пройдите урок после десяти вечера', coins: 10, test: (s) => Object.values(s.daily || {}).some((d) => d.h & 2) },
+  { id: 'early', icon: 'sunrise', title: 'Ранняя пташка', text: 'Урок до восьми утра', how: 'Пройдите урок до восьми утра — по часам вашего устройства', coins: 10, test: (s) => Object.values(s.daily || {}).some((d) => d.h & 1) },
+  { id: 'owl', icon: 'moon', title: 'Сова', text: 'Урок после десяти вечера', how: 'Пройдите урок после десяти вечера — по часам вашего устройства', coins: 10, test: (s) => Object.values(s.daily || {}).some((d) => d.h & 2) },
   { id: 'saver', icon: 'piggy', title: 'Пятьсот монет', text: 'Заработано 500 монет', how: 'Заработайте 500 монет', coins: 30, test: (s) => earned(s) >= 500 },
   { id: 'month', icon: 'calendar', title: 'Испытание месяца', text: 'Выполнено испытание месяца', how: 'Выполните испытание месяца', coins: 30, test: (s) => Object.keys(s.claimed || {}).some((k) => k.startsWith('m:')) },
   { id: 'diamond', icon: 'gem', title: 'Огранщик', text: 'Урок взят на алмазном уровне', how: 'Возьмите урок на алмазном уровне', coins: 20, test: (s) => Object.values(s.lessons || {}).some((l) => l.diamond) },

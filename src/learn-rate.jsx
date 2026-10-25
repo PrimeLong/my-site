@@ -50,8 +50,8 @@ const pct = (x, d = 1) => `${String(Math.round(x * 100 * 10 ** d) / 10 ** d).rep
 export function RateWeek({ day, focus = null }) {
   const step = rateStep(day); const rate = weekRate(day); const demand = weekDemand(day);
   const week = (1 + rate) ** PIGGY.days - 1;
-  const hint = step >= 3 ? 'Ставка высокая: копить выгодно, а цветы покупают хуже — цены на рынке ниже.'
-    : step <= 1 ? 'Ставка низкая: вклад даёт мало, зато цветы раскупают — цены на рынке выше.'
+  const hint = step >= 3 ? 'Ставка высокая: копить выгодно, а цветы покупают хуже — урожай, собранный на этой неделе, так и останется дешёвым.'
+    : step <= 1 ? 'Ставка низкая: вклад даёт мало, зато цветы раскупают — урожай, собранный на этой неделе, дороже, и цена за ним сохранится.'
       : 'Ставка обычная: и вклад, и рынок сада — как обычно.';
   return (
     <div className="rt-week" data-testid="rate-week" data-step={step} data-rate={rate}>

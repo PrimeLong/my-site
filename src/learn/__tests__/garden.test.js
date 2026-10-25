@@ -234,3 +234,18 @@ describe('сад: полив долгих растений', () => {
     expect(growth(gardenPlots(m).plots[0], T2 + 34 * HOUR).p).toBeCloseTo(34 / 48);
   });
 });
+
+describe('цена урожая — при сборе', () => {
+  it('спрос недели сбора, а не продажи: держи сколько хочешь — цена в кронах не меняется', async () => {
+    const { weekDemand: wd, DEMAND_STEPS } = await import('../rewards.js');
+    // ищем две недели с разным спросом
+    const D = 86400000; let a = Date.parse('2026-10-05T12:00:00Z'); let b = a + 7 * D;
+    while (wd(dayOf(a)) === wd(dayOf(b))) b += 7 * D;
+    const r0 = plant(rich(), 'tulip', a - growMs('tulip'));
+    const h = harvest(r0.s, r0.at, a);
+    const later = salePrice(h.s, r0.at, b);
+    expect(later.demand).toBe(wd(dayOf(a)));
+    expect(later.demand).not.toBe(wd(dayOf(b)));
+    expect(DEMAND_STEPS).toContain(later.demand);
+  });
+});
