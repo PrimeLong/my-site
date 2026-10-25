@@ -839,8 +839,8 @@ test('учебник: оглавление, формулы KaTeX, график �
   // главы — по уровням курса; недописанные — свёрнутым списком «Готовятся» в конце
   await expect(toc.getByTestId('tb-level-group')).toHaveCount(5);
   await expect(toc.getByText('Уровень 2 · Базовый')).toBeVisible();
-  await expect(toc.locator('[data-status="ready"]')).toHaveCount(16);
-  await expect(toc.getByTestId('tb-planned')).toContainText('ещё 6 глав');
+  await expect(toc.locator('[data-status="ready"]')).toHaveCount(17);
+  await expect(toc.getByTestId('tb-planned')).toContainText('ещё 5 глав');
   await expectNoSidewaysScroll(page);
 
   await toc.getByRole('button', { name: /Спрос и предложение/ }).click();
@@ -974,7 +974,7 @@ test('учебник: оглавление, формулы KaTeX, график �
   await page.getByRole('button', { name: 'Мельче текст' }).click();
 
   await toToc(page);
-  await expect(page.getByTestId('tb-stats')).toContainText('Глав прочитано: 1 из 16');
+  await expect(page.getByTestId('tb-stats')).toContainText('Глав прочитано: 1 из 17');
   // уверенные ответы — на странице «Мой прогресс»: два из трёх верны (включая задачу в несколько шагов; ответ
   // без отметки в счёт не идёт), неуверенный — верен; у задачи на графике вместо уверенности прогноз
   await page.getByTestId('tb-stats-link').click();
@@ -1190,20 +1190,20 @@ test('нижняя панель: «Мир» без учебных карточе
   // итоговая проверка: без подсказок и решений до конца, в конце — счёт по темам
   await page.getByTestId('practice-exam').click();
   const exam = page.getByTestId('exam');
-  await expect(exam.getByTestId('exam-problem')).toHaveCount(16);
+  await expect(exam.getByTestId('exam-problem')).toHaveCount(18);
   await expect(exam.getByRole('button', { name: /^Подсказка/ })).toHaveCount(0);
   await expect(exam.getByRole('button', { name: 'Решение' })).toHaveCount(0);
   await exam.getByRole('textbox', { name: 'Проверка, ответ к задаче 1' }).or(exam.getByRole('textbox', { name: 'Проверка, задача 1, шаг а)' })).first().fill('1');
   await exam.getByRole('button', { name: 'Завершить проверку' }).click();
-  await expect(exam.getByTestId('exam-result')).toContainText('Верно 0 из 16');
+  await expect(exam.getByTestId('exam-result')).toContainText('Верно 0 из 18');
   await expect(exam.getByTestId('exam-weak')).toContainText('Слабое место');
-  await expect(exam.getByRole('button', { name: 'Решение' })).toHaveCount(16);
+  await expect(exam.getByRole('button', { name: 'Решение' })).toHaveCount(18);
   await expectNoSidewaysScroll(page);
   // пересдача — те же темы, новые числа
   const before = await exam.getByTestId('exam-problem').allInnerTexts();
   await exam.getByRole('button', { name: 'Пересдать с новыми числами' }).click();
   await expect(exam.getByTestId('exam-result')).toHaveCount(0);
-  await expect(exam.getByTestId('exam-problem')).toHaveCount(16);
+  await expect(exam.getByTestId('exam-problem')).toHaveCount(18);
   const after = await exam.getByTestId('exam-problem').allInnerTexts();
   expect(after.filter((t, i) => t === before[i]).length).toBeLessThan(3);
   await exam.getByRole('button', { name: 'Завершить проверку' }).click();
@@ -3759,7 +3759,7 @@ test('Путь: тест уровня — сдан, и Путь сразу на 
   await page.getByTestId('lesson-result').getByRole('button', { name: 'Дальше', exact: true }).click();
   // Путь — сразу на «Среднем»: прошлых уровней на экране нет
   await expect(path.getByTestId('level-switch')).toHaveAttribute('data-level', 'middle');
-  expect(await path.getByTestId('path-unit').evaluateAll((els) => els.map((e) => e.dataset.unit))).toEqual(['consumer', 'costs', 'competition-monopoly']);
+  expect(await path.getByTestId('path-unit').evaluateAll((els) => els.map((e) => e.dataset.unit))).toEqual(['consumer', 'costs', 'competition-monopoly', 'monopolistic']);
   await expect(pathNode(page, 'cs-i1')).toHaveAttribute('data-state', 'open');
   await path.getByTestId('level-switch-open').click();
   expect(await picker.getByTestId('level-pick').evaluateAll((els) => els.map((e) => `${e.dataset.level}:${e.dataset.state}`)))
