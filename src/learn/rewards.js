@@ -53,7 +53,7 @@ export function earn(s, n, key = null, now = Date.now()) {
 export function runCoins({ mode, replay = false, accuracy = 0, pass = null, items = 0, diamond = false, gem = false }) {
   if (mode === 'lesson' && diamond) return accuracy < DIAMOND_ACCURACY ? 0 : gem ? COIN.diamondReplay : COIN.diamond + (accuracy >= 100 ? COIN.diamondPerfect : 0);
   if (mode === 'lesson') return replay ? COIN.replay : COIN.lesson + (accuracy >= 100 ? COIN.perfect : 0);
-  if (mode === 'practice') return items ? COIN.practice : 0;
+  if (mode === 'practice' || mode === 'fix') return items ? COIN.practice : 0;
   if (mode === 'check') return pass ? COIN.check : 0;
   return 0;
 }

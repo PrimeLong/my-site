@@ -4590,16 +4590,21 @@ test('учебник из гайда юнита: черновик на поля�
   expect(errors).toEqual([]);
 });
 
-test('«Чтение»: книга под уроками юнита — после первого урока; цитаты, «найдите в цитате», полка и опыт один раз', async ({ page }) => {
+test('«Чтение» — урок на дороге юнита: после урока перед ним; цитаты, «найдите в цитате», полка и опыт один раз', async ({ page }) => {
   await page.addInitScript(() => {
     if (localStorage.getItem('ems-textbook-v1')) return;
-    localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons: { 'sc-i1': { at: Date.now() - 86400000, runs: 1, best: 90 } } } }));
+    const at = Date.now() - 86400000;
+    const ids = ['sc-i1', 'sc-l1', 'sc-l2', 'sc-i2', 'sc-l3', 'sc-w', 'sc-l4', 'sc-l5'];
+    localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons: Object.fromEntries(ids.map((id) => [id, { at, runs: 1, best: 90 }])) } }));
   });
   const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
-  const card = page.locator('[data-testid=reading-card][data-reading="read-choice"]');
+  const card = page.locator('[data-testid=path-extra][data-extra="read"]');
+  await expect(card).toHaveAttribute('data-id', 'read-choice');
   await expect(card).toHaveAttribute('data-state', 'open');
-  await expect(card).toContainText('Роббинс, Соуэлл, Смит');
-  await card.getByTestId('reading-open').click();
+  // «Персоналии» юнита — тоже остановка дороги, открыта после второго урока
+  await expect(page.locator('[data-testid=path-extra][data-extra="people"]')).toHaveAttribute('data-state', 'open');
+  await card.scrollIntoViewIfNeeded();
+  await card.click();
   const reading = page.getByTestId('reading');
   await expect(reading).toBeVisible();
   for (let k = 1; k <= 3; k += 1) {
@@ -4621,7 +4626,7 @@ test('«Чтение»: книга под уроками юнита — посл
   await expect(card).toHaveAttribute('data-state', 'done');
   expect(await page.evaluate(() => !!JSON.parse(localStorage.getItem('ems-textbook-v1')).learn.read['read-choice'])).toBe(true);
   // перечитать можно, опыт — уже нет; «Найдите в цитате» с ошибкой — верные слова подчёркнуты
-  await card.getByTestId('reading-open').click();
+  await card.click();
   await reading.locator('[data-testid=reading-word]:not([data-hit])').first().click();
   await expect(page.getByTestId('reading-feedback')).toHaveAttribute('data-ok', 'false');
   await expect(page.getByTestId('reading-feedback')).toContainText('Нужные слова подчёркнуты');
@@ -4709,5 +4714,91 @@ test('лига: неделя кончилась — церемония «Ито�
   await scene.getByTestId('celebrate-go').click();
   await expect(page.getByTestId('league')).toBeVisible();
   await expect(page.getByTestId('celebrate')).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+test('«Персоналии» — урок на дороге юнита: три портрета, лента веков, вопрос; галерея и книжная полка в профиле', async ({ page }) => {
+  await page.addInitScript(() => {
+    if (localStorage.getItem('ems-textbook-v1')) return;
+    const at = Date.now() - 86400000;
+    localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons: { 'sc-i1': { at, runs: 1, best: 90 }, 'sc-l1': { at, runs: 1, best: 90 } } } }));
+  });
+  const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
+  const stop = page.locator('[data-testid=path-extra][data-extra="people"]');
+  await expect(stop).toHaveAttribute('data-state', 'open');
+  // «Чтение» ещё закрыто — касание объясняет, когда откроется
+  await page.locator('[data-testid=path-extra][data-extra="read"]').scrollIntoViewIfNeeded();
+  await page.locator('[data-testid=path-extra][data-extra="read"]').click();
+  await expect(page.getByTestId('extra-locked')).toContainText('Откроется, когда пройдёте урок');
+  await page.getByTestId('extra-locked').getByRole('button', { name: 'Понятно' }).click();
+  await stop.scrollIntoViewIfNeeded();
+  await stop.click();
+  const view = page.getByTestId('people');
+  await expect(view).toHaveAttribute('data-id', 'people-scarcity');
+  for (const id of ['robbins', 'malthus', 'ricardo']) {
+    const pg = view.getByTestId('people-page');
+    await expect(pg).toHaveAttribute('data-person', id);
+    await expect(pg.getByTestId('people-portrait')).toBeVisible();
+    await expect(pg.getByTestId('people-era')).toBeVisible();
+    await expect(page.getByTestId('people-next')).toBeDisabled();
+    // сначала ошибка — объяснение и «попробуйте ещё», потом верный
+    await pg.locator('[data-testid=people-opt][data-ok="false"]').first().click();
+    await expect(page.getByTestId('people-feedback')).toHaveAttribute('data-ok', 'false');
+    await pg.locator('[data-testid=people-opt][data-ok="true"]').click();
+    await expect(page.getByTestId('people-feedback')).toHaveAttribute('data-ok', 'true');
+    await page.getByTestId('people-next').click();
+  }
+  await expect(page.getByTestId('people-done')).toContainText('+12 опыта');
+  await expect(page.getByTestId('people-wall').locator('figure')).toHaveCount(3);
+  await page.getByTestId('people-finish').click();
+  await expect(stop).toHaveAttribute('data-state', 'done');
+  // профиль: в галерее — трое знакомых, на полке открылись «Богатство народов» и «Начала»
+  await openTab(page, 'profile');
+  const shelf = page.getByTestId('prof-shelf');
+  await shelf.scrollIntoViewIfNeeded();
+  await expect(page.getByTestId('gallery-count')).toHaveText('3 из 30');
+  await expect(shelf.locator('[data-testid=gallery-person][data-met="true"]')).toHaveCount(3);
+  await expect(page.getByTestId('shelf-count')).toHaveText('2 из 9');
+  await shelf.locator('[data-testid=shelf-book][data-book="smith-wealth"]').click();
+  const book = page.getByTestId('book-reader');
+  await expect(book).toBeVisible();
+  await expect(book.getByTestId('book-passage')).toHaveCount(5);
+  await expect(book).toContainText('Не от благожелательности мясника, пивовара или булочника');
+  await page.getByTestId('book-close').click();
+  // закрытая книга — подсказка, что её откроет
+  await shelf.locator('[data-testid=shelf-book][data-book="keynes-tract"]').click();
+  await expect(page.getByTestId('shelf-locked')).toContainText('«Гастроном»');
+  expect(errors).toEqual([]);
+});
+
+test('«Работа над ошибками»: много ошибок в юните — обязательный урок перед следующим, после него Путь открыт', async ({ page }) => {
+  await withTestFlag(page);
+  await page.addInitScript(() => {
+    if (localStorage.getItem('ems-textbook-v1')) return;
+    const at = Date.now() - 86400000;
+    const ids = ['sc-i1', 'sc-l1', 'sc-l2'];
+    const mistakes = ['sc-e1-best', 'sc-e1-free', 'sc-e1-gap', 'sc-e1-uni', 'sc-e2-concert', 'sc-e2-project'].map((id, k) => ({ id, at: at + k }));
+    localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons: Object.fromEntries(ids.map((id) => [id, { at, runs: 1, best: 60 }])), mistakes } }));
+  });
+  const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
+  const fix = page.locator('[data-testid=path-extra][data-extra="fix"]');
+  await expect(fix).toBeVisible();
+  await expect(page.getByTestId('path-fix-count')).toHaveText('6');
+  await expect(fix.locator('xpath=following-sibling::button[1]')).toContainText('сначала — ошибки юнита');
+  // следующий урок закрыт — и сказано почему
+  await pathNode(page, 'sc-i2').click();
+  await expect(page.getByTestId('lesson-sheet-locked')).toContainText('Работа над ошибками');
+  await page.getByTestId('lesson-sheet').getByRole('button', { name: 'Закрыть' }).click();
+  await fix.click();
+  await expect(page.getByTestId('lesson')).toHaveAttribute('aria-label', 'Работа над ошибками');
+  for (let i = 0; i < 30 && !(await page.getByTestId('lesson-result').isVisible()); i += 1) {
+    await answerExercise(page);
+    await page.getByRole('button', { name: 'Дальше', exact: true }).click();
+  }
+  await expect(page.getByTestId('lesson-result')).toContainText('Ошибки разобраны — Путь открыт');
+  await page.getByTestId('lesson-result').getByRole('button', { name: 'Дальше', exact: true }).click();
+  await expect(fix).toHaveCount(0);
+  await expect(pathNode(page, 'sc-i2')).toHaveAttribute('data-state', 'open');
+  expect(await page.evaluate(() => !!JSON.parse(localStorage.getItem('ems-textbook-v1')).learn.fixed.scarcity)).toBe(true);
   expect(errors).toEqual([]);
 });

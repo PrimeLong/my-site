@@ -117,3 +117,139 @@ describe('итоги лиги — церемония', () => {
     expect(momentsOf(learn, T('2026-10-14T10:00:00Z')).filter((m) => m.kind === 'league')).toEqual([]);
   });
 });
+
+const wordsOf = (t) => t.split(/\s+/).filter(Boolean).length;
+
+describe('«Персоналии» — данные', async () => {
+  const { PEOPLE, PERSON_BY_ID, initialsOf, eraPos, galleryOf } = await import('../people.js');
+  const { UNIT_BY_ID } = await import('../course.js');
+  it('по три человека на каждый готовый юнит; годы, роль, рассказ, идея, факт', () => {
+    expect(PEOPLE).toHaveLength(10);
+    expect(new Set(PEOPLE.map((g) => g.unitId)).size).toBe(10);
+    PEOPLE.forEach((g) => {
+      expect(UNIT_BY_ID[g.unitId] && UNIT_BY_ID[g.unitId].lessons.length, g.id).toBeTruthy();
+      expect(g.people, g.id).toHaveLength(3);
+      expect(g.color).toMatch(/^#[0-9A-F]{6}$/i);
+    });
+    const all = PEOPLE.flatMap((g) => g.people);
+    expect(Object.keys(PERSON_BY_ID)).toHaveLength(all.length);
+    all.forEach((p) => {
+      expect(p.years, p.id).toBe(`${p.born}–${p.died}`);
+      expect(p.born, p.id).toBeLessThan(p.died);
+      expect(p.mark, p.id).toBeGreaterThanOrEqual(p.born + 15);
+      expect(p.mark, p.id).toBeLessThanOrEqual(p.died);
+      expect(p.wiki, p.id).toMatch(/^[A-Za-z_.,()-]+$/);
+      expect(p.story, p.id).toHaveLength(2);
+      p.story.forEach((t) => expect(wordsOf(t), p.id).toBeLessThanOrEqual(45));
+      expect(wordsOf(p.idea), p.id).toBeLessThanOrEqual(16);
+      expect(wordsOf(p.fact), p.id).toBeLessThanOrEqual(40);
+      expect(eraPos(p.born)).toBeGreaterThan(0);
+      expect(eraPos(p.died)).toBeLessThan(1);
+    });
+  });
+  it('вопрос: один верный, у неверных — почему; верный не длиннее неверных больше чем на четверть', () => {
+    PEOPLE.flatMap((g) => g.people).forEach((p) => {
+      const ok = p.ask.options.filter((o) => o.ok);
+      expect(ok, p.id).toHaveLength(1);
+      p.ask.options.filter((o) => !o.ok).forEach((o) => expect(o.why, `${p.id}: ${o.text}`).toBeTruthy());
+      const wrong = Math.max(...p.ask.options.filter((o) => !o.ok).map((o) => o.text.length));
+      expect(ok[0].text.length, p.id).toBeLessThanOrEqual(wrong * 1.25 + 3);
+    });
+  });
+  it('инициалы для медальона и галерея профиля', () => {
+    expect(initialsOf('Джон Д. Рокфеллер')).toBe('ДР');
+    expect(initialsOf('Адам Смит')).toBe('АС');
+    expect(initialsOf('Антуан Огюстен Курно')).toBe('АК');
+    const g = galleryOf({ met: { 'people-market': 1 } });
+    expect(g).toHaveLength(30);
+    expect(g.filter((p) => p.met).map((p) => p.id)).toEqual(['smith', 'jenkin', 'marshall']);
+  });
+});
+
+describe('книжная полка', async () => {
+  const { BOOKS, bookOpen, shelfBooks } = await import('../shelf.js');
+  const { UNIT_BY_ID } = await import('../course.js');
+  const { markRead, markMet } = await import('../../textbook/learn-state.js');
+  it('только тексты в общественном достоянии (не позже 1923 года); у каждого отрывка — откуда и «Подумайте»', () => {
+    expect(BOOKS.length).toBeGreaterThanOrEqual(8);
+    BOOKS.forEach((b) => {
+      expect(b.year, b.id).toBeLessThanOrEqual(1923);
+      expect(UNIT_BY_ID[b.unitId], b.id).toBeTruthy();
+      b.passages.forEach((p) => {
+        expect(p.text.length, `${b.id}/${p.id}`).toBeGreaterThan(0);
+        expect(p.where, `${b.id}/${p.id}`).toBeTruthy();
+        expect(p.think, `${b.id}/${p.id}`).toMatch(/[?.]$/);
+      });
+    });
+  });
+  it('книга открывается «Чтением» или «Персоналиями» своего юнита', () => {
+    const smith = BOOKS.find((b) => b.id === 'smith-wealth');
+    expect(bookOpen(emptyLearn(), smith)).toBe(false);
+    expect(bookOpen(markRead(emptyLearn(), 'read-choice'), smith)).toBe(true);
+    expect(bookOpen(markMet(emptyLearn(), 'people-scarcity'), smith)).toBe(true);
+    expect(shelfBooks(markMet(emptyLearn(), 'people-consumer')).filter((b) => b.open).map((b) => b.id)).toEqual(['jevons-coal']);
+  });
+});
+
+describe('остановки дороги юнита', async () => {
+  const { unitStops } = await import('../stops.js');
+  const { pathState, UNIT_BY_ID } = await import('../course.js');
+  const { markRead } = await import('../../textbook/learn-state.js');
+  const ids = UNIT_BY_ID.scarcity.lessons.map((l) => l.id);
+  const doneFirst = (n) => ({ ...emptyLearn(), lessons: Object.fromEntries(ids.slice(0, n).map((id) => [id, { at: T('2026-10-20T10:00:00Z'), runs: 1, best: 90 }])) });
+  const stopsOf = (learn) => unitStops(pathState(learn).find((s) => s.course.id === 'scarcity'), learn);
+  it('«Персоналии» — после второго урока, «Чтение» — на середине; открываются, когда пройден урок перед ними', () => {
+    const s0 = stopsOf(emptyLearn());
+    // в «Мастерской» 14 уроков: «Персоналии» — после 2-го, «Чтение» — после 8-го
+    expect(s0.map((x) => x.type)).toEqual(['lesson', 'lesson', 'people', ...Array(6).fill('lesson'), 'read', ...Array(6).fill('lesson')]);
+    expect(s0.find((x) => x.type === 'people')).toMatchObject({ id: 'people-scarcity', open: false, done: false });
+    const s2 = stopsOf(doneFirst(2));
+    expect(s2.find((x) => x.type === 'people').open).toBe(true);
+    expect(s2.find((x) => x.type === 'read').open).toBe(false);
+    expect(stopsOf(markRead(doneFirst(8), 'read-choice')).find((x) => x.type === 'read')).toMatchObject({ open: true, done: true });
+  });
+});
+
+describe('«Работа над ошибками»', async () => {
+  const { pathState, UNIT_BY_ID, canPractice, FIX_MIN, fixIds, buildFix } = await import('../course.js');
+  const { markFixed, addMistake } = await import('../../textbook/learn-state.js');
+  const { unitStops } = await import('../stops.js');
+  const lessonIds = (u) => UNIT_BY_ID[u].lessons.map((l) => l.id);
+  const exIds = (u) => UNIT_BY_ID[u].lessons.flatMap((l) => l.exercises.map((e) => e.id)).filter(canPractice);
+  const learner = (doneN, mistakes, unit = 'scarcity') => {
+    let s = { ...emptyLearn(), lessons: Object.fromEntries(lessonIds('scarcity').slice(0, doneN).map((id) => [id, { at: T('2026-10-20T10:00:00Z'), runs: 1, best: 70 }])) };
+    exIds(unit).slice(0, mistakes).forEach((id, k) => { s = addMistake(s, id, T('2026-10-20T10:00:00Z') + k); });
+    return s;
+  };
+  const sc = (learn) => pathState(learn).find((s) => s.course.id === 'scarcity');
+  it(`${FIX_MIN} ошибок юнита — перед следующим уроком встаёт обязательный урок, следующий урок закрыт`, () => {
+    expect(sc(learner(3, FIX_MIN - 1)).fix).toBe(null);
+    const s = learner(3, FIX_MIN);
+    const st = sc(s);
+    expect(st.fix).toMatchObject({ unitId: 'scarcity', at: 3, count: FIX_MIN });
+    expect(st.lessons[3]).toMatchObject({ open: false, fixLock: true });
+    expect(st.lessons[4].open).toBe(false);
+    const stops = unitStops(st, s);
+    expect(stops.findIndex((x) => x.type === 'fix')).toBe(stops.findIndex((x) => x.id === st.lessons[3].id) - 1);
+    // урок — из ошибок этого юнита
+    const items = buildFix(s, 'scarcity', () => 0.3).items;
+    expect(items.length).toBeGreaterThanOrEqual(FIX_MIN);
+    expect(fixIds(s, 'scarcity')).toHaveLength(FIX_MIN);
+  });
+  it('пройдена — Путь открыт, и второй раз в этом юните она не встанет; ошибки другого юнита не в счёт', () => {
+    const s = markFixed(learner(3, FIX_MIN), 'scarcity', T('2026-10-21T10:00:00Z'));
+    expect(sc(s).fix).toBe(null);
+    expect(sc(s).lessons[3].open).toBe(true);
+    let more = s; exIds('scarcity').slice(FIX_MIN, FIX_MIN * 2).forEach((id) => { more = addMistake(more, id); });
+    expect(sc(more).fix).toBe(null);
+    expect(sc(learner(3, FIX_MIN, 'supply-demand')).fix).toBe(null);
+  });
+  it('ошибки набрались в последнем уроке юнита — урок в конце юнита, первый урок следующего закрыт', () => {
+    const s = learner(lessonIds('scarcity').length, FIX_MIN);
+    const states = pathState(s);
+    const st = states.find((x) => x.course.id === 'scarcity');
+    expect(st.fix).toMatchObject({ at: st.lessons.length });
+    const next = states[states.indexOf(st) + 1];
+    expect(next.lessons[0]).toMatchObject({ open: false, fixLock: true });
+  });
+});
