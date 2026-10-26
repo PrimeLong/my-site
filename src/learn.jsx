@@ -2346,14 +2346,23 @@ function PathView({ learn, update, onLesson, onStart, onOpenBook, onChest, onTas
     const center = () => {
       const el = focusLesson(rootRef.current);
       if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'auto', block: 'center' });
-      return window.scrollY;
     };
-    const at = center();
+    center();
     /* Шрифты догрузились после первой прокрутки — строки над уроком перенеслись иначе, и урок
-       уехал от середины. Поставить его заново, если ученик ещё не листал сам. */
-    let alive = true;
-    if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { if (alive && Math.abs(window.scrollY - at) < 2) center(); });
-    return () => { alive = false; };
+       уехал от середины (на 17 пикселей на телефоне). Поставить его заново, если ученик ещё не
+       листал и не касался экрана. Сверять scrollY нельзя: браузер сам сдвигает прокрутку, когда
+       текст выше подрастает (scroll anchoring), — это не ученик листал. Ждём только первые секунды. */
+    let alive = true; let touched = false;
+    const stop = () => { touched = true; };
+    const again = () => { if (alive && !touched) center(); };
+    const evs = ['wheel', 'touchstart', 'pointerdown', 'keydown'];
+    evs.forEach((e) => window.addEventListener(e, stop, { passive: true }));
+    const fonts = document.fonts;
+    if (fonts && fonts.ready) fonts.ready.then(again);
+    if (fonts && fonts.addEventListener) fonts.addEventListener('loadingdone', again);
+    const off = () => { alive = false; evs.forEach((e) => window.removeEventListener(e, stop)); if (fonts && fonts.removeEventListener) fonts.removeEventListener('loadingdone', again); };
+    const t = setTimeout(off, 4000);
+    return () => { clearTimeout(t); off(); };
   }, []);
   /* Сундук открыт (docs/mechanics.md, «Навигация»): Путь подводит шапку юнита к верху экрана, дорога
      юнита сворачивается, юнит становится строкой — и Путь сам едет к рекомендованному уроку. */
