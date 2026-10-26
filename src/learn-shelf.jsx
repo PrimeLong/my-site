@@ -26,9 +26,10 @@ const CSS = `
   .lb-book span { writing-mode: vertical-rl; transform: rotate(180deg); font: 700 12.5px var(--ds-head); letter-spacing: .03em; white-space: nowrap; max-height: calc(var(--h, 140px) - 34px); overflow: hidden; text-overflow: ellipsis; }
   .lb-book::before, .lb-book::after { content: ''; position: absolute; left: 4px; right: 4px; height: 2px; background: rgba(255,255,255,.5); }
   .lb-book::before { top: 12px; } .lb-book::after { bottom: 12px; }
-  .lb-book.locked { cursor: pointer; background: color-mix(in srgb, var(--b) 7%, transparent); border: 2px dashed color-mix(in srgb, var(--b) 40%, var(--ds-rule)); box-shadow: none; color: color-mix(in srgb, var(--b) 70%, var(--ds-ink2)); }
+  .lb-book.locked { cursor: pointer; background: color-mix(in srgb, var(--b) 7%, transparent); border: 2px dashed color-mix(in srgb, var(--b) 40%, var(--ds-rule)); box-shadow: none; color: color-mix(in srgb, var(--b) 40%, var(--ds-ink)); }
   .lb-book.locked::before, .lb-book.locked::after { display: none; }
   .lb-book.locked svg { position: absolute; bottom: 8px; }
+  .lb-book.locked span { margin-bottom: 22px; max-height: calc(var(--h, 140px) - 56px); }
   /* галерея — одной лентой: сначала знакомые, дальше силуэты; листается вбок */
   .lb-gal { display: grid; grid-auto-flow: column; grid-auto-columns: 86px; gap: 10px; margin-top: 10px; overflow-x: auto; padding-bottom: 6px; scrollbar-width: thin; scroll-snap-type: x proximity; }
   .lb-gal > * { scroll-snap-align: start; }
@@ -137,7 +138,7 @@ export default function Library({ learn }) {
           <div className="ds-h3" style={{ flex: 1 }}>Галерея персоналий</div>
           <span className="ds-num ds-faint" style={{ fontSize: 13 }} data-testid="gallery-count">{met} из {people.length}</span>
         </div>
-        <div className="lb-gal" data-testid="prof-gallery">
+        <div className="lb-gal" data-testid="prof-gallery" role="region" aria-label="Галерея знакомств" tabIndex={0}>
           {people.map((p) => (
             <button key={p.id} type="button" className={`lb-p${p.met ? '' : ' locked'}`} data-testid="gallery-person" data-person={p.id} data-met={String(p.met)} disabled={!p.met}
               aria-label={p.met ? p.name : `${p.name} — откроется в «Персоналиях» юнита`} onClick={() => { Audio.play('paper'); setPerson(p); }}>

@@ -24,6 +24,11 @@ async function gotoApp(page, path = '/', tab = 'world') {
   await page.goto(path, { waitUntil: 'networkidle' });
   if (tab && tab !== 'path' && await page.getByTestId('bottom-nav').isVisible()) await openTab(page, tab);
 }
+// лавка — по отделам: вкладки «Витрина», «Для урока», «Ювелир», «Гардероб», «Полезное»
+async function shopTab(page, tab) {
+  await page.getByTestId('shop-tabs').locator(`[data-tab="${tab}"]`).click();
+  await expect(page.getByTestId('shop-panel')).toHaveAttribute('data-tab', tab);
+}
 /* вкладки нижней панели; Мир и Профиль — под «⋯»: касание открывает выбор из двух */
 async function openTab(page, tab) {
   const nav = page.getByTestId('bottom-nav');
@@ -2848,6 +2853,10 @@ test('вход: программа — вступительный тест, су
   await openTab(page, 'shop');
   const shop = page.getByTestId('shop');
   await expect(shop.getByTestId('rate-value')).toContainText(/1 крона = \d,\d\d монеты/);
+  // лавка короткая: график курса и «что такое кроны» — по касанию курса
+  await expect(shop.getByTestId('rate-chart')).toHaveCount(0);
+  await shop.getByTestId('rate-toggle').click();
+  await expect(shop.getByTestId('coins-crowns')).toBeVisible();
   await expect(shop.getByTestId('rate-chart')).toBeVisible();
   // палец ведёт по графику — текст вокруг не выделяется
   expect(await shop.locator('.rw-rate-box').evaluate((el) => getComputedStyle(el).userSelect || getComputedStyle(el).webkitUserSelect)).toBe('none');
@@ -2859,6 +2868,7 @@ test('вход: программа — вступительный тест, су
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), `подсказка на ${fx}`).toBe(true);
   }
   // страховка серии — полис: первый взнос сразу, дальше по неделям; расторгнуть можно в любой момент
+  await shopTab(page, 'useful');
   const coins = Number(await shop.getByTestId('shop-balance').innerText().then((t) => t.replace(/\D/g, '')));
   await shop.getByTestId('policy-take').click();
   await expect(shop.getByTestId('shop-msg')).toContainText('Полис оформлен');
@@ -3350,6 +3360,7 @@ test('новые глаголы: «Откройте сами», живая мо�
   await openTab(page, 'shop');
   const shop = page.getByTestId('shop');
   await expect(shop.getByTestId('shop-forgone').first()).toHaveText(/≈ \d+ урок.* · копилка дала бы \+\d+/);
+  await shopTab(page, 'useful');
   await expect(shop.getByTestId('shop-freeze')).toContainText('Страховка серии');
   const piggy = shop.getByTestId('shop-piggy');
   await expect(piggy).toHaveAttribute('data-open', 'false');
@@ -3394,6 +3405,9 @@ test('новые глаголы: «Откройте сами», живая мо�
   });
   await page.reload({ waitUntil: 'networkidle' });
   await openTab(page, 'shop');
+  // созревший вклад — зелёная точка на вкладке «Полезное»
+  await expect(page.getByTestId('shop-tabs').locator('[data-tab="useful"] .sh-dot')).toBeVisible();
+  await shopTab(page, 'useful');
   await expect(page.getByTestId('shop-piggy').getByTestId('piggy-state')).toContainText('срок вышел');
   await page.getByTestId('shop-piggy').getByTestId('piggy-take').click();
   await expect(page.getByTestId('shop-msg')).toContainText(/Забрано 1[0-2]\d монет[аы]? — с процентами за неделю\./);
@@ -3948,6 +3962,7 @@ test('копилка: график вклада — подписи не нале
       localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn }));
     }, { days, adds, D });
     await openApp(page, '/', '{}', { tab: 'shop' });
+    await shopTab(page, 'useful');
     const chart = page.getByTestId('shop-piggy').getByTestId('piggy-chart');
     await expect(chart).toBeVisible();
     await expect(chart.getByTestId('piggy-now')).toHaveCount(1);
@@ -4642,12 +4657,15 @@ test('украшения урока: своя витрина с живыми п�
     localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons: { 'sc-i1': { at: Date.now() - 86400000, runs: 1, best: 90 } }, coins: { '2026-01-01': 5000 } } }));
   });
   const { errors } = await openApp(page, '/', '{}', { tab: 'shop' });
+  // на витрине ювелира их нет — они во вкладке «Для урока»
+  await shopTab(page, 'rare');
+  await expect(page.getByTestId('shop-rare').getByTestId('shop-item').first()).toBeVisible();
+  await expect(page.getByTestId('shop-rare').locator('[data-item^="desk-"]')).toHaveCount(0);
+  await shopTab(page, 'lesson');
   const desk = page.getByTestId('shop-desk');
   await desk.scrollIntoViewIfNeeded();
   await expect(desk.getByTestId('shop-item')).toHaveCount(3);
   await expect(desk.getByTestId('decor-preview')).toHaveCount(3);
-  // на витрине ювелира и в гардеробе их нет
-  await expect(page.getByTestId('shop-rare').locator('[data-item^="desk-"]')).toHaveCount(0);
   // превью живое: оттянуть крайний шарик колыбели — шарики качаются
   const cradle = desk.locator('[data-testid=shop-item][data-item="desk-cradle"]');
   const prev = cradle.getByTestId('decor-preview');
@@ -4664,6 +4682,9 @@ test('украшения урока: своя витрина с живыми п�
   await cradle.getByRole('button', { name: 'Купить' }).click();
   await expect(page.getByTestId('shop-msg')).toContainText('висит в уроках');
   await expect(cradle.getByTestId('desk-toggle')).toHaveText('Убрать из уроков');
+  // в гардеробе их нет
+  await shopTab(page, 'wardrobe');
+  await expect(page.getByTestId('shop-wardrobe')).toBeVisible();
   await expect(page.getByTestId('shop-wardrobe').locator('[data-item^="desk-"]')).toHaveCount(0);
   // в уроке — полоса с колыбелью под шапкой; ответ её будит
   await openTab(page, 'path');
@@ -4681,11 +4702,71 @@ test('украшения урока: своя витрина с живыми п�
   const leave = page.getByRole('button', { name: 'Выйти', exact: true });
   if (await leave.count()) await leave.click();
   await openTab(page, 'shop');
+  // лавка помнит вкладку, пока открыто приложение
+  await expect(page.getByTestId('shop-panel')).toHaveAttribute('data-tab', 'wardrobe');
+  await shopTab(page, 'lesson');
   await page.getByTestId('shop-desk').locator('[data-item="desk-cradle"]').getByTestId('desk-toggle').click();
   await openTab(page, 'path');
   await startLesson(page, 'sc-l1', /Начать|Продолжить|Повторить/);
   await expect(page.getByTestId('lesson')).toBeVisible();
   await expect(page.getByTestId('lesson-decor')).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+test('темы урока: живые превью во вкладке «Для урока»; купленная тема меняет урок — фон, кнопки, отклик на ответ', async ({ page }) => {
+  await withTestFlag(page);
+  await page.addInitScript(() => {
+    if (localStorage.getItem('ems-textbook-v1')) return;
+    localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons: { 'sc-i1': { at: Date.now() - 86400000, runs: 1, best: 90 } }, coins: { '2026-01-01': 5000 } } }));
+  });
+  const { errors } = await openApp(page, '/', '{}', { tab: 'shop' });
+  await expect(page.getByTestId('shop-panel')).toHaveAttribute('data-tab', 'showcase');
+  await shopTab(page, 'lesson');
+  const themes = page.getByTestId('shop-themes');
+  await expect(themes.getByTestId('shop-item')).toHaveCount(4);
+  await expect(themes.getByTestId('skin-preview')).toHaveCount(4);
+  // превью — тот же фон и те же кнопки, что в уроке
+  const pv = themes.locator('[data-item="theme-exchange"]').getByTestId('skin-preview');
+  await expect(pv).toHaveAttribute('data-skin', 'exchange');
+  expect(await pv.locator('.ds-opt').first().evaluate((el) => getComputedStyle(el, '::before').content)).toContain('>');
+  const item = themes.locator('[data-testid=shop-item][data-item="theme-exchange"]');
+  await item.getByRole('button', { name: 'Купить' }).click();
+  await expect(page.getByTestId('shop-msg')).toContainText('тема уже включена');
+  await expect(item.getByTestId('theme-toggle')).toHaveText('Выключить');
+  await expect(item).toHaveAttribute('data-on', 'true');
+  // не на Инфле: ни в гардеробе, ни у ювелира
+  await shopTab(page, 'wardrobe');
+  await expect(page.getByTestId('shop-wardrobe').locator('[data-item^="theme-"]')).toHaveCount(0);
+  await shopTab(page, 'rare');
+  await expect(page.getByTestId('shop-rare').locator('[data-item^="theme-"]')).toHaveCount(0);
+  // урок — в теме: тёмный терминал, варианты — строки «> …», ответ — свеча
+  await openTab(page, 'path');
+  await startLesson(page, 'sc-l1');
+  const lesson = page.getByTestId('lesson');
+  await expect(lesson).toHaveAttribute('data-skin', 'exchange');
+  await expect(lesson).toHaveClass(/ds-dark/);
+  await expect(lesson.getByTestId('lesson-skin')).toHaveAttribute('data-skin', 'exchange');
+  while (!(await page.getByTestId('ex').count())) await lesson.locator('.ln-foot button').last().click();
+  const fx = lesson.getByTestId('lesson-skin-fx');
+  await expect(fx).toHaveAttribute('data-fired', '0');
+  await answerExercise(page);
+  await expect(fx).not.toHaveAttribute('data-fired', '0');
+  // фон не ловит касаний и не расширяет страницу
+  expect(await lesson.getByTestId('lesson-skin').evaluate((el) => getComputedStyle(el).pointerEvents)).toBe('none');
+  const width = await page.evaluate(() => [document.documentElement.scrollWidth, window.innerWidth]);
+  expect(width[0]).toBeLessThanOrEqual(width[1]);
+  // выключили в лавке — урок обычный
+  await lesson.locator('[data-nav="back"]').first().click();
+  const leave = page.getByRole('button', { name: 'Выйти', exact: true });
+  if (await leave.count()) await leave.click();
+  await openTab(page, 'shop');
+  await shopTab(page, 'lesson');
+  await page.getByTestId('shop-themes').locator('[data-item="theme-exchange"]').getByTestId('theme-toggle').click();
+  await openTab(page, 'path');
+  await startLesson(page, 'sc-l1', /Начать|Продолжить|Повторить/);
+  await expect(page.getByTestId('lesson')).toBeVisible();
+  await expect(page.getByTestId('lesson')).not.toHaveAttribute('data-skin', /.+/);
+  await expect(page.getByTestId('lesson-skin')).toHaveCount(0);
   expect(errors).toEqual([]);
 });
 

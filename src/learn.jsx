@@ -39,8 +39,9 @@ import {
   markShown, shownWith, markFixed,
 } from './textbook/learn-state.js';
 import { courseLevel, BANDS, SCALE_MAX } from './learn/grade.js';
-import { runCoins, runKey, earn, settle, chestKey, hasClaim, outfitOf, deskOf, boostActive, chargePremiums, fixMonth } from './learn/rewards.js';
+import { runCoins, runKey, earn, settle, chestKey, hasClaim, outfitOf, deskOf, themeOf, boostActive, chargePremiums, fixMonth } from './learn/rewards.js';
 import { DeskDecor, tellAnswer } from './learn-decor.jsx';
+import { LessonSkin, SKINS, SKIN_CSS, skinTheme, skinVars } from './learn-skins.jsx';
 import { pickPhrase, situation, endKind } from './learn/voice.js';
 import { lessonOpts, weakLessons, recommend, courseCtx, theoryNotice } from './learn/program.js';
 import {
@@ -100,7 +101,7 @@ const CSS = `
   .ln-grade-top .ds-eyebrow { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .ln-grade-pct { flex: none; margin-left: auto; display: flex; flex-direction: column; align-items: flex-end; font: 700 13px var(--ds-mono); color: var(--u-ink); }
   .ln-grade-pct b { font: 700 22px/1 var(--ds-mono); }
-  .ln-grade-pct small { font: 400 11.5px var(--ds-sans); color: var(--ds-ink2); white-space: nowrap; margin-top: 2px; }
+  .ln-grade-pct small { font: 400 12px var(--ds-sans); color: var(--ds-ink2); white-space: nowrap; margin-top: 2px; }
   .ds-dark .ln-grade-pct { color: color-mix(in srgb, var(--u) 45%, #fff); }
   .ln-grade-row { display: flex; align-items: center; gap: 12px; margin: 6px 0 8px; min-width: 0; }
   .ln-grade-num { flex: none; min-width: 64px; text-align: center; font: 700 34px/1 var(--ds-head); color: var(--u-ink); padding: 6px 8px; border-radius: 14px;
@@ -115,7 +116,7 @@ const CSS = `
   .ln-scale-bar { position: absolute; left: 0; right: 0; top: 0; height: 10px; border-radius: 999px; overflow: hidden; background: color-mix(in srgb, var(--u) 12%, var(--ds-card2)); }
   .ln-scale-bar i { position: absolute; inset: 0 auto 0 0; border-radius: inherit; background: linear-gradient(90deg, color-mix(in srgb, var(--u) 70%, #fff), var(--u)); transition: width .8s cubic-bezier(.2, .9, .3, 1);
     animation: ln-grade-grow 1s cubic-bezier(.2, .9, .3, 1) backwards; overflow: hidden; }
-  .ln-scale-seg { position: absolute; top: 12px; height: 16px; display: flex; align-items: center; justify-content: center; font: 700 11.5px var(--ds-mono); color: var(--ds-ink3);
+  .ln-scale-seg { position: absolute; top: 12px; height: 16px; display: flex; align-items: center; justify-content: center; font: 700 12px var(--ds-mono); color: var(--ds-ink3);
     border-left: 1px solid var(--ds-rule2); }
   .ln-scale-seg:first-of-type { border-left: 0; }
   .ln-scale-seg.past { color: var(--ds-ink2); }
@@ -310,7 +311,7 @@ const CSS = `
   .ln-token.ln-extra.done { background: var(--x); color: #fff; border-color: color-mix(in srgb, var(--x) 80%, #fff); box-shadow: 0 5px 0 color-mix(in srgb, var(--x) 65%, #000); }
   .ln-token.ln-extra.locked { border-style: dashed; color: var(--ds-ink3); background: var(--ds-card2); box-shadow: none; }
   .ln-token.ln-extra:not(.locked):hover { transform: translateY(-2px) rotate(0deg); }
-  .ln-extra-title small { display: block; font: 700 10.5px var(--ds-sans); letter-spacing: .1em; text-transform: uppercase; color: var(--ds-ink2); margin-bottom: 1px; }
+  .ln-extra-title small { display: block; font: 700 12px var(--ds-sans); letter-spacing: .06em; text-transform: uppercase; color: var(--ds-ink2); margin-bottom: 1px; }
   .ln-fix-count { position: absolute; top: -8px; right: -8px; min-width: 24px; height: 24px; padding: 0 6px; border-radius: 12px; display: grid; place-items: center;
     background: var(--ds-bad-btn, var(--ds-bad)); color: #fff; font: 700 13px var(--ds-mono); box-shadow: 0 0 0 3px var(--ds-paper); }
   .ln-extra-title.fix small, .ln-token.fix + .ln-extra-title small { color: var(--ds-bad-ink, var(--ds-bad)); }
@@ -908,6 +909,8 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
   const diamond = !!plan.diamond;
   // украшение урока из лавки (learn-decor.jsx); гость лавки не видел
   const desk = guest ? null : deskOf(learn);
+  // тема урока из лавки (learn-skins.jsx): фон, кнопки и отклик на ответ; тёмная тема — тёмная палитра
+  const skin = guest ? null : SKINS[themeOf(learn)] || null;
   const [gem] = useState(() => !!(run.lessonId && learn.lessons[run.lessonId] && learn.lessons[run.lessonId].diamond));
   const [queue, setQueue] = useState(() => (rs ? rs.queue : plan.items));
   const [pos, setPos] = useState(rs ? rs.pos : 0);
@@ -1221,9 +1224,10 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
   const unitId = lesson ? lesson.unitId : run.unitId;
 
   return (
-    <DsRoot theme={dsThemeId()} accent={color} className="ln-overlay" data-testid="lesson" data-mode={run.mode} data-diamond={diamond ? 'true' : undefined} role="dialog" aria-label={title}
-      style={{ display: hidden ? 'none' : undefined }}>
-      <ArtStyle /><style>{CSS + PLAY_CSS + FEED_CSS + REPORT_CSS + MODEL_CSS + DOMINO_CSS + (sketch ? SKETCH_CSS : '')}</style>
+    <DsRoot theme={skin ? skinTheme(skin) : dsThemeId()} accent={color} className={skin ? 'ln-overlay sk-on' : 'ln-overlay'} data-testid="lesson" data-mode={run.mode} data-diamond={diamond ? 'true' : undefined} role="dialog" aria-label={title}
+      data-skin={skin ? skin.key : undefined} style={{ ...(skin ? skinVars(skin) : null), display: hidden ? 'none' : undefined }}>
+      <ArtStyle /><style>{CSS + PLAY_CSS + FEED_CSS + REPORT_CSS + MODEL_CSS + DOMINO_CSS + (sketch ? SKETCH_CSS : '') + (skin ? SKIN_CSS : '')}</style>
+      {skin && <LessonSkin id={skin.id} />}
       <div className="ln-head" ref={headRef}>
         {stage !== 'done' && <IconButton label="Выйти из урока" icon={X} data-nav="back" onClick={exit} />}
         {/* на одну карточку назад: идущую мини-игру не прерываем */}

@@ -253,3 +253,35 @@ describe('«Работа над ошибками»', async () => {
     expect(next.lessons[0]).toMatchObject({ open: false, fixLock: true });
   });
 });
+
+describe('темы урока — в лавке «Для урока»', async () => {
+  const { OUTFIT_BY_ID, THEME_ITEMS, WARDROBE, RATE_MAX, courseIncome, shopDay, buy, setWear, themeOf, outfitOf } = await import('../rewards.js');
+  const rich = { ...emptyLearn(), coins: { '2026-01-01': 9000 } };
+  const now = T('2026-10-25T10:00:00Z');
+  it('четыре темы, все дорогие и всё же доступные за курс; ни в гардеробе, ни у ювелира', () => {
+    expect(THEME_ITEMS).toEqual(['theme-mint', 'theme-exchange', 'theme-blueprint', 'theme-aurora']);
+    THEME_ITEMS.forEach((id) => {
+      const o = OUTFIT_BY_ID[id];
+      expect(o.slot).toBe('theme');
+      expect(o.crowns).toBeGreaterThanOrEqual(1300);
+      expect(Math.ceil(o.crowns * RATE_MAX), id).toBeLessThanOrEqual(0.7 * courseIncome().total);
+    });
+    expect(WARDROBE.some((o) => o.slot === 'theme')).toBe(false);
+    const day = shopDay(rich, '2026-10-25');
+    expect(day.theme).toEqual(THEME_ITEMS);
+    expect(day.rare.some((id) => THEME_ITEMS.includes(id))).toBe(false);
+  });
+  it('купленная тема сразу включена; выключить и включить другую — одна тема на все уроки; Инфле она не надевается', () => {
+    const r = buy(rich, 'theme-aurora', now);
+    expect(r.ok).toBe(true);
+    expect(themeOf(r.s)).toBe('theme-aurora');
+    expect(outfitOf(r.s).theme).toBeUndefined();
+    const off = setWear(r.s, 'theme', null, now);
+    expect(themeOf(off)).toBe(null);
+    // не купленную не включить
+    expect(themeOf(setWear(off, 'theme', 'theme-mint', now))).toBe(null);
+    const both = buy(off, 'theme-mint', now).s;
+    expect(themeOf(both)).toBe('theme-mint');
+    expect(themeOf(setWear(both, 'theme', 'theme-aurora', now))).toBe('theme-aurora');
+  });
+});

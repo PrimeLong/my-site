@@ -101,8 +101,8 @@ export function pendingGoal(s, now = Date.now()) {
   const p = s.profile || {};
   return p.since && dayOf(now) < p.since && PROFILE_MINUTES.includes(p.minutes) && p.minutes !== p.prev ? { minutes: p.minutes, since: p.since } : null;
 }
-// desk — украшение урока (src/learn-decor.jsx): не на Инфле, друзьям не показывается
-export const SLOTS = ['head', 'face', 'neck', 'hand', 'frame', 'desk'];
+// desk — вещица над заданием (src/learn-decor.jsx), theme — тема урока (src/learn-skins.jsx): не на Инфле, друзьям не показываются
+export const SLOTS = ['head', 'face', 'neck', 'hand', 'frame', 'desk', 'theme'];
 const MAX_SEEN = 800;
 const MAX_BEST = 40;
 const MAX_RECENT = 30;

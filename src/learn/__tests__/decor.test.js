@@ -13,7 +13,8 @@ describe('украшения урока в лавке', () => {
     expect(DESK_ITEMS).toEqual(DECOR_IDS);
     const desk = DESK_ITEMS.map((id) => OUTFIT_BY_ID[id]);
     desk.forEach((o) => { expect(o.slot).toBe('desk'); expect(o.rare).toBe(true); expect(o.note, o.id).toBeTruthy(); });
-    const others = Math.max(...OUTFITS.filter((o) => o.slot !== 'desk').map((o) => o.crowns));
+    // дороже всех вещей Инфли (темы урока — своя полка)
+    const others = Math.max(...WARDROBE.map((o) => o.crowns));
     desk.forEach((o) => expect(o.crowns, o.id).toBeGreaterThan(others));
     desk.forEach((o) => expect(Math.ceil(o.crowns * RATE_MAX), o.id).toBeLessThanOrEqual(0.7 * courseIncome().total));
   });
@@ -23,7 +24,7 @@ describe('украшения урока в лавке', () => {
     expect(t.desk).toEqual(DESK_ITEMS);
     DESK_ITEMS.forEach((id) => { expect(t.rare).not.toContain(id); expect(t.showcase).not.toContain(id); });
     expect(WARDROBE.some((o) => o.slot === 'desk')).toBe(false);
-    expect(WARDROBE.length + DESK_ITEMS.length).toBe(OUTFITS.length);
+    expect(WARDROBE.length + DESK_ITEMS.length + OUTFITS.filter((o) => o.slot === 'theme').length).toBe(OUTFITS.length);
   });
   it('покупка вешает вещицу в уроки, Инфля без изменений; снять и повесить — только купленное; печать «Коллекционер» — не за неё', () => {
     const rich = earn(emptyLearn(), 20000, null, T);
