@@ -888,23 +888,55 @@ export function placementFailed(items, first, unitId) {
    проверкой / открыт вступительным тестом. Пройден — только если урок доведён до конца
    (runs > 0): проверка и тест уроки открывают, но не засчитывают. Юнит пройден, когда
    пройдены все его уроки — тогда и сундук. diamond — урок взят на алмазном уровне. */
+/* РАБОТА НАД ОШИБКАМИ (docs/mechanics.md, «Работа над ошибками»): набралось в юните FIX_MIN
+   нерешённых ошибок — на Пути перед следующим уроком встаёт обязательный урок из этих ошибок, и
+   дальше Путь не пускает, пока его не пройти. Не больше одного на юнит (learn.fixed). Встаёт только
+   там, где ученик сейчас: перед первым непройденным уроком юнита — или в конце юнита, если ошибки
+   набрались в последнем уроке; в пройденных давно юнитах задним числом не появляется. */
+export const FIX_MIN = 6;
+export const mistakeUnit = (id) => (practiceEntry(id) || {}).unitId || null;
+export const fixIds = (learn, unitId) => (learn.mistakes || []).map((m) => m.id).filter((id) => mistakeUnit(id) === unitId);
+export const fixDue = (learn, unitId) => !(learn.fixed || {})[unitId] && !((learn.units || {})[unitId] || {}).tested && fixIds(learn, unitId).length >= FIX_MIN;
+export function buildFix(learn, unitId, rand = Math.random) {
+  // ошибок больше двенадцати — свежие; добор — уроки юнита, где больше всего ошибок, первыми
+  const ids = fixIds(learn, unitId).slice(-PRACTICE_MAX);
+  const lessons = (UNIT_BY_ID[unitId] || { lessons: [] }).lessons.map((l) => l.id).filter((id) => ((learn.lessons || {})[id] || {}).runs > 0);
+  return buildPractice(ids, rand, { weak: lessons });
+}
+
 export function pathState(learn) {
   // Путь сквозной: первый урок юнита открывается, когда пройден последний урок прошлого юнита
   // или прошлый юнит сдан проверкой
-  let prevDone = true;
-  return pilotUnits().map((u) => {
+  let prevDone = true; let frontier = false;
+  const out = [];
+  pilotUnits().forEach((u) => {
     const tested = !!(learn.units || {})[u.id];
-    const lessons = u.lessons.map((l) => {
+    const lessons = [];
+    u.lessons.forEach((l, i) => {
       const entry = learn.lessons[l.id];
       const done = !!(entry && entry.runs > 0);
-      const open = done || prevDone || tested;
+      let open = done || prevDone || tested;
+      let fixLock = false;
+      // первый непройденный урок Пути: не набралось ли ошибок — в этом юните или в только что пройденном прошлом
+      if (open && !done && !tested && !frontier) {
+        frontier = true;
+        const prev = out[out.length - 1];
+        const owner = i > 0 && lessons.some((x) => x.done) ? { st: null, unitId: u.id, at: i }
+          : i === 0 && prev && prev.complete ? { st: prev, unitId: prev.course.id, at: prev.lessons.length } : null;
+        if (owner && fixDue(learn, owner.unitId)) {
+          open = false; fixLock = true;
+          const fix = { unitId: owner.unitId, at: owner.at, count: fixIds(learn, owner.unitId).length };
+          if (owner.st) owner.st.fix = fix; else lessons.fix = fix;
+        }
+      }
       // пропущенный «Слушай» открывает следующий урок, но сам остаётся не пройденным
       const skipped = !done && open && !!(learn.skipped || {})[l.id];
-      prevDone = done || tested || skipped;
-      return { id: l.id, no: l.no, title: l.title, done, open, diamond: !!(done && entry.diamond), ...(skipped ? { skipped: true } : {}) };
+      prevDone = (done || tested || skipped) && !fixLock;
+      lessons.push({ id: l.id, no: l.no, title: l.title, done, open, diamond: !!(done && entry.diamond), ...(skipped ? { skipped: true } : {}), ...(fixLock ? { fixLock: true } : {}) });
     });
     const current = lessons.find((l) => l.open && !l.done && !l.skipped) || lessons.find((l) => l.open && !l.done) || null;
-    return { course: u, lessons, current, complete: lessons.every((l) => l.done), tested };
+    out.push({ course: u, lessons: [...lessons], current, complete: lessons.every((l) => l.done), tested, fix: lessons.fix || null });
   });
+  return out;
 }
 export const unitTitle = (id) => (CHAPTER_BY_ID[id] || {}).title || id;

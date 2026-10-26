@@ -78,6 +78,21 @@ function makeCradle(W, H) {
   return { kind: 'cradle', r, L, balls, top, clicks: 0, t: 0 };
 }
 const ballPos = (m, b) => ({ x: b.ax + Math.sin(b.a) * m.L, y: m.top + Math.cos(b.a) * m.L });
+/* Взять можно любой шарик — с ним идут все шарики до края, как в настоящей колыбели: взяли второй слева
+   — подняли два. Средний — в ту сторону, куда потянули. Отпустили — сколько ударило, столько и вылетит. */
+export function cradleGroup(m, idx, dir) {
+  const mid = (m.balls.length - 1) / 2;
+  const left = idx < mid || (idx === mid && dir < 0);
+  return { left, group: left ? m.balls.slice(0, idx + 1) : m.balls.slice(idx) };
+}
+// держать шарик idx, оттянутый на dx по горизонтали: группа до края висит на одном угле
+export function holdCradle(m, idx, dx) {
+  const L = m.L; const d = Math.max(-L * 0.9, Math.min(L * 0.9, dx));
+  const { left, group } = cradleGroup(m, idx, d);
+  const a = left ? Math.min(0, Math.asin(d / L)) : Math.max(0, Math.asin(d / L));
+  m.balls.forEach((b) => { b.drag = group.includes(b); if (b.drag) { b.a = a; b.w = 0; } });
+  return group.length;
+}
 function stepCradle(m, dt) {
   const sub = 8; const h = dt / sub; let hit = 0;
   for (let s = 0; s < sub; s += 1) {
@@ -197,7 +212,11 @@ export function DeskDecor({ id, height = 56, preview = false, label = null }) {
     const local = (e) => { const r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
     const pick = (p) => {
       if (m.kind === 'bunting') { let best = null; m.pts.forEach((q) => { if (q.pin) return; const d = Math.hypot(q.x - p.x, q.y + 8 - p.y); if (d < 30 && (!best || d < best.d)) best = { q, d }; }); return best && { kind: 'pt', q: best.q, dy: best.q.y - p.y }; }
-      if (m.kind === 'cradle') { const ends = [m.balls[0], m.balls[4]]; const b = ends.find((x) => { const q = ballPos(m, x); return Math.hypot(q.x - p.x, q.y - p.y) < 26; }); return b && { kind: 'ball', b }; }
+      if (m.kind === 'cradle') {
+        let best = -1; let bd = 22;
+        m.balls.forEach((x, i) => { const q = ballPos(m, x); const d = Math.hypot(q.x - p.x, q.y - p.y); if (d < bd) { bd = d; best = i; } });
+        return best >= 0 && { kind: 'ball', idx: best };
+      }
       const c = m.coins.find((x) => Math.hypot(x.ax + Math.sin(x.a) * x.L - p.x, m.top + Math.cos(x.a) * x.L + 9 - p.y) < 20);
       return c && { kind: 'coin', c, x0: p.x };
     };
@@ -207,7 +226,6 @@ export function DeskDecor({ id, height = 56, preview = false, label = null }) {
       if (!g) return;
       drag = g; el.dataset.drag = 'true';
       if (g.kind === 'pt') g.q.drag = true;
-      if (g.kind === 'ball') g.b.drag = true;
       if (g.kind === 'coin') { g.c.sv += 3.5; g.c.glow = 0.6; }
       try { cv.setPointerCapture(e.pointerId); } catch { /* указатель уже отпущен */ }
       e.preventDefault(); wake();
@@ -216,14 +234,14 @@ export function DeskDecor({ id, height = 56, preview = false, label = null }) {
       if (!drag) return;
       const p = local(e);
       if (drag.kind === 'pt') placePt(drag.q, p.x, p.y + drag.dy, H);
-      if (drag.kind === 'ball') { const b = drag.b; const dx = Math.max(-m.L * 0.9, Math.min(m.L * 0.9, p.x - b.ax)); const na = Math.asin(dx / m.L); const left = b === m.balls[0]; b.a = left ? Math.min(0, na) : Math.max(0, na); b.w = 0; }
+      if (drag.kind === 'ball') holdCradle(m, drag.idx, p.x - m.balls[drag.idx].ax);
       if (drag.kind === 'coin') { const c = drag.c; c.a = Math.max(-0.9, Math.min(0.9, (p.x - c.ax) / (c.L + 10))); c.w = 0; }
       wake();
     };
     const up = () => {
       if (!drag) return;
       if (drag.kind === 'pt') drag.q.drag = false;
-      if (drag.kind === 'ball') drag.b.drag = false;
+      if (drag.kind === 'ball') m.balls.forEach((b) => { b.drag = false; });
       if (drag.kind === 'coin') drag.c.drag = false;
       drag = null; el.dataset.drag = 'false'; wake();
     };

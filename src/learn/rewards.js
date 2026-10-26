@@ -53,7 +53,7 @@ export function earn(s, n, key = null, now = Date.now()) {
 export function runCoins({ mode, replay = false, accuracy = 0, pass = null, items = 0, diamond = false, gem = false }) {
   if (mode === 'lesson' && diamond) return accuracy < DIAMOND_ACCURACY ? 0 : gem ? COIN.diamondReplay : COIN.diamond + (accuracy >= 100 ? COIN.diamondPerfect : 0);
   if (mode === 'lesson') return replay ? COIN.replay : COIN.lesson + (accuracy >= 100 ? COIN.perfect : 0);
-  if (mode === 'practice') return items ? COIN.practice : 0;
+  if (mode === 'practice' || mode === 'fix') return items ? COIN.practice : 0;
   if (mode === 'check') return pass ? COIN.check : 0;
   return 0;
 }
@@ -142,8 +142,14 @@ export const OUTFITS = [
      физикой: их можно трогать, и они отзываются на ответы. Самое дорогое в лавке; своя витрина,
      в гардеробе их нет — надеть и снять можно прямо на витрине. */
   { id: 'desk-bunting', slot: 'desk', title: 'Гирлянда флажков', note: 'Потяните — флажки закачаются; верный ответ — порыв ветра', crowns: 1300, rare: true },
-  { id: 'desk-cradle', slot: 'desk', title: 'Колыбель Ньютона', note: 'Оттяните крайний шарик — удар пройдёт по ряду; верный ответ щёлкает сам', crowns: 1500, rare: true },
+  { id: 'desk-cradle', slot: 'desk', title: 'Колыбель Ньютона', note: 'Оттяните один шарик или сразу несколько — столько же вылетит с другой стороны; верный ответ щёлкает сам', crowns: 1500, rare: true },
   { id: 'desk-mobile', slot: 'desk', title: 'Мобиле из монет', note: 'Коснитесь монетки — закрутится; верный ответ — все вспыхнут', crowns: 1650, rare: true },
+  /* ТЕМЫ УРОКА (src/learn-skins.jsx): урок целиком — живой фон, свои кнопки вариантов и отклик на ответ.
+     Место «theme», одна на все уроки; тоже не на Инфле и не в гардеробе. */
+  { id: 'theme-mint', slot: 'theme', title: 'Тема «Монетный двор»', note: 'Гильош вращается, золотая пыль; варианты — банкноты; верный ответ — падает монета', crowns: 1350, rare: true },
+  { id: 'theme-exchange', slot: 'theme', title: 'Тема «Биржа»', note: 'Тёмный терминал, бегут котировки; верный ответ — зелёная свеча', crowns: 1450, rare: true },
+  { id: 'theme-blueprint', slot: 'theme', title: 'Тема «Чертёж»', note: 'Синька, кривые чертятся сами; верный ответ — галочка карандашом', crowns: 1550, rare: true },
+  { id: 'theme-aurora', slot: 'theme', title: 'Тема «Северное сияние»', note: 'Ночное небо и сияние; варианты из стекла; верный ответ — падающая звезда', crowns: 1700, rare: true },
   /* ХЕЛЛОУИН (src/learn/halloween.js): продаются только в сезон, с 16 октября по 2 ноября, — своей
      витриной, не на витрине дня; купленное остаётся навсегда. «Паутину» не купить: она — награда
      за 13 тыкв. */
@@ -158,8 +164,11 @@ export const OUTFITS = [
 export const SEASON_ITEMS = OUTFITS.filter((o) => o.season === 'halloween' && !o.reward).map((o) => o.id);
 export const OUTFIT_BY_ID = Object.fromEntries(OUTFITS.map((o) => [o.id, o]));
 export const DESK_ITEMS = OUTFITS.filter((o) => o.slot === 'desk').map((o) => o.id);
+export const THEME_ITEMS = OUTFITS.filter((o) => o.slot === 'theme').map((o) => o.id);
+// для урока, а не для Инфли: вещицы на столе и темы
+export const LESSON_SLOTS = ['desk', 'theme'];
 // вещи Инфли — без украшений урока
-export const WARDROBE = OUTFITS.filter((o) => o.slot !== 'desk');
+export const WARDROBE = OUTFITS.filter((o) => !LESSON_SLOTS.includes(o.slot));
 export const SLOT_LABEL = { head: 'Голова', face: 'Лицо', neck: 'Шея', hand: 'В руке', frame: 'Рамка' };
 export const SHOWCASE_SIZE = 6;
 export const DEAL_OFF = 0.3;
@@ -173,7 +182,7 @@ export function shopDay(s, day) {
   Object.entries((s && s.owned) || {}).forEach(([id, at]) => { if (!(typeof at === 'number' && at > 0 && dayOf(at) === day)) owned[id] = at; });
   const order = OUTFITS.filter((o) => !o.rare && !o.season).map((o) => ({ o, k: hash01(`shop:${day}:${o.id}`) })).sort((a, b) => a.k - b.k).map((x) => x.o.id);
   const showcase = order.filter((id) => !owned[id]).slice(0, SHOWCASE_SIZE);
-  return { showcase, deal: showcase[0] || null, rare: OUTFITS.filter((o) => o.rare && !o.season && o.slot !== 'desk').map((o) => o.id), desk: DESK_ITEMS, season: halloweenOn(day) ? SEASON_ITEMS : [] };
+  return { showcase, deal: showcase[0] || null, rare: OUTFITS.filter((o) => o.rare && !o.season && !LESSON_SLOTS.includes(o.slot)).map((o) => o.id), desk: DESK_ITEMS, theme: THEME_ITEMS, season: halloweenOn(day) ? SEASON_ITEMS : [] };
 }
 export const crownsOf = (id) => itemOf(id).crowns;
 // цена в монетах: по курсу дня; вещь со скидкой дня — на 30% дешевле
@@ -209,6 +218,8 @@ export function setWear(s, slot, id, now = Date.now()) {
 export const outfitOf = (s) => { const w = s.wear || {}; return { head: w.head || null, face: w.face || null, neck: w.neck || null, hand: w.hand || null, frame: w.frame || null }; };
 // украшение урока — одно на все уроки
 export const deskOf = (s) => { const id = (s.wear || {}).desk; return id && (s.owned || {})[id] && OUTFIT_BY_ID[id] ? id : null; };
+// тема урока — одна на все уроки
+export const themeOf = (s) => { const id = (s.wear || {}).theme; return id && (s.owned || {})[id] && OUTFIT_BY_ID[id] ? id : null; };
 
 /* ------------------------------ КОПИЛКА ИНФЛИ ------------------------------
    Монеты можно положить на 7 дней под ставку недели (в среднем 2% в день). Процент начисляется на
@@ -396,9 +407,9 @@ export const ACHIEVEMENTS = [
   { id: 'quests', icon: 'scroll', title: 'Прилежание', text: 'Все задания дня — семь раз', how: 'Выполните все задания дня семь раз', coins: 40, test: (s) => Object.keys(s.claimed || {}).filter((k) => /^q:.*:all$/.test(k)).length >= 7 },
   { id: 'shop', icon: 'shopping', title: 'Первая покупка', text: 'Куплено что-то в лавке', how: 'Купите что-нибудь в лавке', coins: 10, test: (s) => Object.keys(s.owned || {}).length > 0 || Object.keys(s.freezeBuy || {}).length > 0 || (s.policyAt || 0) > 0 },
   { id: 'wardrobe', icon: 'shirt', title: 'Гардероб', text: 'У Инфли три наряда', how: 'Соберите Инфле три наряда', coins: 20, test: (s) => Object.keys(s.owned || {}).length >= 3 },
-  { id: 'rare', icon: 'gem', title: 'Коллекционер', text: 'Куплена редкая вещь из витрины ювелира', how: 'Купите редкую вещь в витрине ювелира', coins: 100, test: (s) => Object.keys(s.owned || {}).some((id) => OUTFIT_BY_ID[id] && OUTFIT_BY_ID[id].rare && OUTFIT_BY_ID[id].slot !== 'desk') },
-  { id: 'early', icon: 'sunrise', title: 'Ранняя пташка', text: 'Урок до восьми утра', how: 'Пройдите урок до восьми утра', coins: 10, test: (s) => Object.values(s.daily || {}).some((d) => d.h & 1) },
-  { id: 'owl', icon: 'moon', title: 'Сова', text: 'Урок после десяти вечера', how: 'Пройдите урок после десяти вечера', coins: 10, test: (s) => Object.values(s.daily || {}).some((d) => d.h & 2) },
+  { id: 'rare', icon: 'gem', title: 'Коллекционер', text: 'Куплена редкая вещь из витрины ювелира', how: 'Купите редкую вещь в витрине ювелира', coins: 100, test: (s) => Object.keys(s.owned || {}).some((id) => OUTFIT_BY_ID[id] && OUTFIT_BY_ID[id].rare && !LESSON_SLOTS.includes(OUTFIT_BY_ID[id].slot)) },
+  { id: 'early', icon: 'sunrise', title: 'Ранняя пташка', text: 'Урок до восьми утра', how: 'Пройдите урок до восьми утра — по часам вашего устройства', coins: 10, test: (s) => Object.values(s.daily || {}).some((d) => d.h & 1) },
+  { id: 'owl', icon: 'moon', title: 'Сова', text: 'Урок после десяти вечера', how: 'Пройдите урок после десяти вечера — по часам вашего устройства', coins: 10, test: (s) => Object.values(s.daily || {}).some((d) => d.h & 2) },
   { id: 'saver', icon: 'piggy', title: 'Пятьсот монет', text: 'Заработано 500 монет', how: 'Заработайте 500 монет', coins: 30, test: (s) => earned(s) >= 500 },
   { id: 'month', icon: 'calendar', title: 'Испытание месяца', text: 'Выполнено испытание месяца', how: 'Выполните испытание месяца', coins: 30, test: (s) => Object.keys(s.claimed || {}).some((k) => k.startsWith('m:')) },
   { id: 'diamond', icon: 'gem', title: 'Огранщик', text: 'Урок взят на алмазном уровне', how: 'Возьмите урок на алмазном уровне', coins: 20, test: (s) => Object.values(s.lessons || {}).some((l) => l.diamond) },

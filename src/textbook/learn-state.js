@@ -51,7 +51,7 @@ export const emptyLearn = () => ({
   coins: {}, spent: {}, claimed: {}, owned: {}, skipped: {}, wear: { head: null, face: null, neck: null, hand: null, frame: null, at: 0 }, freezeBuy: {}, frozen: {},
   policyAt: 0, policyOff: 0, policyLapse: 0, premiums: {}, monthPlan: {},
   seen: {}, best: {}, boost: 0, piggy: {}, piggyOut: {}, piggyTop: {}, piggyAdd: {}, garden: {}, harvest: {}, water: {},
-  shown: {}, read: {},
+  shown: {}, read: {}, met: {}, fixed: {},
 });
 /* Показанное ученику — общее для всех его устройств (жалоба: «прошёл юнит на ПК — марка и уведомления
    повторяются на телефоне»): ключ → когда впервые показали. Префиксы: c: — церемония (марка, печать),
@@ -68,6 +68,16 @@ export function markShown(s, keys, now = Date.now()) {
 export function markRead(s, id, now = Date.now()) {
   if (!okKey(id) || (s.read || {})[id]) return s;
   return upd(s, { read: { ...s.read, [id]: now } });
+}
+/* «Персоналии» юнита пройдены (met: id подборки → когда) и «Работа над ошибками» юнита пройдена
+   (fixed: юнит → когда): обе — один раз, общие для всех устройств, при слиянии — более раннее время. */
+export function markMet(s, id, now = Date.now()) {
+  if (!okKey(id) || (s.met || {})[id]) return s;
+  return upd(s, { met: { ...s.met, [id]: now } });
+}
+export function markFixed(s, unitId, now = Date.now()) {
+  if (!okKey(unitId) || (s.fixed || {})[unitId]) return s;
+  return upd(s, { fixed: { ...s.fixed, [unitId]: now } });
 }
 // показанное с префиксом — без префикса: { ключ: время }
 export const shownWith = (s, prefix) => Object.fromEntries(Object.entries((s && s.shown) || {}).filter(([k]) => k.startsWith(prefix)).map(([k, v]) => [k.slice(prefix.length), v]));
@@ -91,8 +101,8 @@ export function pendingGoal(s, now = Date.now()) {
   const p = s.profile || {};
   return p.since && dayOf(now) < p.since && PROFILE_MINUTES.includes(p.minutes) && p.minutes !== p.prev ? { minutes: p.minutes, since: p.since } : null;
 }
-// desk — украшение урока (src/learn-decor.jsx): не на Инфле, друзьям не показывается
-export const SLOTS = ['head', 'face', 'neck', 'hand', 'frame', 'desk'];
+// desk — вещица над заданием (src/learn-decor.jsx), theme — тема урока (src/learn-skins.jsx): не на Инфле, друзьям не показываются
+export const SLOTS = ['head', 'face', 'neck', 'hand', 'frame', 'desk', 'theme'];
 const MAX_SEEN = 800;
 const MAX_BEST = 40;
 const MAX_RECENT = 30;
@@ -121,6 +131,10 @@ export const dayStart = (ts) => { const d = new Date(ts); return Date.UTC(d.getU
 export const dayHour = (ts) => (ts - dayStart(ts)) / 3600000;
 // момент «день key, час h» по всемирному времени
 export const dayAt = (key, h = 0) => dayTs(key) + (h - 12) * 3600000;
+/* Новый день — в полночь по Гринвичу (UTC); на часах устройства это, например, 03:00 в Москве. Подписи
+   «по Гринвичу» на экранах (задания дня, лига, витрина, настройки) берут местное время отсюда. */
+export const rolloverLocal = (now = Date.now()) => { const t = new Date(dayStart(now) + 86400000); return `${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}`; };
+export const UTC_NOTE = 'Дни, серия, задания, лиги и забеги считаются по Гринвичу (UTC) — у всех одинаково.';
 
 /* ------------------------------ ЗАПИСИ ------------------------------ */
 const upd = (s, patch) => ({ ...s, ...patch });
@@ -257,6 +271,7 @@ export function finishLesson(s, lessonId, { xp, accuracy, now = Date.now(), coun
   const gem = (prev && prev.diamond) || (diamond && accuracy >= DIAMOND_ACCURACY ? now : 0);
   const lessons = lessonId ? { ...s.lessons, [lessonId]: { at: fresh ? now : prev.at, runs: (prev ? prev.runs : 0) + 1, best: Math.max(prev ? prev.best : 0, Math.round(accuracy)), ...(gem ? { diamond: gem } : {}) } } : s.lessons;
   const d = dayEntry(s, day);
+  // «Ранняя пташка» и «Сова» — по часам устройства (местное время), а не по UTC: утро у каждого своё
   const hour = new Date(now).getHours();
   // в сегодняшние минуты — только время после полуночи (UTC): урок, начатый вчера, не делает новый день наполовину выполненным
   const sinceMidnight = (now - dayStart(now)) / 1000;
@@ -563,7 +578,7 @@ function normalizeProgram(r) {
     seen: countMap(r.seen, MAX_SEEN, 9999), best: countMap(r.best, MAX_BEST, 1e6), boost: cnt(r.boost, 1e14),
     piggy: piggyMap(r.piggy), piggyOut: piggyMap(r.piggyOut), piggyTop: piggyTopMap(r.piggyTop), piggyAdd: piggyAddMap(r.piggyAdd), garden: gardenMap(r.garden), harvest: harvestMap(r.harvest), water: waterMap(r.water),
     // показанное: самые свежие SHOWN_MAX по времени
-    read: tsMap(r.read, 200),
+    read: tsMap(r.read, 200), met: tsMap(r.met, 200), fixed: tsMap(r.fixed, 200),
     shown: Object.fromEntries(Object.entries(tsMap(r.shown, 5000)).sort((a, b) => a[1] - b[1] || (a[0] < b[0] ? -1 : 1)).slice(-SHOWN_MAX)),
   };
 }
@@ -592,7 +607,7 @@ function mergeProgram(x, y) {
     harvest: minTs(x.harvest, y.harvest),
     water: Object.fromEntries([...new Set([...Object.keys(x.water), ...Object.keys(y.water)])].map((k) => [k, [x.water[k], y.water[k]].filter(Boolean).sort()[0]])),
     shown: minTs(x.shown, y.shown),
-    read: minTs(x.read, y.read),
+    read: minTs(x.read, y.read), met: minTs(x.met, y.met), fixed: minTs(x.fixed, y.fixed),
   };
 }
 /* Слияние двух устройств: счётчики — по максимуму (одно и то же занятие не удваивается),

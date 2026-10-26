@@ -80,11 +80,13 @@ export function notificationsOf(learn, now = Date.now(), opts = {}) {
   // серия и цель дня
   const st = streak(learn, now);
   const g = goalToday(learn, now);
+  // напоминание — в выбранный час по часам устройства
+  const localAt = (h) => { const d = new Date(now); d.setHours(h, 0, 0, 0); return Math.min(now, d.getTime()); };
   if (started && !st.today && hour >= prefs.remindAt) {
     add(st.days > 0
-      ? { id: `streak:${day}`, kind: 'streak', icon: 'flame', tone: '#D9822B', at: at(day, prefs.remindAt), go: 'path', push: true,
+      ? { id: `streak:${day}`, kind: 'streak', icon: 'flame', tone: '#D9822B', at: localAt(prefs.remindAt), go: 'path', push: true,
         title: `Серия ${st.days} ${plural(st.days, 'день', 'дня', 'дней')} ждёт урока`, text: hour >= 21 ? 'До полуночи — один урок, и серия продолжится.' : 'Пять минут сегодня — и серия продолжится.' }
-      : { id: `comeback:${day}`, kind: 'streak', icon: 'map', tone: '#C2490B', at: at(day, prefs.remindAt), go: 'path', push: true,
+      : { id: `comeback:${day}`, kind: 'streak', icon: 'map', tone: '#C2490B', at: localAt(prefs.remindAt), go: 'path', push: true,
         title: 'Инфля ждёт на Пути', text: 'Одна остановка — три–пять минут, и новая серия начнётся сегодня.' });
   }
   if (g.done >= g.goal && g.goal > 0) {

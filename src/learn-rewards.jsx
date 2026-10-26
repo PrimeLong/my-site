@@ -5,7 +5,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   X, Wallet, ShieldCheck, CalendarDays, Check, Flame, GraduationCap, Timer, Map as MapIcon, Target, Coins, TrendingUp, TrendingDown, Minus, Gem, Zap,
-  ListChecks, ChevronRight, Ghost, Crown, Lock, Plus,
+  ListChecks, ChevronRight, Ghost, Crown, Lock, Plus, Store, Palette, Shirt, PiggyBank, ChevronDown,
 } from 'lucide-react';
 import { ACH_ICON } from './award-art.js';
 import { Audio } from './MacroSimulator.jsx';
@@ -15,16 +15,17 @@ import { halloween, seasonLeftText, WEB_FRAME } from './learn/halloween.js';
 import { Rosette, Medal, CoinShower, CountUp, Chest, Guilloche } from './ds-art.jsx';
 import { ShopSwitch, RateWeek } from './learn-rate.jsx';
 import { DeskDecor } from './learn-decor.jsx';
+import { SkinPreview, SKIN_CSS } from './learn-skins.jsx';
 // сад — отдельный ленивый чанк: грузится, только когда открыли «Сад»
 const GardenView = React.lazy(() => import('./learn-garden.jsx').then((m) => ({ default: m.GardenView })));
 import {
-  balance, rateOn, rateHistory, priceOf, buy, setWear, outfitOf, deskOf, FREEZE, BOOST, WARDROBE, OUTFIT_BY_ID, SLOT_LABEL, shopDay, boostActive, DEAL_OFF, questsFor, QUEST_ICON, monthChallenge, monthStamps, policyInfo, takePolicy, cancelPolicy, PREMIUM,
+  balance, rateOn, rateHistory, priceOf, buy, setWear, outfitOf, deskOf, themeOf, FREEZE, BOOST, WARDROBE, OUTFIT_BY_ID, SLOT_LABEL, shopDay, boostActive, DEAL_OFF, questsFor, QUEST_ICON, monthChallenge, monthStamps, policyInfo, takePolicy, cancelPolicy, PREMIUM,
   chestCoins, chestKey, hasClaim, openChest, achievementsOf, coinsWord, plural, greetingAt, COIN, PIGGY, piggyState, piggyPut, piggyTake, piggyAdd, topupRate, piggyValue, forgone, REAL_RATE, realCurve, weekRate,
   goalCoins,
 } from './learn/rewards.js';
 import { skillLevel, LEVEL_NAME, LEVEL_TEXT } from './learn/program.js';
 import {
-  dayOf, addDays, dayStart, streak, ownedFreezes, weekDots, setProfile, PROFILE_GOALS, PROFILE_MINUTES, PROFILE_GOAL_LABEL, goalMinutes, goalToday, pendingGoal,
+  dayOf, addDays, dayStart, streak, ownedFreezes, weekDots, rolloverLocal, setProfile, PROFILE_GOALS, PROFILE_MINUTES, PROFILE_GOAL_LABEL, goalMinutes, goalToday, pendingGoal,
 } from './textbook/learn-state.js';
 
 export const REWARD_CSS = `
@@ -234,11 +235,40 @@ export const REWARD_CSS = `
   .rw-desk-items { grid-template-columns: repeat(auto-fill, minmax(min(100%, 230px), 1fr)); }
   .rw-desk-stage { width: 100%; border-radius: 4px; background: repeating-linear-gradient(0deg, transparent 0 15px, var(--ds-rule) 15px 16px), var(--ds-paper); padding-top: 4px; }
   .rw-desk-tag { background: linear-gradient(135deg, #2E5F8A, #4D7C0F); }
+  .rw-theme-tag { background: linear-gradient(135deg, #0F6B4A, #3B2D8F); }
+  /* лавка: кошелёк и курс сверху, вкладки отделов */
+  .sh-head-card { margin: 0 0 12px; padding: 12px 14px; }
+  .sh-head { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 12px; align-items: center; }
+  .sh-bal { font-size: 26px; font-weight: 700; line-height: 1.15; }
+  .sh-bal span { font-size: 14.5px; }
+  .sh-rate { display: flex; align-items: center; gap: 8px; width: 100%; margin-top: 10px; padding: 8px 12px; min-height: 48px; border: 1px solid var(--ds-rule2); border-radius: 12px;
+    background: var(--ds-card2); color: var(--ds-ink); font: 14px var(--ds-sans); text-align: left; cursor: pointer; }
+  .sh-rate:hover { border-color: var(--u); }
+  .sh-rate-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .sh-rate-k { font: 600 12px var(--ds-sans); letter-spacing: .05em; text-transform: uppercase; color: var(--ds-ink3); }
+  .sh-rate-prev { font-size: 12.5px; color: var(--ds-ink2); display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; }
+  .sh-chev { flex: none; color: var(--ds-ink3); transition: transform .2s ease; }
+  .sh-rate[aria-expanded="true"] .sh-chev { transform: rotate(180deg); }
+  .sh-more { margin-top: 12px; animation: rw-in .25s ease-out both; }
+  .sh-tabs { display: flex; gap: 3px; padding: 4px; margin: 0 0 12px; border: 1px solid var(--ds-rule2); border-radius: 16px; background: var(--ds-card2); overflow-x: auto; scrollbar-width: none; }
+  .sh-tabs::-webkit-scrollbar { display: none; }
+  .sh-tab { position: relative; flex: 1 1 0; min-width: 58px; min-height: 54px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; padding: 6px 4px;
+    border: 0; border-radius: 12px; background: transparent; color: var(--ds-ink2); font: 600 12px/1.15 var(--ds-sans); white-space: nowrap; cursor: pointer; transition: background .15s ease, color .15s ease; }
+  .sh-tab:hover { color: var(--ds-ink); }
+  .sh-tab[aria-selected="true"] { background: var(--ds-card); color: var(--ds-ink); box-shadow: 0 1px 3px var(--ds-shade); }
+  .sh-tab[aria-selected="true"] svg { color: var(--u-ink); }
+  .sh-badge { position: absolute; top: 1px; right: 1px; display: inline-flex; align-items: center; font: 700 12px/1.2 var(--ds-sans); color: #fff; background: var(--ds-bad-btn); border-radius: 999px; padding: 0 5px; }
+  .sh-badge.hw { background: #6B3FA0; padding: 2px 4px; }
+  .sh-dot { position: absolute; top: 6px; right: calc(50% - 16px); width: 8px; height: 8px; border-radius: 50%; background: var(--ds-ok); box-shadow: 0 0 0 2px var(--ds-card2); }
+  .sh-msg { margin: 0 0 12px; font-size: 14.5px; color: var(--ds-bad); }
+  .sh-msg[data-ok="true"] { color: var(--ds-ok); }
+  .sh-panel { animation: rw-in .25s ease-out both; }
+  .sh-intro { margin: 0 0 12px; font-size: 14px; line-height: 1.4; color: var(--ds-ink2); }
   .rw-price s { color: var(--ds-ink3); font-weight: 400; margin-right: 4px; }
   .rw-goal { height: 5px; width: 100%; border-radius: 3px; background: var(--ds-rule); overflow: hidden; }
   .rw-goal > i { display: block; height: 100%; background: #8A2F45; }
   @media (prefers-reduced-motion: reduce) { .rw-ticket, .rw-seal svg *, .rw-flame *, .rw-days span, .rw-days-label, .rw-days-sub, .rw-dot i { animation: none !important; stroke-dashoffset: 0 !important; } }
-  @media (prefers-reduced-motion: reduce) { .rw-flame, .rw-chest-open, .rw-item[data-rare="true"], .rw-bar > i, .rw-quest, .rw-ico.ok, .rw-goalbox, .rw-ring .fg, .rw-book-days i, .rw-pig-coin, .rw-pig-in .spark, .rw-pig-peek, .rw-grow .main, .rw-grow .now circle, .rw-grow .area, .rw-grow .other, .rw-grow .dot, .rw-grow .now, .rw-grow text { animation: none; } .rw-grow .main { stroke-dasharray: none; } .rw-bar > i, .rw-item { transition: none; } }
+  @media (prefers-reduced-motion: reduce) { .sh-panel, .sh-more, .rw-flame, .rw-chest-open, .rw-item[data-rare="true"], .rw-bar > i, .rw-quest, .rw-ico.ok, .rw-goalbox, .rw-ring .fg, .rw-book-days i, .rw-pig-coin, .rw-pig-in .spark, .rw-pig-peek, .rw-grow .main, .rw-grow .now circle, .rw-grow .area, .rw-grow .other, .rw-grow .dot, .rw-grow .now, .rw-grow text { animation: none; } .rw-grow .main { stroke-dasharray: none; } .rw-bar > i, .rw-item { transition: none; } }
 `;
 
 const Q_ICON = { timer: Timer, map: MapIcon, check: Check, target: Target, coins: Coins, flame: Flame, spark: Zap };
@@ -312,6 +342,7 @@ export function QuestsCard({ learn, now = Date.now(), testid = 'quests' }) {
         <div className="ds-h3">Задания дня</div>
         <span className="ds-num ds-faint" style={{ fontSize: 13 }} data-testid="quests-done">{done} из 3</span>
       </div>
+      <div className="ds-sub" style={{ fontSize: 12.5, margin: '-2px 0 6px' }} data-testid="quests-utc">Новые — в {rolloverLocal(now)} по вашему времени (полночь по Гринвичу)</div>
       <div>
         {quests.map((q) => {
           const Icon = Q_ICON[QUEST_ICON[q.id]] || Target;
@@ -414,20 +445,20 @@ function RateChart({ hist }) {
 const untilMidnight = (now) => { const m = dayStart(now) + 24 * 3600000 - now; const hh = Math.floor(m / 3600000); const mm = Math.floor((m % 3600000) / 60000); return `${hh} ч ${mm} мин`; };
 // карточка вещи: Инфля в ней, цена по курсу (со скидкой — старая зачёркнута), купить / надеть
 function ShopItem({ o, learn, day, wear, b, onBuy, onToggle, deal = false, goal = false, hw = null }) {
-  const desk = o.slot === 'desk';
-  const owned = !!(learn.owned || {})[o.id]; const on = (desk ? deskOf(learn) : wear[o.slot]) === o.id;
+  const desk = o.slot === 'desk'; const theme = o.slot === 'theme';
+  const owned = !!(learn.owned || {})[o.id]; const on = (desk ? deskOf(learn) : theme ? themeOf(learn) : wear[o.slot]) === o.id;
   const price = priceOf(o.id, day, learn); const full = priceOf(o.id, day);
   return (
     <div className="rw-item" data-testid="shop-item" data-item={o.id} data-owned={String(owned)} data-on={String(on)} data-deal={deal ? 'true' : undefined} data-rare={o.rare && !o.season ? 'true' : undefined} data-season={o.season || undefined}>
       {deal && !owned && <span className="rw-deal" data-testid="shop-deal">−{Math.round(DEAL_OFF * 100)}%</span>}
-      {o.season ? <span className="rw-rare rw-season"><Ghost size={11} aria-hidden="true" />хеллоуин</span> : desk ? <span className="rw-rare rw-desk-tag"><Gem size={11} aria-hidden="true" />в урок</span> : o.rare && <span className="rw-rare"><Gem size={11} aria-hidden="true" />редкое</span>}
+      {o.season ? <span className="rw-rare rw-season"><Ghost size={11} aria-hidden="true" />хеллоуин</span> : theme ? <span className="rw-rare rw-theme-tag"><Palette size={11} aria-hidden="true" />тема урока</span> : desk ? <span className="rw-rare rw-desk-tag"><Gem size={11} aria-hidden="true" />в урок</span> : o.rare && <span className="rw-rare"><Gem size={11} aria-hidden="true" />редкое</span>}
       {/* украшение урока — живое прямо на витрине: его можно потрогать до покупки */}
-      {desk ? <div className="rw-desk-stage"><DeskDecor id={o.id} height={64} preview label={`${o.title}: потрогайте`} /></div>
+      {theme ? <SkinPreview id={o.id} /> : desk ? <div className="rw-desk-stage"><DeskDecor id={o.id} height={64} preview label={`${o.title}: потрогайте`} /></div>
         : <Mascot mood="hello" size={o.rare ? 62 : 50} outfit={{ [o.slot]: o.id }} label={`Инфля: ${o.title}`} />}
       <div style={{ fontWeight: 700, fontSize: 13.5, lineHeight: 1.25 }}>{o.title}</div>
       {o.note && <div className="rw-note">{o.note}</div>}
       {owned
-        ? <Button small variant={on ? 'secondary' : 'primary'} onClick={() => onToggle(o)} data-testid={desk ? 'desk-toggle' : undefined}>{on ? (desk ? 'Убрать из уроков' : 'Снять') : (desk ? 'Повесить в уроки' : 'Надеть')}</Button>
+        ? <Button small variant={on ? 'secondary' : 'primary'} onClick={() => onToggle(o)} data-testid={desk ? 'desk-toggle' : theme ? 'theme-toggle' : undefined}>{on ? (desk ? 'Убрать из уроков' : theme ? 'Выключить' : 'Снять') : (desk ? 'Повесить в уроки' : theme ? 'Включить в уроках' : 'Надеть')}</Button>
         : o.reward ? <>
           {/* награда события: не продаётся — собирается тыквами за уроки */}
           <div className="rw-forgone" data-testid="shop-reward">Не продаётся: {hw ? `тыкв ${hw.pumpkins} из ${hw.goal}` : 'награда за 13 тыкв'}</div>
@@ -531,15 +562,32 @@ function Wardrobe({ learn, wear, onWear }) {
     </Card>
   );
 }
+/* ЛАВКА — вкладки вместо одной длинной ленты (docs/mechanics.md, «Лавка»): сверху кошелёк и курс
+   дня (касание — график и что такое кроны), ниже пять вкладок: «Витрина» (вещи дня, на Хеллоуин —
+   и сезонные), «Для урока» (темы и украшения урока), «Ювелир» (редкое, на что копят), «Гардероб»
+   (примерочная) и «Полезное» (копилка, страховка серии, двойной опыт). Вкладка помнится, пока
+   открыто приложение; из уведомления «вклад созрел» лавка открывается на «Полезном». */
+const SHOP_TABS = [
+  { id: 'showcase', label: 'Витрина', icon: Store },
+  { id: 'lesson', label: 'Для урока', icon: Palette },
+  { id: 'rare', label: 'Ювелир', icon: Gem },
+  { id: 'wardrobe', label: 'Гардероб', icon: Shirt },
+  { id: 'useful', label: 'Полезное', icon: PiggyBank },
+];
+let lastShopTab = 'showcase';
 export function ShopView({ learn, update, now = Date.now(), focus = null }) {
   const day = dayOf(now);
   const rate = rateOn(day); const prev = rateOn(addDays(day, -1));
   const [msg, setMsg] = useState(null);
   // «Лавка · Сад»: сад — в той же вкладке, переключателем вверху
   const [view, setView] = useState(focus === 'garden' ? 'garden' : 'shop');
+  const [tab, setTabState] = useState(focus === 'piggy' ? 'useful' : lastShopTab);
+  const [rateOpen, setRateOpen] = useState(false);
+  const setTab = (t) => { lastShopTab = t; setTabState(t); setMsg(null); };
   // из уведомления «вклад созрел» — сразу к копилке
   useEffect(() => {
     if (focus !== 'piggy') return undefined;
+    lastShopTab = 'useful';
     const t = setTimeout(() => { const el = document.querySelector('[data-testid="shop-piggy"]'); if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 120);
     return () => clearTimeout(t);
   }, [focus]);
@@ -547,95 +595,135 @@ export function ShopView({ learn, update, now = Date.now(), focus = null }) {
   const wear = outfitOf(learn);
   const today = shopDay(learn, day);
   const boosted = boostActive(learn, now);
+  const pig = piggyState(learn, now);
   const Trend = rate > prev ? TrendingUp : rate < prev ? TrendingDown : Minus;
   const doBuy = (id) => {
     const r = buy(learn, id, now);
     if (!r.ok) { Audio.play('down'); setMsg({ ok: false, text: r.reason }); return; }
     Audio.play('register');
     update(() => r.s, { settle: true });
+    const slot = id === BOOST.id ? null : OUTFIT_BY_ID[id].slot;
     setMsg({ ok: true, text: id === BOOST.id ? `Двойной опыт на ${BOOST.minutes} минут — за ${r.price} ${coinsWord(r.price)}.`
-      : OUTFIT_BY_ID[id].slot === 'desk' ? `Куплено за ${r.price} ${coinsWord(r.price)} — украшение уже висит в уроках.` : `Куплено за ${r.price} ${coinsWord(r.price)} — Инфля уже в обновке.` });
+      : slot === 'desk' ? `Куплено за ${r.price} ${coinsWord(r.price)} — украшение уже висит в уроках.`
+        : slot === 'theme' ? `Куплено за ${r.price} ${coinsWord(r.price)} — тема уже включена: откройте любой урок.`
+          : `Куплено за ${r.price} ${coinsWord(r.price)} — Инфля уже в обновке. Снять и переодеть — во вкладке «Гардероб».` });
   };
   const toggle = (o) => { Audio.play('paper'); update((s) => setWear(s, o.slot, (s.wear || {})[o.slot] === o.id ? null : o.id, now)); };
   const putOn = (slot, id) => { Audio.play('paper'); update((s) => setWear(s, slot, id, now)); };
   const itemProps = { learn, day, wear, b, onBuy: doBuy, onToggle: toggle };
+  const dealOpen = today.deal && !(learn.owned || {})[today.deal];
+  const hw = today.season.length > 0 ? halloween(learn, now) : null;
   return (
-    <div className="ln-wrap" data-testid="shop" data-view={view}>
+    <div className="ln-wrap" data-testid="shop" data-view={view} data-tab={view === 'shop' ? tab : undefined}>
       <div>
         <ShopSwitch view={view} onView={(v) => { Audio.play('paper'); setView(v); setMsg(null); }} learn={learn} />
         {view === 'garden' ? <React.Suspense fallback={<div className="ds-sub" style={{ padding: 20 }}>Сад загружается…</div>}><GardenView learn={learn} update={update} /></React.Suspense> : <>
-        <Heading eyebrow="Лавка" title="Лавка Инфли" sub="Монеты — за уроки, серию и задания. Цены в кронах, платите по курсу дня." />
-        <Card style={{ margin: '10px 0 14px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <Mascot mood="joy" size={58} outfit={wear} />
-            <div style={{ flex: 1 }}>
+        <Card className="sh-head-card" data-testid="rate">
+          <div className="sh-head">
+            <Mascot mood="joy" size={52} outfit={wear} />
+            <div style={{ minWidth: 0 }}>
               <div className="ds-eyebrow">В кошельке</div>
-              <div className="ds-num" style={{ fontSize: 28, fontWeight: 700 }} data-testid="shop-balance">{b} <span style={{ fontSize: 15 }}>{coinsWord(b)}</span></div>
+              <div className="ds-num sh-bal" data-testid="shop-balance">{b} <span>{coinsWord(b)}</span></div>
             </div>
           </div>
-          <div style={{ borderTop: '1px dotted var(--ds-rule2)', marginTop: 12, paddingTop: 10 }} data-testid="rate">
-            {/* новичок не знает, что такое кроны и «кр.»: две строки — что своё, что чужое, и как одно меняется на другое */}
-            <div className="rw-money" data-testid="coins-crowns">
-              <div><span className="rw-money-ico coin"><Coins size={17} aria-hidden="true" /></span>
-                <span><b>Монеты</b> — ваши: за уроки, серию, задания и печати.</span></div>
-              <div><span className="rw-money-ico crown"><Crown size={17} aria-hidden="true" /></span>
-                <span><b>Кроны (кр.)</b> — деньги страны Инфляции, где живут герои уроков. В них назначены цены — как в настоящем магазине.</span></div>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-              <span style={{ flex: 1, fontSize: 14.5 }}>Курс дня: <b className="ds-num" data-testid="rate-value">1 крона = {fmtRate(rate)} монеты</b></span>
-              <span className="ds-num ds-sub" style={{ fontSize: 12.5, display: 'inline-flex', alignItems: 'center', gap: 3 }}><Trend size={14} aria-hidden="true" />вчера {fmtRate(prev)}</span>
-            </div>
-            <RateChart hist={rateHistory(day, 14)} />
-            <div className="rw-money-rate">Платите монетами по курсу дня. Курс ниже — покупка дешевле: можно подождать удачного дня.</div>
-          </div>
-        </Card>
-        {msg && <div role="status" data-testid="shop-msg" style={{ margin: '0 0 12px', fontSize: 14.5, color: msg.ok ? 'var(--ds-ok)' : 'var(--ds-bad)' }}>{msg.text}</div>}
-
-        {today.season.length > 0 && (() => {
-          const hw = halloween(learn, now);
-          return (
-            <div className="rw-hw" data-testid="shop-halloween">
-              <Heading level={3} title="Хеллоуинская витрина" sub={`Только на Хеллоуин — ${seasonLeftText(hw)}, потом через год. Купленное остаётся навсегда.`} />
-              <div className="rw-items" style={{ margin: '10px 0 16px' }}>
-                {[...today.season, WEB_FRAME].map((id) => <ShopItem key={id} o={OUTFIT_BY_ID[id]} goal={OUTFIT_BY_ID[id].rare} hw={hw} {...itemProps} />)}
+          <button type="button" className="sh-rate" aria-expanded={rateOpen} data-testid="rate-toggle" onClick={() => { Audio.play('paper'); setRateOpen((v) => !v); }}>
+            <span className="sh-rate-main">
+              <span className="sh-rate-k">Курс дня</span>
+              <b className="ds-num" data-testid="rate-value">1 крона = {fmtRate(rate)} монеты</b>
+            </span>
+            <span className="ds-num sh-rate-prev"><Trend size={14} aria-hidden="true" />вчера {fmtRate(prev)}</span>
+            <ChevronDown size={18} className="sh-chev" aria-hidden="true" />
+          </button>
+          {rateOpen && (
+            <div className="sh-more" data-testid="rate-more">
+              {/* новичок не знает, что такое кроны и «кр.»: две строки — что своё, что чужое, и как одно меняется на другое */}
+              <div className="rw-money" data-testid="coins-crowns">
+                <div><span className="rw-money-ico coin"><Coins size={17} aria-hidden="true" /></span>
+                  <span><b>Монеты</b> — ваши: за уроки, серию, задания и печати.</span></div>
+                <div><span className="rw-money-ico crown"><Crown size={17} aria-hidden="true" /></span>
+                  <span><b>Кроны (кр.)</b> — деньги страны Инфляции, где живут герои уроков. В них назначены цены — как в настоящем магазине.</span></div>
               </div>
+              <RateChart hist={rateHistory(day, 14)} />
+              <div className="rw-money-rate">Платите монетами по курсу дня. Курс ниже — покупка дешевле: можно подождать удачного дня.</div>
             </div>
-          );
-        })()}
-        <Heading level={3} title="Витрина дня" sub={`Обновится через ${untilMidnight(now)}. На одну вещь — скидка дня ${Math.round(DEAL_OFF * 100)}%.`} />
-        <div className="rw-items" style={{ margin: '10px 0 16px' }} data-testid="shop-showcase">
-          {today.showcase.map((id) => <ShopItem key={id} o={OUTFIT_BY_ID[id]} deal={id === today.deal} {...itemProps} />)}
-          {!today.showcase.length && <div className="ds-sub" style={{ gridColumn: '1 / -1', fontSize: 14.5 }}>Всё обычное уже ваше — дальше только витрина ювелира.</div>}
-        </div>
-
-        <PiggyCard learn={learn} update={update} now={now} b={b} onMsg={setMsg} />
-
-        <Heading level={3} title="Полезное" />
-        <PolicyCard learn={learn} update={update} now={now} b={b} onMsg={setMsg} />
-        <Card style={{ margin: '0 0 16px' }} data-testid="shop-boost">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <Rosette size={54} opacity={0.5}><Zap size={24} color="var(--ds-gold)" aria-hidden="true" /></Rosette>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 700 }}>{BOOST.title}{boosted && <span className="ds-badge" style={{ marginLeft: 6 }} data-testid="boost-on">действует до {new Date(learn.boost).toTimeString().slice(0, 5)}</span>}</div>
-              <div className="ds-sub" style={{ fontSize: 13, lineHeight: 1.35 }}>{BOOST.text}</div>
-              <div className="rw-price">{priceOf(BOOST.id, day)} <span style={{ fontWeight: 400 }}>мон.</span><small>{BOOST.crowns} кр.</small></div>
-            </div>
-            <Button small disabled={boosted} onClick={() => doBuy(BOOST.id)} data-testid="buy-boost">Купить</Button>
-          </div>
+          )}
         </Card>
 
-        <Heading level={3} title="Витрина ювелира" sub="Редкие вещи — всегда здесь. На них копят: полоска показывает, сколько уже собрано." />
-        <div className="rw-items" style={{ margin: '10px 0 16px' }} data-testid="shop-rare">
-          {today.rare.map((id) => <ShopItem key={id} o={OUTFIT_BY_ID[id]} goal {...itemProps} />)}
+        <div className="sh-tabs" role="tablist" aria-label="Отделы лавки" data-testid="shop-tabs">
+          {SHOP_TABS.map((t) => {
+            const Icon = t.icon;
+            return (
+              <button key={t.id} type="button" role="tab" className="sh-tab" aria-selected={tab === t.id} data-testid="shop-tab" data-tab={t.id}
+                onClick={() => { if (tab !== t.id) { Audio.play('paper'); setTab(t.id); } }}>
+                <Icon size={19} aria-hidden="true" /><span>{t.label}</span>
+                {t.id === 'showcase' && dealOpen && <span className="sh-badge" aria-label="скидка дня">−{Math.round(DEAL_OFF * 100)}%</span>}
+                {t.id === 'showcase' && !dealOpen && hw && <span className="sh-badge hw" aria-label="хеллоуин"><Ghost size={10} aria-hidden="true" /></span>}
+                {t.id === 'useful' && pig && pig.ripe && <span className="sh-dot" aria-label="вклад созрел" />}
+              </button>
+            );
+          })}
         </div>
+        {msg && <div role="status" data-testid="shop-msg" className="sh-msg" data-ok={String(msg.ok)}>{msg.text}</div>}
 
-        <Heading level={3} title="Украшения урока" sub="Висят над заданием в каждом уроке: живые — их можно потрогать, и они отзываются на ваши ответы. Самое дорогое в лавке." />
-        <div className="rw-items rw-desk-items" style={{ margin: '10px 0 16px' }} data-testid="shop-desk">
-          {today.desk.map((id) => <ShopItem key={id} o={OUTFIT_BY_ID[id]} goal {...itemProps} />)}
+        <div className="sh-panel" role="tabpanel" key={tab} data-testid="shop-panel" data-tab={tab}>
+          {tab === 'showcase' && <>
+            {hw && (
+              <div className="rw-hw" data-testid="shop-halloween">
+                <Heading level={3} title="Хеллоуинская витрина" sub={`Только на Хеллоуин — ${seasonLeftText(hw)}, потом через год. Купленное остаётся навсегда.`} />
+                <div className="rw-items" style={{ margin: '10px 0 16px' }}>
+                  {[...today.season, WEB_FRAME].map((id) => <ShopItem key={id} o={OUTFIT_BY_ID[id]} goal={OUTFIT_BY_ID[id].rare} hw={hw} {...itemProps} />)}
+                </div>
+              </div>
+            )}
+            <Heading level={3} title="Витрина дня" sub={`Обновится через ${untilMidnight(now)} — в ${rolloverLocal(now)} по вашему времени (полночь по Гринвичу). На одну вещь — скидка дня ${Math.round(DEAL_OFF * 100)}%.`} />
+            <div className="rw-items" style={{ margin: '10px 0 16px' }} data-testid="shop-showcase">
+              {today.showcase.map((id) => <ShopItem key={id} o={OUTFIT_BY_ID[id]} deal={id === today.deal} {...itemProps} />)}
+              {!today.showcase.length && <div className="ds-sub" style={{ gridColumn: '1 / -1', fontSize: 14.5 }}>Всё обычное уже ваше — дальше вкладки «Ювелир» и «Для урока».</div>}
+            </div>
+          </>}
+
+          {tab === 'lesson' && <>
+            <style>{SKIN_CSS}</style>
+            <p className="sh-intro">Не для Инфли, а для самих уроков. Тема меняет урок целиком, украшение висит над заданием. Включить и выключить — здесь же, в любой момент.</p>
+            <Heading level={3} title="Темы урока" sub="Живой фон, свои кнопки вариантов и отклик на каждый ответ. Включена может быть одна тема." />
+            <div className="rw-items rw-desk-items" style={{ margin: '10px 0 18px' }} data-testid="shop-themes">
+              {today.theme.map((id) => <ShopItem key={id} o={OUTFIT_BY_ID[id]} goal {...itemProps} />)}
+            </div>
+            <Heading level={3} title="Украшения урока" sub="Висят над заданием: живые — их можно потрогать, и они отзываются на ваши ответы." />
+            <div className="rw-items rw-desk-items" style={{ margin: '10px 0 16px' }} data-testid="shop-desk">
+              {today.desk.map((id) => <ShopItem key={id} o={OUTFIT_BY_ID[id]} goal {...itemProps} />)}
+            </div>
+          </>}
+
+          {tab === 'rare' && <>
+            <Heading level={3} title="Витрина ювелира" sub="Редкие вещи для Инфли — всегда здесь. На них копят: полоска показывает, сколько уже собрано." />
+            <div className="rw-items" style={{ margin: '10px 0 16px' }} data-testid="shop-rare">
+              {today.rare.map((id) => <ShopItem key={id} o={OUTFIT_BY_ID[id]} goal {...itemProps} />)}
+            </div>
+          </>}
+
+          {tab === 'wardrobe' && <>
+            <p className="sh-intro">Примерочная: по одной вещи на голову, лицо, шею, в руку и рамку. Касание — надеть или снять.</p>
+            <Wardrobe learn={learn} wear={wear} onWear={putOn} />
+          </>}
+
+          {tab === 'useful' && <>
+            <p className="sh-intro">Не вещи, а сделки: вклад под процент, страховка серии и двойной опыт.</p>
+            <PiggyCard learn={learn} update={update} now={now} b={b} onMsg={setMsg} />
+            <PolicyCard learn={learn} update={update} now={now} b={b} onMsg={setMsg} />
+            <Card style={{ margin: '0 0 16px' }} data-testid="shop-boost">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <Rosette size={54} opacity={0.5}><Zap size={24} color="var(--ds-gold)" aria-hidden="true" /></Rosette>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 700 }}>{BOOST.title}{boosted && <span className="ds-badge" style={{ marginLeft: 6 }} data-testid="boost-on">действует до {new Date(learn.boost).toTimeString().slice(0, 5)}</span>}</div>
+                  <div className="ds-sub" style={{ fontSize: 13, lineHeight: 1.35 }}>{BOOST.text}</div>
+                  <div className="rw-price">{priceOf(BOOST.id, day)} <span style={{ fontWeight: 400 }}>мон.</span><small>{BOOST.crowns} кр.</small></div>
+                </div>
+                <Button small disabled={boosted} onClick={() => doBuy(BOOST.id)} data-testid="buy-boost">Купить</Button>
+              </div>
+            </Card>
+          </>}
         </div>
-
-        <Heading level={3} title="Гардероб" sub="Примерочная: по одной вещи на голову, лицо, шею, в руку и рамку. Касание — надеть или снять." />
-        <Wardrobe learn={learn} wear={wear} onWear={putOn} />
         </>}
       </div>
     </div>

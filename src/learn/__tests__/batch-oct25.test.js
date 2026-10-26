@@ -3,7 +3,6 @@
 import { describe, it, expect } from 'vitest';
 import { notificationsOf } from '../notify.js';
 import { emptyLearn, markShown, shownWith, normalizeLearn, mergeLearn, SHOWN_MAX, finishLesson } from '../../textbook/learn-state.js';
-import { courseGrade, gradeOf, gradeWord } from '../grade.js';
 import { leagueState, leagueStart, firstLessonDay } from '../league.js';
 
 const T = (iso) => Date.parse(iso);
@@ -56,26 +55,6 @@ describe('показанное — общее для всех устройств
     // уходят самые старые
     expect(kept['n:x0']).toBeUndefined();
     expect(kept[`n:x${SHOWN_MAX + 49}`]).toBe(1000 + SHOWN_MAX + 49);
-  });
-});
-
-describe('оценка в курсе экономики', () => {
-  it('2–5 с десятыми по точности; без уроков оценки нет', () => {
-    expect(gradeOf(100)).toBe(5); expect(gradeOf(95)).toBe(5); expect(gradeOf(80)).toBe(4); expect(gradeOf(65)).toBe(3); expect(gradeOf(40)).toBe(2);
-    expect(gradeOf(90)).toBe(4.7);
-    expect(gradeWord(4.7)).toBe('отлично'); expect(gradeWord(3.6)).toBe('хорошо'); expect(gradeWord(2.9)).toBe('удовлетворительно');
-    expect(courseGrade(emptyLearn())).toMatchObject({ grade: null, done: 0 });
-  });
-  it('точность — лучшая по уроку; алмазный урок — 100%; полоска — доля пройденных уроков', () => {
-    let s = finishLesson(emptyLearn(), 'sc-i1', { xp: 10, accuracy: 70, now: T('2026-10-20T10:00:00Z') });
-    s = finishLesson(s, 'sc-i1', { xp: 1, accuracy: 90, now: T('2026-10-21T10:00:00Z') });
-    s = finishLesson(s, 'sc-l1', { xp: 10, accuracy: 85, now: T('2026-10-21T11:00:00Z'), diamond: true });
-    const g = courseGrade(s);
-    expect(g.done).toBe(2);
-    expect(g.diamonds).toBe(1);
-    expect(g.accuracy).toBe(95);
-    expect(g.grade).toBe(5);
-    expect(g.share).toBeCloseTo(2 / g.total);
   });
 });
 

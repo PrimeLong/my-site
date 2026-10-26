@@ -253,7 +253,7 @@ describe('лавка и заморозки', () => {
     // цены — от заработка курса (docs/mechanics.md): вся лавка — больше двух курсов
     expect(total).toBeGreaterThan(2 * courseIncome().total);
     // desk — украшения урока (src/learn/__tests__/decor.test.js)
-    expect(new Set(OUTFITS.map((o) => o.slot))).toEqual(new Set(['head', 'face', 'neck', 'hand', 'frame', 'desk']));
+    expect(new Set(OUTFITS.map((o) => o.slot))).toEqual(new Set(['head', 'face', 'neck', 'hand', 'frame', 'desk', 'theme']));
     expect(OUTFITS.filter((o) => o.rare).length).toBeGreaterThanOrEqual(3);
   });
   it('витрина дня: шесть некупленных обычных вещей, одинаковая у всех и меняется по дням; скидка дня — 30% на одну', () => {

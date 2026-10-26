@@ -10,7 +10,7 @@ import { Card } from './ds.jsx';
 import { Mascot } from './mascot.jsx';
 import { Audio } from './MacroSimulator.jsx';
 import { NIcon } from './learn-notify.jsx';
-import { NEWS, newsDate, readNewsSeen, markNewsSeen, learnerSince, newsForLearner, feedDays } from './learn/news.js';
+import { NEWS, newsDate, readNewsSeen, markNewsSeen, learnerSince, newsForLearner, feedDays, readFeedSeenAt, markFeedSeen } from './learn/news.js';
 import { dayOf, addDays } from './textbook/learn-state.js';
 import { friendFeed, eventText, EVENT_ICON } from './learn/friends.js';
 import { markSeen, agoText } from './learn/notify.js';
@@ -67,12 +67,12 @@ function Issue({ n, i, fresh, today, open, onToggle }) {
 
 /* Успехи друга за день — одна запись: его Инфля на нити ленты, имя, когда и значки событий.
    Нажатие открывает профиль друга. */
-function FriendPost({ p, i, now, onOpen }) {
+function FriendPost({ p, i, now, onOpen, fresh = false }) {
   return (
-    <article className="nw-post" style={{ '--i': i }}>
+    <article className="nw-post" style={{ '--i': i }} data-new={String(fresh)}>
       <span className="nw-ava nw-ava-friend" aria-hidden="true"><Mascot mood="joy" size={36} outfit={p.wear} /></span>
       <button type="button" className="nw-friend" data-testid="news-friend" data-login={p.login} onClick={() => { Audio.play('paper'); onOpen(p.login); }}>
-        <span className="nw-who"><b>{p.name}</b><small>{whenText(p.evs[0].at, now)}</small></span>
+        <span className="nw-who"><b>{p.name}</b><small>{whenText(p.at || p.evs[0].at, now)}</small>{fresh && <span className="nw-new">Новое</span>}</span>
         <span className="nw-evs">
           {p.evs.map((e) => <span key={`${e.k}${e.at}`} className="nw-ev"><NIcon name={EVENT_ICON[e.k] || 'sparkles'} size={15} />{eventText(e)}</span>)}
         </span>
@@ -92,7 +92,9 @@ export default function NewsView({ learn = null, friends = null, onFriend = () =
   // открытая лента отмечает выпуски прочитанными
   const [seen] = useState(readNewsSeen);
   const [since] = useState(() => (learn ? learnerSince(learn) : null));
-  useEffect(() => { markNewsSeen(NEWS.map((n) => n.id)); markSeen(NEWS.map((n) => `news:${n.id}`)); }, []);
+  // события друзей «новые» — после прошлого открытия ленты на этом устройстве
+  const [feedSeenAt] = useState(() => readFeedSeenAt(now));
+  useEffect(() => { markNewsSeen(NEWS.map((n) => n.id)); markSeen(NEWS.map((n) => `news:${n.id}`)); markFeedSeen(); }, []);
   // все выпуски — свёрнутыми: только главное, подробности — по кнопке
   const [open, setOpen] = useState({});
   const sketch = useMedia(SKETCH_QUERY);
@@ -113,8 +115,9 @@ export default function NewsView({ learn = null, friends = null, onFriend = () =
         {days.map((d) => (
           <section key={d.day} className="nw-day" data-day={d.day}>
             <h3 className="nw-day-label"><span>{dayLabel(d.day, today)}</span></h3>
-            {d.issues.map((n) => <Issue key={n.id} n={n} i={k++} today={today} fresh={!seen[n.id] && newsForLearner(n, since)} open={!!open[n.id]} onToggle={() => setOpen((m) => ({ ...m, [n.id]: !m[n.id] }))} />)}
-            {d.friends.map((p) => <FriendPost key={p.login} p={p} i={k++} now={now} onOpen={onFriend} />)}
+            {d.items.map((it) => (it.type === 'issue'
+              ? <Issue key={it.n.id} n={it.n} i={k++} today={today} fresh={!seen[it.n.id] && newsForLearner(it.n, since)} open={!!open[it.n.id]} onToggle={() => setOpen((m) => ({ ...m, [it.n.id]: !m[it.n.id] }))} />
+              : <FriendPost key={it.p.login} p={it.p} i={k++} now={now} onOpen={onFriend} fresh={it.p.at > feedSeenAt} />))}
           </section>
         ))}
       </div>

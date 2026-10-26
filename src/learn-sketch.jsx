@@ -71,17 +71,20 @@ export const SKETCH_CSS = `
   .ln-root[data-sketching] * { cursor: inherit !important; user-select: none; }
   .ln-root[data-sketch][data-sketch-mode="book"] > .ln-tab > .ln-book, .ln-root[data-sketch][data-sketch-mode="bookOver"] > .ln-book { cursor: var(--sk-cursor, crosshair); }
   .ln-root[data-sketch][data-sketch-mode="book"] > .ln-tab > .ln-book > *, .ln-root[data-sketch][data-sketch-mode="bookOver"] > .ln-book > * { cursor: auto; }
-  /* учебник (во вкладке и поверх Пути): черновик включён — оглавление главы плавно уходит, учебник
-     сужается до колонки текста, и полям для записей достаётся вся освободившаяся ширина */
+  /* учебник (во вкладке и поверх Пути): черновик включён — оглавление главы уходит, учебник
+     сужается до колонки текста, и полям для записей достаётся вся освободившаяся ширина. Плавно —
+     только в момент включения или выключения (data-sketch-anim): учебник, открытый с уже включённым
+     черновиком, сразу узкий, без сжатия на глазах (жалоба: «каждый раз сжимается — это бесит») */
   @media (min-width: 1024px) {
-    .ln-tab > .ln-book > .ln-textbook.wide, .ln-root > .ln-book > .ln-textbook.wide { transition: max-width .45s cubic-bezier(.4, 0, .2, 1); }
-    .ln-book > .ln-textbook.wide .tb-ch-grid { transition: grid-template-columns .45s cubic-bezier(.4, 0, .2, 1), gap .45s cubic-bezier(.4, 0, .2, 1); }
-    .ln-book > .ln-textbook.wide .tb-ch-aside { min-width: 0; transition: opacity .3s ease, transform .3s ease, visibility 0s; }
+    .ln-book > .ln-textbook.wide .tb-ch-aside { min-width: 0; }
+    .ln-root[data-sketch-anim] > .ln-tab > .ln-book > .ln-textbook.wide, .ln-root[data-sketch-anim] > .ln-book > .ln-textbook.wide { transition: max-width .45s cubic-bezier(.4, 0, .2, 1); }
+    .ln-root[data-sketch-anim] .ln-book > .ln-textbook.wide .tb-ch-grid { transition: grid-template-columns .45s cubic-bezier(.4, 0, .2, 1), gap .45s cubic-bezier(.4, 0, .2, 1); }
+    .ln-root[data-sketch-anim] .ln-book > .ln-textbook.wide .tb-ch-aside { transition: opacity .3s ease, transform .3s ease, visibility 0s; }
     .ln-root[data-sketch][data-sketch-mode="book"] > .ln-tab > .ln-book > .ln-textbook.wide,
     .ln-root[data-sketch][data-sketch-mode="bookOver"] > .ln-book > .ln-textbook.wide { max-width: 920px !important; }
     .ln-root[data-sketch][data-sketch-mode^="book"] .ln-textbook.wide .tb-ch-grid { grid-template-columns: 0px minmax(0, 1fr); gap: 0; }
-    .ln-root[data-sketch][data-sketch-mode^="book"] .ln-textbook.wide .tb-ch-aside { opacity: 0; transform: translateX(-24px); visibility: hidden; pointer-events: none;
-      transition: opacity .25s ease, transform .3s ease, visibility 0s .3s; }
+    .ln-root[data-sketch][data-sketch-mode^="book"] .ln-textbook.wide .tb-ch-aside { opacity: 0; transform: translateX(-24px); visibility: hidden; pointer-events: none; }
+    .ln-root[data-sketch-anim][data-sketch][data-sketch-mode^="book"] .ln-textbook.wide .tb-ch-aside { transition: opacity .25s ease, transform .3s ease, visibility 0s .3s; }
     .ln-root[data-sketch][data-sketch-mode^="book"] .ln-textbook.wide .tb-ch-main { margin: 0 auto; }
   }
   @media (prefers-reduced-motion: reduce) { .ln-book > .ln-textbook.wide, .ln-book > .ln-textbook.wide .tb-ch-grid, .ln-book > .ln-textbook.wide .tb-ch-aside { transition: none; } }
@@ -241,6 +244,8 @@ export function Sketch({ mode = 'lesson' }) {
   const pick = useRef(null);
   pick.current = { on, tool, color, size };
   const rootOf = () => mainRef.current && M.host(mainRef.current);
+  const animRef = useRef(0);
+  useEffect(() => () => { clearTimeout(animRef.current); const r = rootOf(); if (r) delete r.dataset.sketchAnim; }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const drawLive = () => {
     frame.current = 0;
@@ -410,6 +415,9 @@ export function Sketch({ mode = 'lesson' }) {
 
   const toggle = () => {
     Audio.play('tab');
+    // переход ширины учебника — только сейчас, по нажатию
+    const r = rootOf();
+    if (r) { r.dataset.sketchAnim = '1'; clearTimeout(animRef.current); animRef.current = setTimeout(() => { delete r.dataset.sketchAnim; }, 700); }
     const next = !on;
     setOn(next);
     store(ON_KEY, next ? '1' : null);

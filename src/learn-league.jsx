@@ -10,7 +10,7 @@ import { LEAGUE_BY_ID, LEAGUES, PROMOTE, GROUP, DEMOTE, PLACE_COINS, leagueState
 import { coinsWord, plural } from './learn/rewards.js';
 import { loadAccount, accountKidsMode } from './account.jsx';
 import { accountLeagueNames } from './lib/client.js';
-import { dayOf, dowOf } from './textbook/learn-state.js';
+import { dayOf, dowOf, rolloverLocal } from './textbook/learn-state.js';
 import { newsDate } from './learn/news.js';
 import { CoinShower } from './ds-art.jsx';
 
@@ -255,7 +255,7 @@ export function LeagueView({ learn, update, now = Date.now() }) {
           <div className="lg-when" data-testid="league-when">
             {st.noLesson ? <><Lock size={14} aria-hidden="true" /> Сначала — один урок на Пути</>
               : st.waiting ? <><Hourglass size={14} aria-hidden="true" /> {newsDate(st.startsOn)} — первая неделя</>
-              : st.rest ? <><Coffee size={14} aria-hidden="true" /> Перерыв до понедельника</> : <>{st.daysLeft} {plural(st.daysLeft, 'день', 'дня', 'дней')} до итогов</>}
+              : st.rest ? <><Coffee size={14} aria-hidden="true" /> Перерыв до понедельника</> : <>{st.daysLeft} {plural(st.daysLeft, 'день', 'дня', 'дней')} до итогов · в понедельник, {rolloverLocal()} по вашему времени (полночь по Гринвичу)</>}
           </div>
         </div>
       </div>

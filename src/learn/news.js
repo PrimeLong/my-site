@@ -9,6 +9,21 @@ import { dayOf } from '../textbook/learn-state.js';
 
 export const NEWS = [
   {
+    id: '2026-10-26', date: '2026-10-26', icon: 'users', color: '#3B2D8F',
+    title: 'Персоналии, темы урока и уровень A1–C2',
+    lead: 'Новые уроки на дороге юнита, книжная полка в профиле, темы, меняющие урок целиком, и лавка по отделам.',
+    items: [
+      { icon: 'users', title: 'Персоналии', text: 'После второго урока юнита — знакомство с тремя людьми, чьи идеи стоят за темой: экономисты, инженеры, банкиры. Портрет, годы жизни на ленте веков, главное дело и вопрос на понимание.' },
+      { icon: 'book', title: 'Чтение — урок на дороге', text: 'Цитаты экономистов теперь не отдельно, а остановкой на середине юнита. А в профиле — книжная полка: целые абзацы из Смита, Рикардо, Бастиа, Кейнса и других.' },
+      { icon: 'repeat', title: 'Работа над ошибками', text: 'Набралось в юните шесть ошибок — на Пути встаёт урок из них, и дальше не пускает, пока его не пройти. Не больше одного на юнит.' },
+      { icon: 'chart', title: 'Уровень A1–C2', text: 'Вместо оценки — уровень владения предметом, как в языках: весь курс — 1000 условных единиц, ступени от A1 «Знакомство» до C2 «Эксперт».' },
+      { icon: 'wand', title: 'Темы урока', text: 'В лавке, во вкладке «Для урока»: «Биржа», «Монетный двор», «Чертёж» и «Северное сияние». Живой фон, свои кнопки и отклик на каждый ответ.' },
+      { icon: 'store', title: 'Лавка по отделам', text: 'Витрина, «Для урока», ювелир, гардероб и полезное — вкладками, а курс дня и график раскрываются по касанию.' },
+      { icon: 'trophy', title: 'Итоги недели в лиге', text: 'Неделя кончилась — своя сцена: кольцо мест, ваше вспыхивает, и щит переворачивается в новую лигу.' },
+      { icon: 'sprout', title: 'Сад и время', text: 'Цена урожая теперь фиксируется в неделю сбора — сажайте, когда ставка низкая. Везде, где важен день, сказано, что он по Гринвичу и когда начинается по вашим часам.' },
+    ],
+  },
+  {
     id: '2026-10-25', date: '2026-10-25', icon: 'book', color: '#8A4B2E',
     title: 'Ярмарка, чтение и живые украшения урока',
     lead: 'Новый юнит, цитаты великих экономистов, украшения урока, которые можно потрогать, и оценка в курсе вместо монет на Пути.',
@@ -225,9 +240,12 @@ export function markNewsSeen(ids, now = Date.now()) {
 // непрочитанные выпуски: вышли после первого дня ученика (since) и ещё не открыты
 export const unreadNews = (seen, since = null) => NEWS.filter((n) => !seen[n.id] && newsForLearner(n, since));
 
-/* Лента по дням (экран «Новости»): свежий день сверху; в дне сначала выпуск Инфляции, потом записи
-   друзей — свежие выше. События одного друга за день склеены в одну запись. events — лента друзей
-   из friendFeed (src/learn/friends.js): уже свежими первыми. */
+/* Лента по дням (экран «Новости»): свежий день сверху, а внутри дня — по времени, свежее выше: печать
+   друга, полученная час назад, стоит над утренним выпуском (жалоба: «новость друга была совсем недавно,
+   а стоит после выпуска»). У выпуска время — issueAt: поле at или 09:00 по Гринвичу дня выхода. События
+   одного друга за день склеены в одну запись со временем последнего. events — лента друзей из
+   friendFeed (src/learn/friends.js). items — порядок на экране; issues и friends — то же по видам. */
+export const issueAt = (n) => (n.at ? Date.parse(n.at) : Date.parse(`${n.date}T09:00:00Z`));
 export function feedDays(news, events = []) {
   const days = new Map();
   const at = (d) => { if (!days.has(d)) days.set(d, { day: d, issues: [], friends: [] }); return days.get(d); };
@@ -235,7 +253,22 @@ export function feedDays(news, events = []) {
   events.forEach((e) => {
     const g = at(dayOf(e.at)).friends;
     const p = g.find((x) => x.login === e.login);
-    if (p) p.evs.push(e); else g.push({ login: e.login, name: e.name, wear: e.wear, evs: [e] });
+    if (p) { p.evs.push(e); p.at = Math.max(p.at, e.at); } else g.push({ login: e.login, name: e.name, wear: e.wear, evs: [e], at: e.at });
   });
-  return [...days.values()].sort((a, b) => (a.day < b.day ? 1 : -1));
+  return [...days.values()].sort((a, b) => (a.day < b.day ? 1 : -1)).map((d) => ({
+    ...d, friends: d.friends.sort((a, b) => b.at - a.at),
+    items: [...d.issues.map((n) => ({ type: 'issue', at: issueAt(n), n })), ...d.friends.map((p) => ({ type: 'friend', at: p.at, p }))].sort((a, b) => b.at - a.at),
+  }));
 }
+
+/* Новое от друзей — красная точка на «⋯» и «новое» у «Новостей», как у выпусков: события друзей после
+   последнего открытия ленты на этом устройстве (ems-feed-seen-at). Устройство, где ленту ещё не открывали,
+   считает новым только последние двое суток. */
+const FEED_SEEN_KEY = 'ems-feed-seen-at';
+export function readFeedSeenAt(now = Date.now()) {
+  try { const v = Number(localStorage.getItem(FEED_SEEN_KEY)); return v > 0 ? v : now - 2 * 86400000; } catch { return now - 2 * 86400000; }
+}
+export function markFeedSeen(now = Date.now()) { try { localStorage.setItem(FEED_SEEN_KEY, String(now)); } catch { /* приватный режим */ } }
+export const freshFriendEvents = (events = [], seenAt = 0) => events.filter((e) => e.at > seenAt);
+// то же прямо по списку друзей с сервера — для точки на «⋯» (без модуля друзей в главном чанке)
+export const friendNewsSince = (friends = [], seenAt = 0) => friends.some((f) => ((f && f.card && f.card.events) || []).some((e) => e && e.at > seenAt));

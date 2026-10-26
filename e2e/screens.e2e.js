@@ -312,20 +312,31 @@ for (const theme of ['light', 'dark']) {
       await page.getByTestId('bottom-nav').locator('[data-tab="shop"]').click();
       await expect(page.getByTestId('shop')).toBeVisible();
       await shot(page, '37-shop', theme);
-      // витрина дня со скидкой, полезное и витрина ювелира с полоской накопления
+      // курс дня по касанию: график и что такое кроны; дальше — отделы лавки по вкладкам
+      await page.getByTestId('rate-toggle').click();
       await page.getByTestId('rate-chart').hover({ position: { x: 300, y: 30 } });
       await expect(page.getByTestId('rate-tip')).toBeVisible();
       await shot(page, '37a-shop-rate-tip', theme);
+      await page.getByTestId('rate-toggle').click();
       await page.getByTestId('shop-showcase').scrollIntoViewIfNeeded();
       await shot(page, '37b-shop-showcase', theme);
-      await page.getByTestId('shop-rare').scrollIntoViewIfNeeded();
-      await shot(page, '37c-shop-rare', theme);
+      const shopTab = async (t) => { await page.getByTestId('shop-tabs').locator(`[data-tab="${t}"]`).click(); await expect(page.getByTestId('shop-panel')).toHaveAttribute('data-tab', t); };
+      await shopTab('lesson');
+      await shot(page, '37c-shop-lesson', theme);
+      await page.getByTestId('shop-desk').scrollIntoViewIfNeeded();
+      await shot(page, '37d-shop-desk', theme);
+      await shopTab('rare');
+      await shot(page, '37e-shop-rare', theme);
+      await shopTab('showcase');
       const first = page.getByTestId('shop-showcase').getByTestId('shop-item').first();
       const bought = await first.getAttribute('data-item');
       await first.getByRole('button', { name: 'Купить' }).click();
       await expect(page.getByTestId('shop-msg')).toContainText('Куплено');
+      await shopTab('wardrobe');
       await page.locator(`[data-testid=shop-wardrobe] [data-item="${bought}"]`).scrollIntoViewIfNeeded();
       await shot(page, '38-shop-bought', theme);
+      await shopTab('useful');
+      await shot(page, '38a-shop-useful', theme);
       await page.getByTestId('bottom-nav').locator('[data-tab="path"]').click();
       await showUnit(page, 'scarcity');
       await page.getByTestId('chest').first().scrollIntoViewIfNeeded();
@@ -498,6 +509,7 @@ for (const theme of ['light', 'dark']) {
       await exitLesson(page);
       // копилка Инфли в лавке
       await page.getByTestId('bottom-nav').locator('[data-tab="shop"]').click();
+      await page.getByTestId('shop-tabs').locator('[data-tab="useful"]').click();
       const piggy = page.getByTestId('shop-piggy');
       await piggy.scrollIntoViewIfNeeded();
       await shot(page, '60-piggy', theme);

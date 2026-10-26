@@ -15,7 +15,7 @@ import { Medal, Engraving, CountUp } from './ds-art.jsx';
 import { StatHero, StatTile, Meter, DayBars } from './learn-stats.jsx';
 import { Mascot } from './mascot.jsx';
 import { Audio } from './MacroSimulator.jsx';
-import { streak, longestStreak, bestWeek, learnStats, studyWeeks, goalToday, ownedFreezes } from './textbook/learn-state.js';
+import { streak, longestStreak, bestWeek, learnStats, studyWeeks, goalToday, ownedFreezes, rolloverLocal, UTC_NOTE } from './textbook/learn-state.js';
 import { balance, policyActive, coinsWord, plural } from './learn/rewards.js';
 import { albumItems, sealItems, monthItems, monthsByYear, shelfOrder, fullDate } from './learn/collections.js';
 import { NOTIFY_KINDS, REMIND_HOURS } from './learn/notify.js';
@@ -321,6 +321,7 @@ function FriendsEntry({ friends, guest, onOpen }) {
   );
 }
 
+const Library = React.lazy(() => import('./learn-shelf.jsx'));
 export function ProfileView({ learn, onOpenBook, onSettings, onNotify, unread = 0, friends = null, guest = false, onFriends = () => {} }) {
   const st = streak(learn); const stats = learnStats(learn);
   const bw = bestWeek(learn);
@@ -367,6 +368,8 @@ export function ProfileView({ learn, onOpenBook, onSettings, onNotify, unread = 
       </Shelf>
       <Shelf kind="seal" items={seals} testid="prof-seals" itemTestid="ach-mini" onOpen={setOpen} onAll={() => setPage('seal')} />
       <Shelf kind="month" items={months} testid="prof-months" itemTestid="month-mini" onOpen={setOpen} onAll={() => setPage('month')} />
+      {/* книжная полка и галерея персоналий — отдельным чанком (src/learn-shelf.jsx) */}
+      <React.Suspense fallback={null}><Library learn={learn} /></React.Suspense>
 
       <StudyWeeks learn={learn} />
       <MenuCard icon={Target} tone="var(--ds-ok)" title="Мой прогресс в учебнике" data-testid="prof-book-stats" data-nav-target="book:stats" right={arrow} text="Разделы, точность, слабые темы и журнал занятий" onClick={() => { Audio.play('paper'); onOpenBook({ kind: 'stats' }); }} />
@@ -451,7 +454,7 @@ export function SettingsView({ learn, update, notify, onBack, onThemeChange, onP
             <SetRow key={k.id} title={k.title} note={k.text} on={prefs[k.id] !== false} testid={`notify-${k.id}`} onChange={(v) => { Audio.play('tick'); notify.setPrefs({ [k.id]: v }); }} />
           ))}
           <div className="pf-row" style={{ display: 'block' }}>
-            <span style={{ display: 'block', marginBottom: 6 }}>Напоминать о серии с<small>Если к этому часу сегодня ещё не было урока</small></span>
+            <span style={{ display: 'block', marginBottom: 6 }}>Напоминать о серии с<small>Если к этому часу сегодня ещё не было урока — по часам вашего устройства</small></span>
             <div className="pf-hours" role="group" aria-label="Час напоминания">
               {REMIND_HOURS.map((h) => <button key={h} type="button" className="ds-chip" aria-pressed={prefs.remindAt === h} data-hour={h} onClick={() => { Audio.play('tick'); notify.setPrefs({ remindAt: h }); }}>{h}:00</button>)}
             </div>
@@ -460,6 +463,13 @@ export function SettingsView({ learn, update, notify, onBack, onThemeChange, onP
             note={perm === 'unsupported' ? 'Этот браузер не умеет показывать уведомления.'
               : perm === 'denied' ? 'Браузер запретил уведомления для сайта — разрешите их в настройках браузера.'
                 : 'Придут, пока вкладка Инфляции открыта, даже в фоне: серия ждёт урока, обогнали в лиге, урожай созрел.'} />
+        </SetGroup>
+
+        {/* время — по Гринвичу: где это сказано и когда у ученика начинается новый день */}
+        <SetGroup icon={Clock} tone="#2E5F8A" title="Время" testid="prof-time">
+          <div className="pf-row" style={{ display: 'block' }} data-testid="prof-utc">
+            <span>Всемирное время — по Гринвичу (UTC)<small>{UTC_NOTE} Новый день у вас начинается в {rolloverLocal()} по часам устройства. «Ранняя пташка», «Сова» и напоминания — по вашим часам.</small></span>
+          </div>
         </SetGroup>
 
         <SetGroup icon={UserRound} tone="#65408F" title="Аккаунт и данные">
