@@ -176,6 +176,7 @@ export const DS_CSS = `
   @keyframes ds-more-in { from { opacity: 0; transform: translateY(8px) scale(.94) } to { opacity: 1; transform: none } }
   /* новое за вкладкой: точка на значке и плашка в меню «⋯» */
   /* точка — поверх значка: у детей кнопки position: relative, и без «button >» точка уезжала под подпись, в нижний угол */
+  .ds-nav button > .ds-nav-lock { position: absolute; top: 5px; left: calc(50% + 6px); width: 17px; height: 17px; border-radius: 50%; display: grid; place-items: center; background: var(--ds-card); color: var(--ds-ink2); box-shadow: 0 0 0 1.5px var(--ds-rule2); }
   .ds-nav button > .ds-nav-dot { position: absolute; top: 7px; left: calc(50% + 8px); width: 9px; height: 9px; border-radius: 50%; background: var(--ds-bad-btn); box-shadow: 0 0 0 2px var(--ds-card); }
   .ds-new { display: inline-block; margin-left: 6px; padding: 2px 7px; border-radius: 999px; background: var(--ds-bad-btn); color: #fff; font: 700 12px/1.3 var(--ds-sans); letter-spacing: .04em; vertical-align: 1px; }
   /* значок вкладки чуть подпрыгивает, когда её выбрали */
@@ -356,7 +357,9 @@ export function Tabs({ tabs, active, onTab, onReselect = null, label = 'Разд
             <button key={t.id} type="button" aria-current={on ? 'page' : undefined} data-tab={t.id} data-nav-target={on || t.menu ? undefined : `tab:${t.id}`}
               aria-haspopup={t.menu ? 'menu' : undefined} aria-expanded={t.menu ? !!t.open : undefined}
               onClick={() => { if (!on) onTab(t.id); else if (onReselect) onReselect(t.id); }}>
-              <Icon size={22} strokeWidth={on ? 2.2 : 1.7} aria-hidden="true" /><span>{t.label}</span>{t.dot && <i className="ds-nav-dot" aria-hidden="true" />}
+              <Icon size={22} strokeWidth={on ? 2.2 : 1.7} aria-hidden="true" /><span>{t.label}{t.lock && <span className="ds-sr"> — откроется позже</span>}</span>{t.dot && <i className="ds-nav-dot" aria-hidden="true" />}
+              {/* возможность ещё не открыта (src/learn/unlocks.js) — маленький замок у значка */}
+              {t.lock && <i className="ds-nav-lock" aria-hidden="true" data-testid="nav-lock"><svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round"><rect x="5" y="11" width="14" height="10" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></svg></i>}
             </button>
           );
         })}

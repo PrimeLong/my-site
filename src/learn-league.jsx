@@ -6,7 +6,7 @@ import React, { useEffect, useState } from 'react';
 import { ArrowUp, ArrowDown, Minus, ChevronDown, Lock, Coffee, X, Hourglass } from 'lucide-react';
 import { Audio } from './MacroSimulator.jsx';
 import { Button, Card, Sheet, IconButton } from './ds.jsx';
-import { LEAGUE_BY_ID, LEAGUES, PROMOTE, GROUP, DEMOTE, PLACE_COINS, leagueState, claimLeague, pendingRewards, LEAGUE_V2_FROM, stayMinutes, promoteMinutes } from './learn/league.js';
+import { LEAGUE_BY_ID, LEAGUES, PROMOTE, GROUP, DEMOTE, PLACE_COINS, leagueState, claimLeague, pendingRewards } from './learn/league.js';
 import { coinsWord, plural } from './learn/rewards.js';
 import { loadAccount, accountKidsMode } from './account.jsx';
 import { accountLeagueNames } from './lib/client.js';
@@ -278,13 +278,6 @@ export function LeagueView({ learn, update, now = Date.now() }) {
         </div>
       )}
 
-      {/* темп лиги: сколько минут уроков в день хватает, чтобы остаться и чтобы подняться (лиги по минутам) */}
-      {st.week >= LEAGUE_V2_FROM && !st.waiting && (
-        <div className="ds-sub" style={{ fontSize: 13.5, marginTop: 10 }} data-testid="league-pace">
-          В {inLeague(st.league)} остаться хватит около {stayMinutes(st.league)} минут уроков в день{st.league !== LEAGUES[LEAGUES.length - 1].id ? `, подняться — около ${Math.ceil(promoteMinutes(st.league))}` : ''}.
-        </div>
-      )}
-
       <h2 className="ds-h2" style={{ fontSize: 18, margin: '18px 0 6px' }}>Все лиги</h2>
       <div className="lg-ladder" data-testid="league-ladder" role="list">
         {LEAGUES.map((l, k) => {
@@ -338,7 +331,7 @@ export function LeagueView({ learn, update, now = Date.now() }) {
           <ul data-testid="league-rules">
             <li>Неделя лиги — с понедельника по субботу, место — по опыту за эти дни. Воскресенье — перерыв: итоги и награда.</li>
             <li>По итогам первые {PROMOTE} поднимаются в следующую лигу, последние {DEMOTE} опускаются, остальные остаются.</li>
-            <li>Чем выше лига, тем выше темп: в Бронзовой, чтобы остаться, хватает {stayMinutes('bronze')} минут уроков в день, в Серебряной — {stayMinutes('silver')}, в Золотой — {stayMinutes('gold')}, … в Алмазной — {stayMinutes('diamond')}. Подняться — на пару минут больше.</li>
+            <li>Чем выше лига, тем сильнее соперники: чтобы удержаться, нужно заниматься больше.</li>
             <li>1–3 место: {PLACE_COINS.join(', ')} монет. Неделя без уроков лигу не меняет.</li>
             <li>Новичок попадает в лигу после первого урока — с ближайшего понедельника: в уже идущую неделю не попадают.</li>
             <li data-testid="league-utc">Время у всех одно — всемирное (UTC): день и неделя начинаются в полночь по UTC, в Москве — в 03:00. Перевод часов на устройстве ничего не меняет.</li>

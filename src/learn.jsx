@@ -16,7 +16,7 @@ import {
   X, ArrowLeft, Flame, Coins, Target, Lock, Check, Gem, ChevronLeft, Calculator, BookOpenText, BookOpen, Trophy, Timer, Delete, ChevronRight, RotateCcw, Sparkles, Dumbbell,
   Clock, Scale, Hourglass, Ticket, TrendingUp, CircleCheck, Medal, ArrowLeftRight, Handshake, Coffee, Wallet, Link, Utensils, Boxes, Users,
   Snowflake, ArrowDownToLine, ArrowUpToLine, Languages, MessageCircle, Headphones, Gamepad2, Repeat, Flag, Croissant, Landmark, Radio, MapPin, ArrowUp, ChevronDown, SkipForward,
-  Wrench, Feather,
+  Wrench, Feather, ChartSpline,
 } from 'lucide-react';
 import { unitStops, EXTRA_KIND } from './learn/stops.js';
 import { STATS_CSS } from './learn-stats.jsx';
@@ -38,7 +38,7 @@ import {
   goalToday, missedYesterday, XP, applyFreezes, setPlacement, dayOf, recordSeen, recordBest, DIAMOND_ACCURACY, streakBonus, gameXp, maxLessonXp, syncStreak, streakNow,
   markShown, shownWith, markFixed,
 } from './textbook/learn-state.js';
-import { courseLevel, BANDS, SCALE_MAX } from './learn/grade.js';
+import { courseLevel, SCALE_MAX, LEVEL_POINTS, LEVEL_FROM } from './learn/grade.js';
 import { runCoins, runKey, earn, settle, chestKey, hasClaim, outfitOf, deskOf, themeOf, boostActive, chargePremiums, fixMonth } from './learn/rewards.js';
 import { DeskDecor, tellAnswer } from './learn-decor.jsx';
 import { LessonSkin, SKINS, SKIN_CSS, skinTheme, skinVars } from './learn-skins.jsx';
@@ -70,7 +70,9 @@ import { DsRoot, Button, IconButton, Card, MenuCard, Heading, AnswerBar, Sheet, 
 import { ArtStyle, Guilloche, Rosette, Chest, Engraving, EngravingG, ProgressChart, InflaMeter, CoinShower, CountUp, useReducedMotion, useWide, useMedia } from './ds-art.jsx';
 import { placeOf, unitColor, DIAMOND_COLOR, dsThemeId } from './ds-tokens.js';
 import { countryPath, RIVER, curveTo } from './lib/mapgeo.js';
-import { levelRegions } from './learn/levelmap.js';
+import { levelRegions, mapSlots } from './learn/levelmap.js';
+import { featureOpen, FeatureLocked } from './learn-unlock.jsx';
+import { GRAPH_BY_CHART, GRAPH_EVENT, openGraph } from './learn/graphs.js';
 import { BrandLoader } from './logo.jsx';
 import { FRIENDS_CSS, FriendsPage, FriendProfile, RaceCard, RaceOffer, racesToShow } from './learn-friends.jsx';
 import { Sketch, SKETCH_CSS, SKETCH_QUERY, SKETCH_BOOK_QUERY } from './learn-sketch.jsx';
@@ -99,19 +101,16 @@ const CSS = `
     background: linear-gradient(135deg, color-mix(in srgb, var(--u) 9%, var(--ds-card)), var(--ds-card) 70%); box-shadow: 0 3px 0 color-mix(in srgb, var(--u) 22%, var(--ds-rule)); }
   .ln-grade-top { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
   .ln-grade-top .ds-eyebrow { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .ln-grade-pct { flex: none; margin-left: auto; display: flex; flex-direction: column; align-items: flex-end; font: 700 13px var(--ds-mono); color: var(--u-ink); }
-  .ln-grade-pct b { font: 700 22px/1 var(--ds-mono); }
-  .ln-grade-pct small { font: 400 12px var(--ds-sans); color: var(--ds-ink2); white-space: nowrap; margin-top: 2px; }
-  .ds-dark .ln-grade-pct { color: color-mix(in srgb, var(--u) 45%, #fff); }
+  .ln-grade-level { display: block; margin-top: 2px; font: 13px/1.35 var(--ds-sans); color: var(--ds-ink2); }
   .ln-grade-row { display: flex; align-items: center; gap: 12px; margin: 6px 0 8px; min-width: 0; }
-  .ln-grade-num { flex: none; min-width: 64px; text-align: center; font: 700 34px/1 var(--ds-head); color: var(--u-ink); padding: 6px 8px; border-radius: 14px;
+  .ln-grade-num { flex: none; min-width: 64px; text-align: center; font: 700 34px/1 var(--ds-mono); font-variant-numeric: tabular-nums; color: var(--u-ink); padding: 6px 8px; border-radius: 14px;
     background: color-mix(in srgb, var(--u) 12%, var(--ds-card)); box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--u) 22%, transparent); animation: ln-grade-pop .5s cubic-bezier(.3, 1.5, .5, 1) backwards; }
   .ds-dark .ln-grade-num { color: color-mix(in srgb, var(--u) 45%, #fff); }
   @keyframes ln-grade-pop { from { transform: scale(.7); opacity: 0 } }
   .ln-grade-word { display: flex; flex-direction: column; min-width: 0; }
   .ln-grade-word b { font: 700 17px/1.2 var(--ds-head); }
   .ln-grade-word small { font: 13px/1.3 var(--ds-sans); color: var(--ds-ink2); }
-  /* шкала курса: полоса с заливкой и под ней подписи ступеней — каждая в своём отрезке */
+  /* шкала курса: полоса с заливкой и под ней номера уровней курса — каждый в своём отрезке */
   .ln-scale { position: relative; display: block; height: 30px; }
   .ln-scale-bar { position: absolute; left: 0; right: 0; top: 0; height: 10px; border-radius: 999px; overflow: hidden; background: color-mix(in srgb, var(--u) 12%, var(--ds-card2)); }
   .ln-scale-bar i { position: absolute; inset: 0 auto 0 0; border-radius: inherit; background: linear-gradient(90deg, color-mix(in srgb, var(--u) 70%, #fff), var(--u)); transition: width .8s cubic-bezier(.2, .9, .3, 1);
@@ -302,15 +301,25 @@ const CSS = `
   .ln-stop-title { background: none; border: none; padding: 2px 4px; font: 700 13.5px/1.25 var(--ds-head); max-width: 170px; text-align: center; cursor: pointer; color: var(--ds-ink); }
   /* особые уроки дороги: «Персоналии» — портретная рамка цвета чернил, «Чтение» — пергамент, «Работа над
      ошибками» — красная, с меткой «сначала ошибки»; квадратные со скруглением — видно, что это не урок юнита */
-  .ln-token.ln-extra { border-radius: 22px; transform: rotate(-4deg); --x: #3E6FA8; border-color: color-mix(in srgb, var(--x) 55%, var(--ds-rule2)); color: var(--x);
+  .ln-token.ln-extra { border-radius: 22px; --x: #3E6FA8; border-color: color-mix(in srgb, var(--x) 55%, var(--ds-rule2)); color: var(--x);
     background: color-mix(in srgb, var(--x) 9%, var(--ds-card)); box-shadow: 0 5px 0 color-mix(in srgb, var(--x) 35%, var(--ds-rule2)); }
-  .ln-token.ln-extra.read { --x: #8A5A2B; transform: rotate(4deg); }
-  .ln-token.ln-extra.fix { --x: var(--ds-bad); transform: none; border-width: 3px; }
+  .ln-token.ln-extra.read { --x: #8A5A2B; }
+  .ln-token.ln-extra.graph { --x: #2459A6; }
+  .ln-graph-btn { display: inline-flex; align-items: center; gap: 7px; padding: 8px 14px; border-radius: 999px; cursor: pointer;
+    border: 1.5px solid color-mix(in srgb, #2459A6 45%, var(--ds-rule2)); background: color-mix(in srgb, #2459A6 8%, var(--ds-card)); color: var(--ds-ink);
+    font: 700 14px var(--ds-sans); transition: transform .15s, background .2s; }
+  .ln-graph-btn:hover { transform: translateY(-1px); background: color-mix(in srgb, #2459A6 14%, var(--ds-card)); }
+  .ln-graph-btn svg { color: #2459A6; }
+  .ds-dark .ln-graph-btn svg { color: #8DB6F2; }
+  .ln-token.ln-extra.fix { --x: var(--ds-bad); border-width: 3px; }
   .ln-token.ln-extra.fix::after { content: ''; position: absolute; inset: -9px; border-radius: 26px; border: 3px solid color-mix(in srgb, var(--ds-bad) 55%, transparent); animation: ds-ring 1.8s ease-out infinite; pointer-events: none; }
   .ds-dark .ln-token.ln-extra { color: color-mix(in srgb, var(--x) 55%, #fff); }
   .ln-token.ln-extra.done { background: var(--x); color: #fff; border-color: color-mix(in srgb, var(--x) 80%, #fff); box-shadow: 0 5px 0 color-mix(in srgb, var(--x) 65%, #000); }
   .ln-token.ln-extra.locked { border-style: dashed; color: var(--ds-ink3); background: var(--ds-card2); box-shadow: none; }
-  .ln-token.ln-extra:not(.locked):hover { transform: translateY(-2px) rotate(0deg); }
+  .ln-token.ln-extra:not(.locked):hover { transform: translateY(-2px); }
+  .ds .nw { white-space: nowrap; }
+  .ln-ticket-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 10px; font-size: 14px; }
+  .ln-ticket-meta > span { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
   .ln-extra-title small { display: block; font: 700 12px var(--ds-sans); letter-spacing: .06em; text-transform: uppercase; color: var(--ds-ink2); margin-bottom: 1px; }
   .ln-fix-count { position: absolute; top: -8px; right: -8px; min-width: 24px; height: 24px; padding: 0 6px; border-radius: 12px; display: grid; place-items: center;
     background: var(--ds-bad-btn, var(--ds-bad)); color: #fff; font: 700 13px var(--ds-mono); box-shadow: 0 0 0 3px var(--ds-paper); }
@@ -532,6 +541,24 @@ function useAnimValues(type, attrs) {
   if (!anim) return null;
   const to = parseAnim(anim); const t = reduced ? 1 : k;
   return Object.fromEntries(Object.entries(chartDefaults(type, attrs)).map(([id, x]) => [id, id in to ? x + (to[id] - x) * t : x]));
+}
+/* картинка карточки: график, а если для него есть «Разбор графика» (src/learn/graphs.js) — под ним
+   кнопка «Разобрать график по шагам»: разбор открывается поверх урока, без опыта */
+function CardPicture({ c }) {
+  if (!c.chart) return c.pic ? <Pic name={c.pic} /> : null;
+  const tour = GRAPH_BY_CHART[c.chart];
+  return (
+    <>
+      <MiniChart type={c.chart} attrs={c.attrs} />
+      {tour && (
+        <div style={{ textAlign: 'center', margin: '-2px 0 10px' }}>
+          <button type="button" className="ln-graph-btn" data-testid="graph-open" data-graph={tour.id} onClick={() => { Audio.play('paper'); openGraph(tour.id); }}>
+            <ChartSpline size={16} aria-hidden="true" />Разобрать график по шагам
+          </button>
+        </div>
+      )}
+    </>
+  );
 }
 function MiniChart({ type, attrs, values = null }) {
   const def = CHARTS[type];
@@ -1018,6 +1045,9 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
     if (!started) { setStarted(true); update(startLesson); if (run.mode === 'lesson') track('lesson_start', { lesson: run.lessonId }); }
     const firstTime = !(orig in a.first);
     const ms = activeNow() - a.itemStart;
+    /* рекорд мини-игры — после каждой сыгранной партии, и когда игра вернулась после ошибки: экран итогов
+       сравнивает с сохранённым рекордом, и несохранённый лучший счёт давал потом ложный «новый рекорд» */
+    if (GAME_KINDS.includes(cur.kind) && answer && answer.score) update((s) => recordBest(s, cur.id, answer.score));
     if (firstTime) {
       a.first[orig] = r.ok;
       // аналитика без персональных данных: верно ли с первой попытки — по упражнению (api/events.js)
@@ -1027,7 +1057,7 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
       // встреченное упражнение: в повторение и проверки первыми пойдут те, что виделись реже
       const seenId = cur.of || cur.id;
       update((s) => recordSeen(recordAttempt(s, cur.kind, r.ok, ms, { lesson: cur.lesson || null }), seenId));
-      if (GAME_KINDS.includes(cur.kind) && answer && answer.score) { update((s) => recordBest(s, cur.id, answer.score)); a.bonus += gameXp(answer.score); }
+      if (GAME_KINDS.includes(cur.kind) && answer && answer.score) a.bonus += gameXp(answer.score);
       if (GAME_KINDS.includes(cur.kind) && answer) a.game = { kind: cur.kind, right: answer.right, answered: answer.answered, ok: r.ok };
     }
     if (r.ok) {
@@ -1230,11 +1260,9 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
       {skin && <LessonSkin id={skin.id} />}
       <div className="ln-head" ref={headRef}>
         {stage !== 'done' && <IconButton label="Выйти из урока" icon={X} data-nav="back" onClick={exit} />}
-        {/* на одну карточку назад: идущую мини-игру не прерываем */}
-        {!feed && stage !== 'done' && prevShot && !peek && !(stage === 'work' && cur && GAME_KINDS.includes(cur.kind) && !fb) && (
-          <IconButton label="Назад: предыдущая карточка" icon={ArrowLeft} data-testid="lesson-back" onClick={() => { Audio.play('paper'); setPeek(true); }} />
-        )}
-        <ProgressChart answers={log} total={total} pulse={pulse} />
+        {/* на одну карточку назад — касанием отрезка перед текущим на полосе прогресса; идущую мини-игру не прерываем */}
+        <ProgressChart answers={log} total={total} pulse={pulse}
+          onBack={!feed && stage !== 'done' && prevShot && !peek && !(stage === 'work' && cur && GAME_KINDS.includes(cur.kind) && !fb) ? () => { Audio.play('paper'); setPeek(true); } : null} />
         {/* Инфля надувается с каждым верным ответом подряд и мягко сдувается после ошибки */}
         <StreakFlame n={run3} plus={!(run.mode === 'lesson' && replay && !diamond)} />
         <InflaMeter streak={run3} mood={fb && !fb.empty ? (fb.ok ? 'joy' : 'cheer') : 'hello'} size={34} />
@@ -1259,8 +1287,11 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
       {peek && prevShot && stage !== 'done' && (
         <div className="ln-peek" style={{ top: headRef.current ? headRef.current.offsetHeight : 64 }}>
           <div className="ln-body"><div className="ln-inner ds-rise" data-testid="lesson-peek" data-type={prevShot.type}>
+            {/* и на прошлой карточке можно пожаловаться: нажали «Дальше» на автомате — вернулись и отметили */}
             <div className="ln-kind ds-eyebrow" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <ArrowLeft size={14} aria-hidden="true" />Предыдущая карточка
+              <ArrowLeft size={14} aria-hidden="true" />Предыдущая карточка<span style={{ flex: 1 }} />
+              <ReportFlag context={() => (prevShot.type === 'card' ? stepContext(prevShot.card, lesson, prevShot.kind || 'Предыдущая карточка')
+                : exerciseContext(prevShot.inst, { lesson, resp: prevShot.resp, correct: answerText(prevShot.inst), mode: run.mode }))} />
             </div>
             {prevShot.type === 'card' ? (
               <>
@@ -1302,7 +1333,7 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
           if (!last) { setCardIdx(cardIdx + 1); return; }
           cardsSeen.current.add(cur.uid); acc.current.itemStart = activeNow(); setCardIdx(0); setStage('work');
         };
-        const picture = c.chart ? <MiniChart type={c.chart} attrs={c.attrs} /> : c.pic ? <Pic name={c.pic} /> : null;
+        const picture = <CardPicture c={c} />;
         // «Слова» — колода со своими кнопками: вспомнить, открыть, «Знаю» / «Ещё раз»
         if (c.flash) {
           const done = () => { setPrevShot(null); setPeek(false); cardsSeen.current.add(cur.uid); acc.current.itemStart = activeNow(); setCardIdx(0); setStage('work'); };
@@ -1439,7 +1470,7 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
             <div className="ln-body"><div className="ln-inner">
               <Feed mode={lesson.kind} title={bareTitle(lesson.title)} skipTitle={lesson.title} entries={entries}
                 flagFor={(e) => <ReportFlag context={() => stepContext(e.card, lesson, `сообщение ${e.index}`)} />}
-                picture={(c) => (c.chart ? <MiniChart type={c.chart} attrs={c.attrs} /> : c.pic ? <Pic name={c.pic} /> : null)} />
+                picture={(c) => <CardPicture c={c} />} />
             </div></div>
             <div className={`ln-foot ${fb && !fb.empty ? `fb ${fb.ok ? 'ok' : 'bad'}` : ''}`} data-testid="lesson-foot">
               {!liveCard && fb && !fb.empty ? verdictBar : (
@@ -1663,11 +1694,12 @@ function LessonSheet({ l, learn, weak = false, onStart, onClose, onOpenBook, onS
         <div className="ln-ticket-main">
           <div className="ds-eyebrow">{LESSON_KIND[lesson.kind]} · {pl.place}</div>
           <div className="ds-h2" style={{ marginTop: 4 }}>{bareTitle(l.title)}</div>
-          <div className="ds-num ds-sub" style={{ display: 'flex', gap: 14, marginTop: 10, fontSize: 14 }}>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Timer size={15} aria-hidden="true" />≈{info.min} мин</span>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Coins size={15} aria-hidden="true" />до {info.xp} опыта</span>
+          {/* время и опыт — каждое целиком, без переноса внутри («≈4 мин» и «до 48 опыта» не рвутся на две строки) */}
+          <div className="ds-num ds-sub ln-ticket-meta" data-testid="lesson-meta">
+            <span><Timer size={15} aria-hidden="true" />≈{info.min} мин</span>
+            <span><Coins size={15} aria-hidden="true" />до {info.xp} опыта</span>
             {/* пройденный урок — короткая отметка в строке билета, без печати поверх */}
-            {l.done && <span data-testid="lesson-done-mark" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: l.diamond ? DIAMOND_COLOR : 'var(--ds-ok)', fontWeight: 700 }}>
+            {l.done && <span data-testid="lesson-done-mark" style={{ color: l.diamond ? DIAMOND_COLOR : 'var(--ds-ok)', fontWeight: 700 }}>
               {l.diamond ? <Gem size={15} aria-hidden="true" /> : <Check size={15} aria-hidden="true" />}{l.diamond ? 'алмаз' : 'пройден'}
             </span>}
           </div>
@@ -1723,7 +1755,8 @@ function LessonSheet({ l, learn, weak = false, onStart, onClose, onOpenBook, onS
               return weak ? [plainBtn, gemBtn] : [gemBtn, plainBtn];
             })()}
             <div className="ds-sub" style={{ fontSize: 13.5, textAlign: 'center' }} data-testid="lesson-diamond-info">
-              Алмазный уровень: задачи сложнее{lesson.inner.some((c) => c.diamond) ? ', теория глубже' : ''}, ≈{gemInfo.min} мин, до {gemInfo.xp} опыта и {l.diamond ? '5' : '25–35'} монет.
+              {/* число и единица — неразрывно: «≈4 мин» и «до 45 опыта» не рвутся на две строки */}
+              Алмазный уровень: задачи сложнее{lesson.inner.some((c) => c.diamond) ? ', теория глубже' : ''}, <span className="nw">≈{gemInfo.min}{'\u00a0'}мин</span>, <span className="nw">до {gemInfo.xp}{'\u00a0'}опыта</span> и <span className="nw">{l.diamond ? '5' : '25–35'}{'\u00a0'}монет</span>.
               {weak && ' Тема пока даётся трудно — сначала стоит повторить.'}
             </div>
           </div>
@@ -1752,27 +1785,28 @@ function GradeCard({ learn }) {
   const c = useMemo(() => courseLevel(learn), [learn]);
   const fill = (c.points / SCALE_MAX) * 100;
   return (
-    <div className="ln-grade" data-testid="course-level" data-band={c.band.id} data-points={c.points} data-done={c.done}>
+    <div className="ln-grade" data-testid="course-level" data-points={c.points} data-done={c.done} data-level={c.level.id}>
       <div className="ln-grade-top">
         <span className="ds-eyebrow">Ваш уровень в курсе экономики</span>
       </div>
+      {/* не ступени, а число: условные единицы курса из 1000 */}
       <div className="ln-grade-row">
-        <span className="ln-grade-num" aria-hidden="true" key={c.band.id}>{c.band.id}</span>
+        <span className="ln-grade-num" data-testid="course-points" aria-hidden="true" key={c.points}>{c.points}</span>
         <span className="ln-grade-word">
-          <b>{c.band.title}</b>
-          <small data-testid="course-next">{c.next ? `до ${c.next.id} — ${c.toNext} ед.` : 'вершина шкалы'}{c.done ? ` · ${c.done} из ${c.total} уроков` : ' · единицы — за уроки'}</small>
+          <b>{c.points ? 'условных единиц' : 'единиц пока нет'}</b>
+          <small>из {SCALE_MAX} за весь курс · <span className="nw">{c.done} из {c.total} уроков</span></small>
         </span>
-        <span className="ln-grade-pct" data-testid="course-points" aria-hidden="true"><b>{c.points}</b><small>из {SCALE_MAX} ед.</small></span>
       </div>
-      <span className="ds-sr">Уровень {c.band.id}, «{c.band.title}»: {c.points} условных единиц из {SCALE_MAX}.{c.next ? ` До ${c.next.id} — ${c.toNext}.` : ''} Пройдено {c.done} из {c.total} уроков.</span>
-      {/* шкала: отрезок на каждую ступень, ширина — по её единицам; набранное — заливка, своя ступень ярче */}
+      <span className="ds-sr">{c.points} условных единиц из {SCALE_MAX}. {c.level.title} уровень курса: {c.level.got} из {c.level.max}. Пройдено {c.done} из {c.total} уроков.</span>
+      {/* шкала курса: отрезок на каждый уровень курса, ширина — по его единицам; набранное — заливка, свой уровень ярче */}
       <span className="ln-scale" aria-hidden="true">
         <span className="ln-scale-bar"><i style={{ width: `${Math.max(c.points ? 1.5 : 0, fill)}%` }} /></span>
-        {BANDS.map((b, k) => {
-          const to = (BANDS[k + 1] ? BANDS[k + 1].from : SCALE_MAX);
-          return <span key={b.id} className={`ln-scale-seg${b === c.band ? ' on' : c.points >= to ? ' past' : ''}`} style={{ left: `${(b.from / SCALE_MAX) * 100}%`, width: `${((to - b.from) / SCALE_MAX) * 100}%` }}>{b.id}</span>;
-        })}
+        {LEVELS.map((l, k) => (
+          <span key={l.id} className={`ln-scale-seg${l.id === c.level.id ? ' on' : c.past.includes(l.id) ? ' past' : ''}`}
+            style={{ left: `${(LEVEL_FROM[l.id] / SCALE_MAX) * 100}%`, width: `${(LEVEL_POINTS[l.id] / SCALE_MAX) * 100}%` }}>{k + 1}</span>
+        ))}
       </span>
+      <small className="ln-grade-level" data-testid="course-next">{c.points ? `${c.level.title} уровень курса: ${c.level.got} из ${c.level.max} ед.` : 'Единицы — за пройденные уроки: чем точнее ответы, тем больше.'}</small>
     </div>
   );
 }
@@ -1806,13 +1840,21 @@ function TopStats({ learn, bell = null }) {
 const MAP_BOX = { x: 130, y: 70, w: 780, h: 610 };
 // sel — юниты, которые сейчас на экране Пути (выбранный уровень): их места в сплошном кольце
 const LEVEL_MAP = levelRegions();
+// 25 мест по порядку дороги: юниты и места под будущие юниты уровня (по пять на уровень)
+const MAP_SLOTS = mapSlots();
 function Atlas({ states, sel = [], onPick }) {
   const units = UNITS.map((u, k) => ({ u, no: k + 1, st: states.find((x) => x.course.id === u.id), pl: placeOf(u.id) }));
+  const soon = MAP_SLOTS.filter((x) => x.soon);
   // уровень, юниты которого сейчас на экране Пути: его область чуть ярче
   const selLevel = sel.length ? (UNITS.find((u) => u.id === sel[0]) || {}).level : null;
   const onPath = units.filter((x) => x.st);
-  const route = units.map((x) => x.pl.at);
-  const doneTill = onPath.reduce((k, x, i) => (x.st.complete ? i + 1 : k), 0);
+  const route = MAP_SLOTS.map((x) => x.at);
+  /* пройденная часть дороги — от начала до следующего места на Пути после последнего пройденного:
+     места будущих и строящихся юнитов дорога проходит насквозь */
+  const onIds = new Set(onPath.map((y) => y.u.id));
+  const lastDone = MAP_SLOTS.reduce((k, x, i) => (onPath.some((y) => y.u.id === x.id && y.st.complete) ? i : k), -1);
+  let doneTill = lastDone;
+  if (lastDone >= 0) { doneTill += 1; while (doneTill < MAP_SLOTS.length - 1 && !onIds.has(MAP_SLOTS[doneTill].id)) doneTill += 1; }
   // места ещё без уроков — точки на дороге; их здания появятся, когда юнит выйдет на Путь
   const cur = onPath.find((x) => !x.st.complete) || null;
   const pathD = (pts) => (pts.length > 1 ? `M${pts[0][0]},${pts[0][1]}${curveTo(pts)}` : '');
@@ -1845,7 +1887,11 @@ function Atlas({ states, sel = [], onPick }) {
         {/* дорога через все места: пройденная часть — сплошная тушь, дальше — пунктир */}
         <path d={pathD(route)} fill="none" stroke="var(--ds-card2)" strokeWidth="10" strokeLinecap="round" strokeLinejoin="round" />
         <path d={pathD(route)} fill="none" stroke="var(--ds-ink3)" strokeWidth="2.4" strokeDasharray="8 8" strokeLinecap="round" />
-        {doneTill > 0 && <path d={pathD(route.slice(0, doneTill + 1))} fill="none" stroke="var(--u-ink)" strokeWidth="4" strokeLinecap="round" />}
+        {lastDone >= 0 && <path d={pathD(route.slice(0, doneTill + 1))} fill="none" stroke="var(--u-ink)" strokeWidth="4" strokeLinecap="round" />}
+        {/* места под будущие юниты — пунктирные кружки: юнит появится здесь позже */}
+        {soon.map((x) => (
+          <circle key={x.id} cx={x.at[0]} cy={x.at[1]} r="6.5" fill="var(--ds-card)" stroke="var(--ds-ink3)" strokeWidth="1.8" strokeDasharray="3 2.6" data-testid="atlas-soon" data-level={x.level} />
+        ))}
         {/* номер уровня — в самом свободном месте его области; названия — в легенде под картой */}
         {LEVEL_MAP.regions.filter((r) => r.label).map((r) => (
           <g key={r.id} className="ln-lvl-badge" style={{ '--lv': r.tint }} data-current={String(r.id === selLevel)} aria-hidden="true">
@@ -1956,7 +2002,7 @@ function propsFor(id, i, W, y, left, spooky = false) {
 /* Остановки дороги: уроки юнита и особые уроки между ними («Персоналии», «Чтение», «Работа над
    ошибками» — src/learn/stops.js). У особого — свой значок и цвет; «Работа над ошибками» — с меткой
    «сначала ошибки» и закрывает следующий урок. */
-const EXTRA_ICON = { people: Users, read: Feather, fix: Wrench };
+const EXTRA_ICON = { people: Users, read: Feather, graph: ChartSpline, fix: Wrench };
 function Route({ st, stops, seen, reduced, visible, resumes, onLesson, onExtra = () => {}, rec = null, chest = null, onChest, spooky = false }) {
   const W = 300;
   // пройденный юнит — в конце дороги сундук
@@ -2332,9 +2378,10 @@ function PathView({ learn, update, onLesson, onStart, onOpenBook, onChest, onTas
   const atlasRef = useRef(null);
   const [scrollTo, setScrollTo] = useState({ n: 0, unit: null });
   const show = (levelId, unit = null) => { setPicker(null); setChosen(levelId); setScrollTo((x) => ({ n: x.n + 1, unit })); };
+  // касание места на карте: юнит на дороге, свёрнутый — раскрыт
   const pick = (unitId) => {
     const x = list.find((y) => y.u.id === unitId);
-    if (x && openLevel(x.u.level)) show(x.u.level, unitId); else if (x) setPicker({ focus: x.u.level });
+    if (x && openLevel(x.u.level)) { setUnfolded((m) => ({ ...m, [unitId]: true })); show(x.u.level, unitId); } else if (x) setPicker({ focus: x.u.level });
   };
   useEffect(() => {
     if (!scrollTo.n) return;
@@ -2564,6 +2611,7 @@ const SettingsView = React.lazy(() => import('./learn-profile.jsx').then((m) => 
 const NewsView = React.lazy(() => import('./learn-news.jsx'));
 const ReadingView = React.lazy(() => import('./learn-reading.jsx'));
 const PeopleView = React.lazy(() => import('./learn-people.jsx'));
+const GraphLesson = React.lazy(() => import('./learn-graph.jsx'));
 const Lazy = ({ children }) => <React.Suspense fallback={<BrandLoader compact text="Открываем" />}>{children}</React.Suspense>;
 const Celebration = React.lazy(() => import('./learn-celebrate.jsx'));
 /* Церемонии (src/learn/celebrate.js): что из полученного ещё не праздновали. Показанное помнит
@@ -2688,11 +2736,19 @@ export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReo
   /* особые уроки дороги (src/learn/stops.js): «Чтение», «Персоналии», «Работа над ошибками»;
      закрытый — подсказка, когда откроется */
   const [people, setPeople] = useState(null);
+  // «Разбор графика»: с дороги юнита — урок с опытом; с карточки урока (событие) — поверх урока, без опыта
+  const [graph, setGraph] = useState(null);
+  useEffect(() => {
+    const on = (e) => { if (e.detail && e.detail.id) setGraph({ id: e.detail.id, peek: true }); };
+    window.addEventListener(GRAPH_EVENT, on);
+    return () => window.removeEventListener(GRAPH_EVENT, on);
+  }, []);
   const [extraLocked, setExtraLocked] = useState(null);
   const onExtra = (x) => {
     if (!x.open && !x.done) { Audio.play('down'); setExtraLocked(x); return; }
     if (x.type === 'read') setReading(x.id);
     else if (x.type === 'people') setPeople(x.id);
+    else if (x.type === 'graph') setGraph({ id: x.id, peek: false });
     else if (x.type === 'fix') start({ mode: 'fix', unitId: x.unitId });
   };
   // гость: после выбора цели — сразу первый урок Пути, без карточки урока
@@ -2705,6 +2761,7 @@ export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReo
     setBell(false);
     // повторение учебника — сразу страница «Повторение» учебника, поверх любой вкладки
     if (n.go === 'book-review') { openBook({ kind: 'review' }); return; }
+    if (n.go === 'book-chapter' && n.chapter) { openBook({ kind: 'chapter', id: n.chapter }); return; }
     // ник под запретом — окно смены ника (src/account.jsx, NameGate)
     if (n.go === 'rename') { window.dispatchEvent(new Event('ems-rename')); return; }
     const want = { path: 'path', tasks: 'path', league: 'league', shop: 'shop', garden: 'shop', piggy: 'shop', news: 'news', friends: 'profile' }[n.go] || 'path';
@@ -2757,10 +2814,12 @@ export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReo
         {tab === 'book' && <div className="ln-book" data-testid="book-tab"><TextbookScreen asTab homeTick={bookHome} {...bookHandlers} {...bookReports} />
           {/* черновик на полях учебника — на широком экране с мышью; пока идёт урок, у урока свой */}
           {sketchBook && !over && <><style>{SKETCH_CSS}</style><Sketch mode="book" /></>}</div>}
-        {tab === 'shop' && <ShopView key={shopFocus.n} learn={learn} update={update} focus={shopFocus.to} />}
-        {tab === 'league' && <div className="ln-wrap"><LeagueView learn={learn} update={update} /></div>}
+        {/* лиги и лавка открываются не сразу (src/learn/unlocks.js): до того — что там будет и сколько уроков осталось */}
+        {tab === 'shop' && (featureOpen(learn, 'shop') ? <ShopView key={shopFocus.n} learn={learn} update={update} focus={shopFocus.to} />
+          : <div className="ln-wrap"><FeatureLocked id="shop" learn={learn} onPath={() => onTab('path')} /></div>)}
+        {tab === 'league' && <div className="ln-wrap">{featureOpen(learn, 'league') ? <LeagueView learn={learn} update={update} /> : <FeatureLocked id="league" learn={learn} onPath={() => onTab('path')} />}</div>}
         {tab === 'news' && <Lazy><NewsView learn={learn} friends={friends} onFriend={(l) => setFriendLogin(l)} /></Lazy>}
-        {tab === 'profile' && <Lazy><ProfileView learn={learn} onOpenBook={openBook} onSettings={() => setSettings(true)} onNotify={() => setBell(true)} unread={notify.unread.length}
+        {tab === 'profile' && <Lazy><ProfileView learn={learn} update={update} onOpenBook={openBook} onSettings={() => setSettings(true)} onNotify={() => setBell(true)} unread={notify.unread.length}
           friends={friends} guest={guest} onFriends={() => { Audio.play('paper'); setFriendsPage(true); }} /></Lazy>}
       </div>
       {settings && !reports && !analytics && <Lazy><SettingsView learn={learn} update={update} notify={notify} onBack={() => setSettings(false)} onThemeChange={onThemeChange}
@@ -2776,7 +2835,12 @@ export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReo
         onClose={(opened) => { setChest(null); if (opened) setFolded({ n: Date.now(), unit: chest }); }} />}
       {morning && !run && <MorningStreak learn={learn} onClose={() => setMorning(false)} />}
       {celebrate && <React.Suspense fallback={null}><Celebration moment={celebrate} learn={learn} onDone={() => celebrated(celebrate)}
-        onGo={() => { celebrated(celebrate); onTab(celebrate.kind === 'league' ? 'league' : 'profile'); }} /></React.Suspense>}
+        onGo={() => {
+          celebrated(celebrate);
+          // открылась возможность — «Заглянуть» ведёт туда же, куда уведомление: лига, лавка, копилка, сад
+          if (celebrate.kind === 'unlock') { goNotify({ id: `o:${celebrate.it.id}`, go: celebrate.it.id }); return; }
+          onTab(celebrate.kind === 'league' ? 'league' : 'profile');
+        }} /></React.Suspense>}
       {sheet && <LessonSheet l={sheet} learn={learn} weak={weakLessons(learn).some((w) => w.id === sheet.id)} onStart={start} onClose={() => setSheet(null)} onOpenBook={openBook}
         onSkip={(id) => { Audio.play('paper'); update((s) => skipLesson(s, id)); setSheet(null); }} />}
       {reading && <Lazy><ReadingView id={reading} learn={learn} update={update} onClose={() => setReading(null)} /></Lazy>}
@@ -2791,6 +2855,7 @@ export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReo
       )}
       {run && <Runner key={JSON.stringify({ ...run, resume: !!run.resume })} run={run} learn={learn} update={update} hidden={!!book} guest={guest}
         onClose={() => setRun(null)} onOpenBook={(page) => openBook(page)} />}
+      {graph && <Lazy><GraphLesson id={graph.id} learn={learn} update={update} peek={graph.peek} onClose={() => setGraph(null)} /></Lazy>}
     </DsRoot>
     </OutfitContext.Provider>
   );

@@ -108,6 +108,9 @@ describe('колыбель: несколько шариков сразу', () =>
     expect(cradleGroup(m, 3, 1).group).toHaveLength(2);
     expect(cradleGroup(m, 2, -1).group).toHaveLength(3);
     expect(cradleGroup(m, 2, 1).left).toBe(false);
+    // в любую сторону: второй слева вправо толкает четыре, правый крайний влево — все пять
+    expect(cradleGroup(m, 1, 1).group).toHaveLength(4);
+    expect(cradleGroup(m, 4, -1).group).toHaveLength(5);
     expect(holdCradle(m, 1, -m.L * 0.6)).toBe(2);
     expect(m.balls[0].a).toBeCloseTo(m.balls[1].a);
     expect(m.balls[0].a).toBeLessThan(-0.3);
@@ -116,5 +119,16 @@ describe('колыбель: несколько шариков сразу', () =>
     for (let k = 0; k < 45; k += 1) { decorStep(m, 1 / 60, H); out3 = Math.max(out3, m.balls[3].a); out4 = Math.max(out4, m.balls[4].a); }
     expect(out4).toBeGreaterThan(0.25);
     expect(out3).toBeGreaterThan(0.25);
+  });
+
+  it('правый крайний толкнули влево — уходят все пять, отпустили — качаются все вместе', async () => {
+    const { holdCradle } = await import('../../learn-decor.jsx');
+    const H = 48; const m = decorModel('desk-cradle', 400, H);
+    expect(holdCradle(m, 4, -m.L * 0.5)).toBe(5);
+    m.balls.forEach((b) => expect(b.a).toBeLessThan(-0.3));
+    m.balls.forEach((b) => { b.drag = false; });
+    const seen = m.balls.map(() => 0);
+    for (let k = 0; k < 30; k += 1) { decorStep(m, 1 / 60, H); m.balls.forEach((b, i) => { seen[i] = Math.max(seen[i], Math.abs(b.w)); }); }
+    seen.forEach((w) => expect(w).toBeGreaterThan(1));
   });
 });

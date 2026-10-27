@@ -53,6 +53,15 @@ export const ART_CSS = `
   .ds-level-track i.ok { background: linear-gradient(180deg, color-mix(in srgb, var(--u) 75%, #fff) 0 35%, var(--u) 35%); }
   .ds-level-track i.bad { background: repeating-linear-gradient(135deg, var(--ds-bad) 0 3px, color-mix(in srgb, var(--ds-bad) 45%, var(--ds-card)) 3px 6px); }
   .ds-level-track i.cur { background: var(--ds-card); box-shadow: inset 0 0 0 1.5px var(--u-ink); }
+  /* отрезок перед текущим — кнопка «назад на карточку»: стрелка «‹» внутри, зона касания шире самого отрезка */
+  .ds-level-track button { flex: 1; position: relative; border: 0; padding: 0; margin: 0; min-width: 0; border-radius: 3px; background: var(--ds-rule); cursor: pointer; font: inherit; color: inherit; }
+  .ds-level-track button.ok { background: linear-gradient(180deg, color-mix(in srgb, var(--u) 75%, #fff) 0 35%, var(--u) 35%); }
+  .ds-level-track button.bad { background: repeating-linear-gradient(135deg, var(--ds-bad) 0 3px, color-mix(in srgb, var(--ds-bad) 45%, var(--ds-card)) 3px 6px); }
+  .ds-level-track button.cur { background: var(--ds-card); box-shadow: inset 0 0 0 1.5px var(--u-ink); }
+  .ds-level-back::before { content: ''; position: absolute; inset: -16px -4px; }
+  .ds-level-back::after { content: '‹'; position: absolute; inset: 0; display: grid; place-items: center; font: 700 13px/1 var(--ds-sans); color: #fff; text-shadow: 0 0 2px rgba(0,0,0,.55); }
+  .ds-level-back.cur::after { color: var(--u-ink); text-shadow: none; }
+  .ds-level-back:hover, .ds-level-back:focus-visible { outline: 2px solid var(--u-ink); outline-offset: 2px; }
   .ds-level-n { font-size: 12.5px; font-weight: 700; color: var(--ds-ink2); min-width: 34px; text-align: right; }
   .ds-infla { display: inline-block; transform-origin: 50% 90%; transition: transform .45s cubic-bezier(.34,1.45,.5,1); }
   .ds-infla.deflate { transition: transform 1s cubic-bezier(.25,.8,.3,1); }
@@ -416,20 +425,28 @@ export function Clipping({ issue, rubric, children, testid }) {
 /* Полоса уровня — сколько упражнений урока пройдено: отрезок на каждое упражнение, верный
    ответ — в цвете юнита, ошибка — красной штриховкой, текущее — рамкой. pulse растёт с каждым
    верным ответом серии: последний отрезок коротко вспыхивает (около 0,5 с). Справа — счёт. */
-export function ProgressChart({ answers = [], total, pulse = 0, testid = 'lesson-progress' }) {
+/* onBack — «назад на одну карточку»: отрезок перед текущим (если ответов ещё нет — сам текущий)
+   становится кнопкой со стрелкой «‹»; касание открывает предыдущую карточку. */
+export function ProgressChart({ answers = [], total, pulse = 0, testid = 'lesson-progress', onBack = null }) {
   const n = Math.max(1, total);
   const done = Math.min(answers.length, n);
   const pct = Math.round((done / n) * 100);
+  const backAt = onBack ? Math.max(0, done - 1) : -1;
   return (
-    <div className="ds-level" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label={`Пройдено ${done} из ${n}`}
-      data-testid={testid} data-glow={pulse ? 'pulse' : 'off'}>
+    <div className="ds-level" data-testid={testid} data-glow={pulse ? 'pulse' : 'off'}>
       <div className="ds-level-track">
         {Array.from({ length: n }, (_, i) => {
           const st = i < done ? (answers[i] ? 'ok' : 'bad') : i === done ? 'cur' : '';
-          return <i key={i === done - 1 ? `p${pulse}` : i} className={`${st} ${i === done - 1 && answers[i] && pulse ? 'ds-pulse' : ''}`} />;
+          const cls = `${st} ${i === done - 1 && answers[i] && pulse ? 'ds-pulse' : ''}`;
+          if (i === backAt) {
+            return <button key={`b${i === done - 1 ? pulse : i}`} type="button" className={`${cls} ds-level-back`} data-testid="lesson-back"
+              aria-label="Назад: предыдущая карточка" title="Предыдущая карточка" onClick={onBack} />;
+          }
+          return <i key={i === done - 1 ? `p${pulse}` : i} className={cls} />;
         })}
       </div>
-      <span className="ds-num ds-level-n">{done}/{n}</span>
+      {/* прогресс для экранного диктора — на счёте: в полосе есть кнопка «назад», а у progressbar детей-кнопок быть не должно */}
+      <span className="ds-num ds-level-n" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label={`Пройдено ${done} из ${n}`}>{done}/{n}</span>
     </div>
   );
 }

@@ -150,5 +150,7 @@ export function bookOpen(learn, book) {
   const rd = READING_BY_UNIT[book.unitId]; const pp = PEOPLE_BY_UNIT[book.unitId];
   return !!((rd && isRead(learn, rd.id)) || (pp && isMet(learn, pp.id)));
 }
-export const shelfBooks = (learn) => BOOKS.map((b) => ({ ...b, open: bookOpen(learn, b) }));
+// прочитанная — отмеченная учеником в конце книги (learn.books, src/textbook/learn-state.js)
+export const bookReadAt = (learn, id) => ((learn && learn.books) || {})[id] || 0;
+export const shelfBooks = (learn) => BOOKS.map((b) => ({ ...b, open: bookOpen(learn, b), read: !!bookReadAt(learn, b.id) }));
 export const wordsIn = (b) => b.passages.reduce((a, p) => a + p.text.join(' ').split(/\s+/).length, 0);

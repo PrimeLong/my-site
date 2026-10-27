@@ -22,7 +22,8 @@ import { isGuest, GUEST_START, GUEST_SAVE } from './lib/guest.js';
 import { checkReturn } from './lib/retention.js';
 import { DS_THEMES, appColors, learnThemeId, dsThemeId, learnMusic, learnSfx, worldMusic, setWorldMusic, worldSfx, setWorldSfx, worldVolume, setWorldVolume, worldThemeId, setWorldTheme } from './ds-tokens.js';
 import { DsRoot, Tabs, Button } from './ds.jsx';
-import { loadProgress as loadTextbookProgress, saveProgress as saveTextbookProgress, mergeTextbook, TEXTBOOK_PROGRESS_KEY } from './textbook/progress.js';
+import { loadProgress as loadTextbookProgress, saveProgress as saveTextbookProgress, mergeTextbook, TEXTBOOK_PROGRESS_KEY, PROGRESS_EVENT } from './textbook/progress.js';
+import { featureOpen } from './learn-unlock.jsx';
 import { BookLinkContext } from './booklink-context.js';
 import { LATEST_NEWS, readNewsSeen, newsForLearner, learnerSince, readFeedSeenAt, friendNewsSince } from './learn/news.js';
 import { friendsState } from './lib/friends-store.js';
@@ -1171,11 +1172,15 @@ function BottomNav({ tab, onTab, onReselect = null }) {
   const newsNew = React.useMemo(() => (!readNewsSeen()[LATEST_NEWS.id] && newsForLearner(LATEST_NEWS, learnerSince(loadTextbookProgress().learn)))
     || friendNewsSince(((friendsState() || {}).friends) || [], readFeedSeenAt()), // eslint-disable-next-line react-hooks/exhaustive-deps
   [tab, menu]);
+  // лиги и лавка открываются после первых уроков (src/learn/unlocks.js) — до того у вкладки замок
+  const [progTick, setProgTick] = useState(0);
+  useEffect(() => { const f = () => setProgTick((x) => x + 1); window.addEventListener(PROGRESS_EVENT, f); return () => window.removeEventListener(PROGRESS_EVENT, f); }, []);
+  const locks = React.useMemo(() => { const l = loadTextbookProgress().learn; return { league: !featureOpen(l, 'league'), shop: !featureOpen(l, 'shop') }; }, [tab, menu, progTick]); // eslint-disable-line react-hooks/exhaustive-deps
   const tabs = [
     { id: 'path', icon: Route, label: 'Путь' },
     { id: 'book', icon: BookOpenText, label: 'Учебник' },
-    { id: 'league', icon: Trophy, label: 'Лиги' },
-    { id: 'shop', icon: ShoppingBag, label: 'Лавка' },
+    { id: 'league', icon: Trophy, label: 'Лиги', lock: locks.league },
+    { id: 'shop', icon: ShoppingBag, label: 'Лавка', lock: locks.shop },
     { id: 'more', icon: Ellipsis, label: inMore ? inMore.label : 'Ещё', menu: true, open: menu, dot: newsNew && tab !== 'news' },
   ];
   useEffect(() => {

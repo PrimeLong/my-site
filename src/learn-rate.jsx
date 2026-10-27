@@ -1,7 +1,7 @@
 /* Лавка · Сад: переключатель вверху лавки и плашка «Ставка недели» (в копилке и на рынке сада).
    Лёгкий модуль в чанке обучения; сам сад — ленивый чанк src/learn-garden.jsx. */
 import React, { useEffect, useState } from 'react';
-import { Sprout, Landmark, PiggyBank } from 'lucide-react';
+import { Sprout, Landmark, PiggyBank, Lock } from 'lucide-react';
 import { ripeCount } from './learn/garden.js';
 import { RATE_STEPS, rateStep, weekRate, weekDemand, PIGGY } from './learn/rewards.js';
 
@@ -30,7 +30,7 @@ const useNow = (ms = 30000) => {
 };
 
 // переключатель «Лавка · Сад» вверху лавки; на «Саде» — сколько созрело
-export function ShopSwitch({ view, onView, learn }) {
+export function ShopSwitch({ view, onView, learn, gardenLocked = false }) {
   const now = useNow();
   const ripe = ripeCount(learn, now);
   return (
@@ -38,7 +38,8 @@ export function ShopSwitch({ view, onView, learn }) {
       <style>{RATE_CSS}</style>
       <button type="button" role="tab" aria-selected={view === 'shop'} data-view="shop" onClick={() => onView('shop')}>Лавка</button>
       <button type="button" role="tab" aria-selected={view === 'garden'} data-view="garden" onClick={() => onView('garden')}>
-        <Sprout size={17} aria-hidden="true" />Сад{ripe > 0 && <span className="gd-ripe" data-testid="garden-ripe">{ripe}</span>}
+        {/* сад ещё не открыт (src/learn/unlocks.js) — замок вместо ростка */}
+        {gardenLocked ? <Lock size={15} aria-hidden="true" data-testid="garden-lock" /> : <Sprout size={17} aria-hidden="true" />}Сад{ripe > 0 && <span className="gd-ripe" data-testid="garden-ripe">{ripe}</span>}
       </button>
     </div>
   );
