@@ -17,7 +17,8 @@ import { Guilloche } from './ds-art.jsx';
 import { useReducedMotion } from './ds-art.jsx';
 import { Portrait } from './learn-play.jsx';
 import { CAST, DEFAULT_VOICE } from './learn/cast.js';
-import { voiceFor, VOICE_CAPTION, speechText } from './learn/voices.js';
+import { voiceFor, voiceCaption, speechText } from './learn/voices.js';
+import { voiceId, hasRecording, anyRecordings, recordingUrl, wordAt } from './learn/voice-lines.js';
 import { plainText } from './textbook/content.js';
 
 export const FEED_CSS = `
@@ -95,9 +96,11 @@ export const FEED_CSS = `
   @media (prefers-reduced-motion: reduce) { .fd-new, .fd-qa-a { animation: none; } .fd-bubble { transition: none; } .fd-set .fd-eq i, .fd-onair::before { animation: none !important; } }
 `;
 
-/* Голос: одна озвучка на ленту. speak(key, text, who) читает сообщение голосом героя
+/* Голос: одна озвучка на ленту. speak(key, text, who) играет запись сюжета, если она есть
+   (public/voice/, src/learn/voice-lines.js), иначе читает голосом героя в браузере
    (src/learn/voices.js: свой темп, высота и голос) и подсвечивает слово; без голоса —
-   подсветка в темпе чтения вслух (около 2,6 слова в секунду). */
+   подсветка в темпе чтения вслух (около 2,6 слова в секунду). Запись не загрузилась —
+   этот сюжет читает браузер. */
 const browserVoices = () => {
   try { const s = window.speechSynthesis; return s ? s.getVoices() : []; } catch { return []; }
 };
@@ -117,30 +120,74 @@ function useSpeech() {
   const [broken, setBroken] = useState(false);
   const [mutedUntil, setMutedUntil] = useState(noListenUntil);
   const muted = mutedUntil > Date.now();
-  // canVoice — есть ли русский голос вообще; voice — читаем ли им сейчас (не выключен ли «Не могу слушать»)
-  const canVoice = !broken && voices.some((v) => /^ru/i.test(v.lang));
+  // записи, которые не загрузились: их сюжеты читает браузер
+  const [failed, setFailed] = useState(() => new Set());
+  const browserVoice = !broken && voices.some((v) => /^ru/i.test(v.lang));
+  const recorded = (who, text) => { const id = voiceId(who, text); return hasRecording(id) && !failed.has(id); };
+  /* canVoice — есть ли голос вообще (запись или русский голос браузера); voice — звучит ли он сейчас
+     (не выключен ли «Не могу слушать»); voiced(text, who) — прозвучит ли именно этот сюжет */
+  const canVoice = browserVoice || anyRecordings();
   const voice = canVoice && !muted;
-  const setMuted = (on) => {
-    const until = on ? Date.now() + NO_LISTEN_MS : 0;
-    try { if (on) localStorage.setItem(NO_LISTEN_KEY, String(until)); else localStorage.removeItem(NO_LISTEN_KEY); } catch { /* приватный режим */ }
-    if (on) { try { window.speechSynthesis.cancel(); } catch { /* нет голоса */ } }
-    setMutedUntil(until);
-  };
+  const voiced = (text, who) => !muted && (browserVoice || recorded(who, text));
   const [now, setNow] = useState({ key: null, at: -1 });
   const timer = useRef(null);
   const utter = useRef(null);
+  // одна запись на ленту: тот же элемент для всех сюжетов — iPhone, разрешив ему звук один раз, не спрашивает снова
+  const tape = useRef(null);
+  const tapeRun = useRef(0);
+  const stopTape = () => { tapeRun.current += 1; const a = tape.current; if (a) { try { a.pause(); } catch { /* не играла */ } } };
+  const setMuted = (on) => {
+    const until = on ? Date.now() + NO_LISTEN_MS : 0;
+    try { if (on) localStorage.setItem(NO_LISTEN_KEY, String(until)); else localStorage.removeItem(NO_LISTEN_KEY); } catch { /* приватный режим */ }
+    if (on) { stopTape(); setNow({ key: null, at: -1 }); try { window.speechSynthesis.cancel(); } catch { /* нет голоса */ } }
+    setMutedUntil(until);
+  };
   useEffect(() => {
     const s = typeof window !== 'undefined' ? window.speechSynthesis : null;
-    if (!s || !s.addEventListener) return undefined;
     const f = () => setVoices(browserVoices());
-    s.addEventListener('voiceschanged', f);
-    return () => { s.removeEventListener('voiceschanged', f); try { s.cancel(); } catch { /* нет голоса */ } clearInterval(timer.current); };
+    if (s && s.addEventListener) s.addEventListener('voiceschanged', f);
+    return () => {
+      if (s && s.removeEventListener) { s.removeEventListener('voiceschanged', f); try { s.cancel(); } catch { /* нет голоса */ } }
+      clearInterval(timer.current); stopTape();
+    };
   }, []);
+  // запись сюжета: подсветка — по доле прослушанного; не загрузилась — сюжет читает браузер
+  const playTape = (key, text, who, id, starts) => {
+    try { window.speechSynthesis.cancel(); } catch { /* нет голоса */ }
+    utter.current = null;
+    const a = tape.current || (tape.current = new window.Audio());
+    const run = tapeRun.current;
+    const mine = () => tapeRun.current === run;
+    const idle = () => { tapeRun.current += 1; setNow((n) => (n.key === key ? { key: null, at: -1 } : n)); };
+    a.ontimeupdate = () => { if (mine() && a.duration > 0) setNow({ key, at: wordAt(starts, text.length, a.currentTime / a.duration) }); };
+    a.onended = () => { if (mine()) idle(); };
+    const fail = () => {
+      if (!mine()) return;
+      tapeRun.current += 1;
+      setFailed((f) => new Set(f).add(id));
+      speakBrowser(key, text, who);
+    };
+    a.onerror = fail;
+    a.src = recordingUrl(id);
+    setNow({ key, at: 0 });
+    const p = a.play();
+    // AbortError — запись сами остановили или сменили; звук без касания запрещён (автозапуск
+    // эфира) — запись цела, сюжет ждёт кнопку «слушать»; прочее — запись не играет
+    if (p && p.catch) p.catch((e) => { const n = e && e.name; if (n === 'AbortError' || !mine()) return; if (n === 'NotAllowedError') idle(); else fail(); });
+  };
   const speak = (key, text, who = 'narrator') => {
     Audio.prime();
+    clearInterval(timer.current);
+    stopTape();
+    const id = voiceId(who, text);
+    if (!muted && hasRecording(id) && !failed.has(id)) { playTape(key, text, who, id, splitWords(text).starts); return; }
+    speakBrowser(key, text, who);
+  };
+  const speakBrowser = (key, text, who) => {
     const { words, starts } = splitWords(text);
     clearInterval(timer.current);
-    if (!voice) {
+    // голоса нет или он выключен — подсветка в темпе чтения
+    if (muted || !browserVoice) {
       if (reduced) { setNow({ key, at: words.length }); return; }
       let k = 0; setNow({ key, at: 0 });
       timer.current = setInterval(() => { k += 1; setNow({ key, at: k }); if (k >= words.length) { clearInterval(timer.current); setNow({ key: null, at: -1 }); } }, 380);
@@ -171,7 +218,7 @@ function useSpeech() {
       if (busy) setTimeout(go, 80); else go();
     } catch { setBroken(true); }
   };
-  return { voice, canVoice, muted, setMuted, now, speak };
+  return { voice, voiced, canVoice, muted, setMuted, now, speak, caption: voiceCaption(anyRecordings()) };
 }
 
 const msgText = (card) => plainText(card.text || []);
@@ -188,9 +235,10 @@ function Message({ entry, mode, speech, picture, skipTitle, flag }) {
   const who = CAST[whoId];
   const [shown, setShown] = useState(false);
   const speaking = speech.now.key === entry.key;
-  // аудиоурок: текст скрыт, пока его не открыли или пока не отвечен вопрос после сообщения
-  const visible = !listen || !speech.voice || shown || revealed;
   const text = msgText(card);
+  // аудиоурок: текст скрыт, пока его не открыли или пока не отвечен вопрос после сообщения
+  const voiced = listen && speech.voiced(text, whoId);
+  const visible = !voiced || shown || revealed;
   return (
     <div className={`fd-msg ${live ? 'fd-new' : ''}`} data-testid={live ? 'lesson-card' : 'feed-msg'} data-style={mode} data-key={entry.key}>
       <Portrait who={whoId} size={44} />
@@ -204,7 +252,7 @@ function Message({ entry, mode, speech, picture, skipTitle, flag }) {
         {card.title && card.title !== skipTitle && <div className="fd-title">{card.title}</div>}
         {visible ? (
           <div className="fd-text" data-testid={listen ? 'listen-text' : 'feed-text'}>
-            {speaking || (listen && !speech.voice && speech.now.key === entry.key) ? <Words text={text} at={speech.now.at} /> : <Inline nodes={card.text} />}
+            {speaking ? <Words text={text} at={speech.now.at} /> : <Inline nodes={card.text} />}
           </div>
         ) : <div className="fd-hidden" data-testid="feed-hidden">Текст скрыт — это аудиоурок. Послушайте сообщение.</div>}
         {visible && picture}
@@ -213,7 +261,7 @@ function Message({ entry, mode, speech, picture, skipTitle, flag }) {
             <button type="button" className="fd-tool" data-testid="feed-play" aria-label={`Прослушать сообщение ${index}`} onClick={() => speech.speak(entry.key, text, whoId)}>
               {speaking ? <Volume2 size={15} aria-hidden="true" /> : <Headphones size={15} aria-hidden="true" />}{speaking ? 'читаю…' : 'прослушать'}
             </button>
-            {speech.voice && !revealed && (
+            {voiced && !revealed && (
               <button type="button" className="fd-tool" data-testid="feed-toggle" onClick={() => { Audio.play('paper'); setShown((v) => !v); }}>
                 {shown ? <EyeOff size={15} aria-hidden="true" /> : <Eye size={15} aria-hidden="true" />}{shown ? 'скрыть текст' : 'показать текст'}
               </button>
@@ -231,16 +279,18 @@ function RadioSet({ entry, speech, picture, skipTitle, flag }) {
   const { card, live, revealed, index } = entry;
   const [shown, setShown] = useState(false);
   const speaking = speech.now.key === entry.key;
-  const visible = !speech.voice || shown || revealed;
   const text = msgText(card);
+  const whoId = card.who || DEFAULT_VOICE.listen;
+  const voiced = speech.voiced(text, whoId);
+  const visible = !voiced || shown || revealed;
   return (
     <div className={`fd-set ${live ? 'fd-new' : ''}`} data-testid={live ? 'lesson-card' : 'feed-msg'} data-style="listen" data-key={entry.key} data-speaking={String(speaking)}>
       <div className="fd-set-top">
-        <Portrait who={card.who || DEFAULT_VOICE.listen} size={26} />
+        <Portrait who={whoId} size={26} />
         <span className="fd-onair">в эфире</span><span className="ln-kind" style={{ margin: 0 }}>· {(CAST[card.who] || CAST[DEFAULT_VOICE.listen]).name} · сюжет {index}</span><span style={{ flex: 1 }} />{flag}
       </div>
       <div className="fd-set-main">
-        <button type="button" className="fd-play" data-testid="feed-play" aria-label={`${speaking ? 'Читаю' : 'Слушать'}: сюжет ${index}`} onClick={() => speech.speak(entry.key, text, card.who || DEFAULT_VOICE.listen)}>
+        <button type="button" className="fd-play" data-testid="feed-play" aria-label={`${speaking ? 'Читаю' : 'Слушать'}: сюжет ${index}`} onClick={() => speech.speak(entry.key, text, whoId)}>
           {speaking ? <Volume2 size={28} aria-hidden="true" /> : <Play size={28} aria-hidden="true" style={{ marginLeft: 3 }} />}
         </button>
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -250,11 +300,11 @@ function RadioSet({ entry, speech, picture, skipTitle, flag }) {
       </div>
       {visible ? (
         <div className="fd-text" data-testid="listen-text">
-          {speaking || (!speech.voice && speech.now.key === entry.key) ? <Words text={text} at={speech.now.at} /> : <Inline nodes={card.text} />}
+          {speaking ? <Words text={text} at={speech.now.at} /> : <Inline nodes={card.text} />}
         </div>
       ) : <div className="fd-hidden" data-testid="feed-hidden">Текст скрыт — это аудиоурок. Нажмите «слушать».</div>}
       {visible && picture}
-      {speech.voice && !revealed && (
+      {voiced && !revealed && (
         <div className="fd-tools">
           <button type="button" className="fd-tool" data-testid="feed-toggle" onClick={() => { Audio.play('paper'); setShown((v) => !v); }}>
             {shown ? <EyeOff size={15} aria-hidden="true" /> : <Eye size={15} aria-hidden="true" />}{shown ? 'скрыть текст' : 'показать текст'}
@@ -305,7 +355,8 @@ export function Feed({ mode, title, entries, picture, skipTitle = null, flagFor 
   useEffect(() => {
     if (!last) return undefined;
     if (mode === 'listen') {
-      if (last.kind === 'msg' && last.live && speech.voice) speech.speak(last.key, msgText(last.card), last.card.who || DEFAULT_VOICE.listen);
+      const who = last.card && (last.card.who || DEFAULT_VOICE.listen);
+      if (last.kind === 'msg' && last.live && speech.voiced(msgText(last.card), who)) speech.speak(last.key, msgText(last.card), who);
       return undefined;
     }
     const el = lastRef.current;
@@ -349,7 +400,7 @@ export function Feed({ mode, title, entries, picture, skipTitle = null, flagFor 
           <Guilloche height={14} opacity={0.45} />
           <div className="fd-mast-name">Радио Инфляции · эфир</div>
           <h2 className="ds-h2">{title}</h2>
-          {speech.voice && <div className="fd-voice-note" data-testid="voice-caption">{VOICE_CAPTION}</div>}
+          {speech.voice && <div className="fd-voice-note" data-testid="voice-caption">{speech.caption}</div>}
           {speech.canVoice && (speech.muted
             ? <div className="fd-voice-note" data-testid="no-listen-on">Звук выключен на час — текст открыт. <button type="button" className="fd-tool" data-testid="no-listen-off" onClick={() => { Audio.play('tick'); speech.setMuted(false); }}>Включить звук</button></div>
             : <button type="button" className="fd-tool fd-nolisten" data-testid="no-listen" onClick={() => { Audio.play('tick'); speech.setMuted(true); }}><VolumeX size={15} aria-hidden="true" />Не могу слушать</button>)}

@@ -2634,6 +2634,66 @@ test('лента «Слушай»: текст скрыт, «прослушать
   expect(errors).toEqual([]);
 });
 
+test('«Слушай» с записями (FreeTTS): сюжет играет запись с подсветкой, не загрузилась — читает браузер', async ({ page }) => {
+  await withTestFlag(page);
+  await unitDone(page);
+  await page.addInitScript(() => {
+    // каждый сюжет считается записанным; проигрыватель — подмена: запоминает файл, «играет» и доигрывает
+    localStorage.setItem('ems-voice-test', '1');
+    window.__spoken = []; window.__tapes = []; window.__tapeFail = false;
+    window.SpeechSynthesisUtterance = class { constructor(t) { this.text = t; } };
+    Object.defineProperty(window, 'speechSynthesis', { configurable: true, value: {
+      getVoices: () => [{ lang: 'ru-RU', name: 'Milena' }], addEventListener() {}, removeEventListener() {}, cancel() {},
+      speak(u) { window.__spoken.push(u.text); setTimeout(() => u.onend && u.onend(), 300); },
+    } });
+    // ход записи двигает сам тест: window.__tapeAt(доля) — «прослушано столько», 1 — запись кончилась
+    window.Audio = class {
+      constructor() { this.src = ''; this.currentTime = 0; this.duration = 0; window.__tape = this; }
+      pause() {}
+      play() {
+        window.__tapes.push(this.src);
+        if (window.__tapeFail) { setTimeout(() => this.onerror && this.onerror(), 20); return Promise.resolve(); }
+        this.duration = 2; this.currentTime = 0;
+        return Promise.resolve();
+      }
+    };
+    window.__tapeAt = (f) => { const a = window.__tape; a.currentTime = f * a.duration; if (f >= 1) a.onended(); else a.ontimeupdate(); };
+  });
+  const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
+  await startLesson(page, 'sd-l-radio');
+  const feed = page.getByTestId('listen-card');
+  const live = page.getByTestId('lesson-card');
+  await expect(feed).toHaveAttribute('data-voice', 'on');
+  // новый сюжет играет запись ведущей: файл /voice/host-<7 знаков>.mp3; голос браузера молчит
+  await expect.poll(() => page.evaluate(() => window.__tapes.length)).toBeGreaterThan(0);
+  expect(await page.evaluate(() => window.__tapes[0])).toMatch(/\/voice\/host-[0-9a-z]{7}\.mp3$/);
+  await expect(feed.getByTestId('voice-caption')).toHaveText('голос синтезирован');
+  await expect(live.getByTestId('feed-hidden')).toBeVisible();
+  // запись идёт — подсвечено слово под голосом: к середине записи — слово из середины текста; кончилась — подсветки нет
+  await live.getByTestId('feed-toggle').click();
+  await expect(live.locator('.fd-word.on')).toHaveCount(1);
+  await expect(live.locator('.fd-word').first()).toHaveClass(/\bon\b/);
+  await page.evaluate(() => window.__tapeAt(0.5));
+  const words = await live.locator('.fd-word').count();
+  const at = await live.locator('.fd-word').evaluateAll((els) => els.findIndex((e) => e.classList.contains('on')));
+  expect(at).toBeGreaterThan(words * 0.3);
+  expect(at).toBeLessThan(words * 0.7);
+  await page.evaluate(() => window.__tapeAt(1));
+  await expect(live.locator('.fd-word')).toHaveCount(0);
+  expect(await page.evaluate(() => window.__spoken.length)).toBe(0);
+  // запись не загрузилась — тот же сюжет читает голос браузера
+  await page.evaluate(() => { window.__tapeFail = true; });
+  await live.getByTestId('feed-play').click();
+  await expect.poll(() => page.evaluate(() => window.__spoken.length)).toBe(1);
+  expect(await page.evaluate(() => window.__spoken[0])).toContain('морозы');
+  // больше эту запись не просим: следующее «слушать» сразу читает браузер
+  const tapes = await page.evaluate(() => window.__tapes.length);
+  await live.getByTestId('feed-play').click();
+  await expect.poll(() => page.evaluate(() => window.__spoken.length)).toBe(2);
+  expect(await page.evaluate(() => window.__tapes.length)).toBe(tapes);
+  expect(errors).toEqual([]);
+});
+
 test('сообщить об ошибке: флажок на упражнении, причина и контекст уходят на сервер, урок продолжается', async ({ page, context }) => {
   await withTestFlag(page);
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
