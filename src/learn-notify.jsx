@@ -71,6 +71,8 @@ export const NOTIFY_CSS = `
   .nt-empty { text-align: center; padding: 30px 10px 10px; }
 
   /* плашка сверху: съезжает вниз, через несколько секунд уезжает сама */
+  /* смахивание — жест, а не выделение: текст строки и плашки не выделяется, пока тянешь */
+  .nt-item, .nt-toast { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; touch-action: pan-y; }
   .nt-toast { position: fixed; top: calc(10px + env(safe-area-inset-top)); left: 50%; z-index: 400; width: min(520px, calc(100vw - 24px)); transform: translateX(-50%);
     display: grid; grid-template-columns: 38px minmax(0, 1fr) auto; gap: 0 10px; align-items: center; padding: 10px 8px 10px 10px; border-radius: 16px; cursor: pointer;
     background: var(--ds-card); border: 2px solid color-mix(in srgb, var(--t) 45%, var(--ds-rule)); box-shadow: 0 12px 30px -8px rgba(40,20,0,.35);
@@ -187,13 +189,19 @@ export function useNotify(learn, update = null) {
   const friends = useFriends();
   // учебник: сколько задач ждут повторения — прогресс учебника читаем на «сейчас» (раз в минуту и после уроков)
   const bookDue = useMemo(() => { try { return reviewQueue(loadProgress(), now).due.length; } catch { return 0; } }, [now]);
+  // и какие главы прочитаны, когда открывали учебник — для редкого «Загляните в учебник»
+  const book = useMemo(() => { try { const p = loadProgress(); return { read: p.read, days: p.days }; } catch { return null; } }, [now]);
   // ник под запретом — уведомление «Смените ник» (src/account.jsx)
   const account = useAccount();
   const rename = account && account.renameBy ? { renameBy: account.renameBy, name: account.name } : null;
   const renameKey = rename ? `${rename.renameBy}:${rename.name}` : '';
-  const list = useMemo(() => notificationsOf(learn, now, { prefs, since: firstDayOf(learn, now), friends, bookDue, account: rename }), [learn, now, prefs, friends, bookDue, renameKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  const list = useMemo(() => notificationsOf(learn, now, { prefs, since: firstDayOf(learn, now), friends, bookDue, book, account: rename }), [learn, now, prefs, friends, bookDue, book, renameKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const syncedSeen = useMemo(() => shownWith(learn, 'n:'), [learn.shown]); // eslint-disable-line react-hooks/exhaustive-deps
   const syncedToast = useMemo(() => shownWith(learn, 't:'), [learn.shown]); // eslint-disable-line react-hooks/exhaustive-deps
+  // смахнутые из «Ранее» — убраны из списка (x:), и на других устройствах тоже
+  const syncedGone = useMemo(() => shownWith(learn, 'x:'), [learn.shown]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [gone, setGone] = useState({});
+  const dismissed = useMemo(() => ({ ...gone, ...syncedGone }), [gone, syncedGone]);
   const allSeen = useMemo(() => ({ ...seen, ...syncedSeen }), [seen, syncedSeen]);
   const unread = useMemo(() => unreadOf(list, allSeen), [list, allSeen]);
   const share = (prefix, ids) => { if (update && ids.length) update((s) => markShown(s, ids.map((id) => `${prefix}${id}`))); };
@@ -206,6 +214,9 @@ export function useNotify(learn, update = null) {
     list, unread, seen: allSeen, prefs, now, leaguePlace,
     markAll: () => { const ids = list.filter((n) => !allSeen[n.id]).map((n) => n.id); setSeen(markSeen(list.map((n) => n.id))); share('n:', ids); },
     markOne: (id) => { setSeen(markSeen([id])); if (!allSeen[id]) share('n:', [id]); },
+    // убрать из списка насовсем: и прочитано, и больше не показывается в «Ранее»
+    dismissed,
+    dismiss: (id) => { setGone((g) => ({ ...g, [id]: Date.now() })); setSeen(markSeen([id])); share('x:', [id]); if (!allSeen[id]) share('n:', [id]); },
     // плашка уже всплывала — на этом устройстве или на другом
     toasted: (id) => !!(readToasted()[id] || syncedToast[id]),
     markToasted: (id) => { markToasted(id); share('t:', [id]); },
@@ -288,8 +299,9 @@ export function NotifyCenter({ notify, onClose, onGo }) {
   const [fresh, setFresh] = useState(() => new Set(notify.unread.map((n) => n.id)));
   const ref = useRef(notify); ref.current = notify;
   useEffect(() => () => ref.current.markAll(), []);
-  const news = notify.list.filter((n) => fresh.has(n.id));
-  const old = notify.list.filter((n) => !fresh.has(n.id));
+  const shown = notify.list.filter((n) => !(notify.dismissed || {})[n.id]);
+  const news = shown.filter((n) => fresh.has(n.id));
+  const old = shown.filter((n) => !fresh.has(n.id));
   // смахнули — прочитано: из «Новых» уходит в «Ранее», счётчик на колокольчике уменьшается сразу
   const read = (n) => { notify.markOne(n.id); setFresh((s) => { const t = new Set(s); t.delete(n.id); return t; }); };
   return (
@@ -297,7 +309,7 @@ export function NotifyCenter({ notify, onClose, onGo }) {
       <div className="nt-page-in">
         <TopBar back={<IconButton label="Назад" icon={ArrowLeft} data-nav="back" onClick={() => { Audio.play('paper'); onClose(); }} />} title="Уведомления"
           right={news.length > 0 ? <button type="button" className="nt-readall" data-testid="notify-read-all" onClick={() => { Audio.play('tick'); notify.markAll(); onClose(); }}><CheckCheck size={18} aria-hidden="true" />Прочитано</button> : null} />
-        {!notify.list.length ? (
+        {!shown.length ? (
           <div className="nt-empty" data-testid="notify-empty">
             <div style={{ display: 'flex', justifyContent: 'center' }}><Mascot mood="hello" size={84} /></div>
             <div className="ds-h3" style={{ marginTop: 10 }}>Пока тихо</div>
@@ -309,7 +321,9 @@ export function NotifyCenter({ notify, onClose, onGo }) {
             {news.map((n, i) => <NoteRow key={n.id} n={n} unread i={i} now={notify.now} onGo={onGo} onRead={read} />)}
             {news.length > 0 && <div className="ds-faint nt-hint" data-testid="notify-swipe-hint">Смахните уведомление вбок — оно станет прочитанным.</div>}
             {old.length > 0 && <div className="nt-group">Ранее</div>}
-            {old.map((n, i) => <NoteRow key={`old:${n.id}`} n={n} unread={false} i={i + news.length} now={notify.now} onGo={onGo} onRead={() => {}} />)}
+            {/* смахнули прочитанное — оно уходит из списка, а не оставляет пустое место */}
+            {old.map((n, i) => <NoteRow key={`old:${n.id}`} n={n} unread={false} i={i + news.length} now={notify.now} onGo={onGo} onRead={() => notify.dismiss && notify.dismiss(n.id)} />)}
+            {old.length > 0 && news.length === 0 && <div className="ds-faint nt-hint" data-testid="notify-swipe-hint-old">Смахните прочитанное вбок — оно уйдёт из списка.</div>}
           </>
         )}
         <div className="ds-faint" style={{ fontSize: 13, textAlign: 'center', margin: '16px 8px 0' }}>Какие уведомления приходят и напоминание в браузере — в профиле, под шестерёнкой.</div>

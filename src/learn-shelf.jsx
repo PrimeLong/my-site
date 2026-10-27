@@ -1,14 +1,17 @@
 /* БИБЛИОТЕКА ПРОФИЛЯ (docs/mechanics.md, «Профиль»): книжная полка — целые абзацы из книг сверх цитат
    урока (src/learn/shelf.js) — и галерея персоналий (src/learn/people.js). Книга на полке — корешок
-   цвета книги; закрытая — пунктиром с замком и подсказкой, что её откроет. Касание — книга во весь
-   экран: обложка, оглавление, отрывки с буквицей, «Подумайте» после каждого. Галерея — портреты в
+   цвета книги; закрытая — пунктиром с замком и подсказкой, что её откроет; прочитанная — с закладкой-
+   ляссе и галочкой. Касание — книга во весь экран: обложка, оглавление, отрывки с буквицей, «Подумайте»
+   после каждого, в конце — «Отметить прочитанной» (после — штамп «Прочитано» с датой). Галерея — портреты в
    рамах: знакомые — в цвете, остальные — силуэтом; касание знакомого — карточка с главной идеей.
    Отдельный ленивый чанк: тексты книг не грузятся, пока профиль не открыт. */
 import React, { useEffect, useRef, useState } from 'react';
-import { X, Lock, BookOpen, Lightbulb } from 'lucide-react';
+import { X, Lock, BookOpen, Lightbulb, Check } from 'lucide-react';
 import { Audio } from './MacroSimulator.jsx';
 import { Card, IconButton, Sheet, Button } from './ds.jsx';
-import { shelfBooks, BOOK_BY_ID, wordsIn } from './learn/shelf.js';
+import { shelfBooks, BOOK_BY_ID, wordsIn, bookReadAt } from './learn/shelf.js';
+import { markBook } from './textbook/learn-state.js';
+import { fullDate } from './learn/collections.js';
 import { galleryOf } from './learn/people.js';
 import { READING_BY_UNIT } from './learn/reading.js';
 import { PEOPLE_BY_UNIT } from './learn/people.js';
@@ -16,7 +19,7 @@ import { placeOf } from './ds-tokens.js';
 import { Portrait, PEOPLE_CSS, photoCredit } from './learn-people.jsx';
 
 const CSS = `
-  .lb-shelf { position: relative; display: flex; align-items: flex-end; gap: 6px; padding: 0 10px; margin: 10px 0 18px; min-height: 150px; overflow-x: auto; scrollbar-width: thin; }
+  .lb-shelf { position: relative; display: flex; align-items: flex-end; gap: 6px; padding: 14px 10px 0; margin: 10px 0 18px; min-height: 164px; overflow-x: auto; scrollbar-width: thin; }
   .lb-plank { height: 12px; margin: -18px 0 14px; border-radius: 3px; background: linear-gradient(#b08a5c, #8a6a44); box-shadow: 0 6px 12px -6px rgba(0,0,0,.4); }
   .ds-dark .lb-plank { background: linear-gradient(#6b5236, #4a3826); }
   .lb-book { position: relative; flex: none; width: var(--w, 40px); height: var(--h, 140px); border: 0; border-radius: 4px 4px 2px 2px; cursor: pointer; color: #fff; padding: 0;
@@ -30,6 +33,20 @@ const CSS = `
   .lb-book.locked::before, .lb-book.locked::after { display: none; }
   .lb-book.locked svg { position: absolute; bottom: 8px; }
   .lb-book.locked span { margin-bottom: 22px; max-height: calc(var(--h, 140px) - 56px); }
+  /* прочитанная: закладка-ляссе торчит над корешком, внизу — золотая печатка с галочкой */
+  .lb-book.read span { margin-bottom: 24px; max-height: calc(var(--h, 140px) - 58px); }
+  .lb-ribbon { position: absolute; top: -12px; right: 7px; width: 9px; height: 30px; background: linear-gradient(90deg, #B8860B, #E9C25A 55%, #C99A2E); clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 80%, 0 100%); }
+  .lb-tick { position: absolute; bottom: 19px; left: 50%; width: 20px; height: 20px; margin-left: -10px; border-radius: 50%; display: grid; place-items: center; background: #E9C25A; color: #4A3200; box-shadow: 0 0 0 2px rgba(255,255,255,.55); }
+  .lb-book.fresh .lb-ribbon { animation: lb-drop .6s cubic-bezier(.3, 1.5, .5, 1) .2s backwards; }
+  .lb-book.fresh .lb-tick { animation: lb-pop .5s cubic-bezier(.3, 1.6, .5, 1) .45s backwards; }
+  @keyframes lb-drop { from { transform: translateY(-16px); opacity: 0 } }
+  @keyframes lb-pop { from { transform: scale(0); opacity: 0 } }
+  .lb-end { margin-top: 30px; text-align: center; }
+  .lb-stamp { display: inline-flex; align-items: center; gap: 8px; padding: 8px 18px; border: 2.5px solid var(--b); border-radius: 10px; color: var(--b); font: 700 15px var(--ds-sans); letter-spacing: .08em; text-transform: uppercase; transform: rotate(-3deg); }
+  .ds-dark .lb-stamp { color: color-mix(in srgb, var(--b) 45%, #fff); border-color: color-mix(in srgb, var(--b) 45%, #fff); }
+  .lb-stamp.fresh { animation: lb-stamp .5s cubic-bezier(.3, 1.4, .5, 1) backwards; }
+  .lb-stamp small { font: 600 13px var(--ds-sans); letter-spacing: 0; text-transform: none; opacity: .85; }
+  @keyframes lb-stamp { from { transform: rotate(-3deg) scale(1.8); opacity: 0 } }
   /* галерея — одной лентой: сначала знакомые, дальше силуэты; листается вбок */
   .lb-gal { display: grid; grid-auto-flow: column; grid-auto-columns: 86px; gap: 10px; margin-top: 10px; overflow-x: auto; padding-bottom: 6px; scrollbar-width: thin; scroll-snap-type: x proximity; }
   .lb-gal > * { scroll-snap-align: start; }
@@ -60,11 +77,12 @@ const CSS = `
   .lb-think svg { position: absolute; left: 16px; top: 15px; color: var(--ds-gold); }
   .lb-orn { text-align: center; color: var(--ds-ink3); letter-spacing: .6em; margin-top: 26px; }
   .lb-note { margin-top: 30px; font-size: 13px; color: var(--ds-ink3); line-height: 1.5; border-top: 1px dashed var(--ds-rule); padding-top: 12px; }
-  @media (prefers-reduced-motion: reduce) { .lb-cover { animation: none; } .lb-book { transition: none; } }
+  @media (prefers-reduced-motion: reduce) { .lb-cover, .lb-stamp, .lb-ribbon, .lb-tick { animation: none !important; } .lb-book { transition: none; } }
 `;
 
-function Reader({ id, onClose }) {
+function Reader({ id, onClose, readAt = 0, onRead = null }) {
   const b = BOOK_BY_ID[id];
+  const [fresh, setFresh] = useState(false);
   const root = useRef(null);
   useEffect(() => { const k = (e) => { if (e.key === 'Escape') onClose(); }; window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k); }, [onClose]);
   const go = (pid) => { const el = root.current && root.current.querySelector(`[data-passage="${pid}"]`); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
@@ -90,6 +108,14 @@ function Reader({ id, onClose }) {
             <div className="lb-think"><Lightbulb size={20} aria-hidden="true" /><b>Подумайте</b>{p.think}</div>
           </section>
         ))}
+        {/* в конце — отметить книгу прочитанной: на полке у неё появится закладка */}
+        <div className="lb-end" data-testid="book-end">
+          {readAt ? (
+            <span className={`lb-stamp${fresh ? ' fresh' : ''}`} data-testid="book-read-stamp" role="status"><Check size={18} aria-hidden="true" />Прочитано<small>{fullDate(readAt)}</small></span>
+          ) : onRead ? (
+            <Button icon={Check} data-testid="book-mark-read" onClick={() => { Audio.play('up'); setFresh(true); onRead(id); }}>Отметить прочитанной</Button>
+          ) : null}
+        </div>
         <div className="lb-note">Перевод — редакции «Инфляции», с сокращениями: пропуски отмечены «[…]». Текст {b.year} года — в общественном достоянии.</div>
       </div>
     </div>
@@ -103,14 +129,17 @@ const unlockHint = (b) => {
   return `Откроется, когда пройдёте ${parts.join(' или ')} в юните «${placeOf(b.unitId).place}».`;
 };
 
-export default function Library({ learn }) {
+export default function Library({ learn, update = null }) {
   const books = shelfBooks(learn);
   // знакомые — первыми
   const people = galleryOf(learn).sort((a, b) => Number(b.met) - Number(a.met));
   const [reading, setReading] = useState(null);
   const [locked, setLocked] = useState(null);
   const [person, setPerson] = useState(null);
+  const [fresh, setFresh] = useState(null);
   const open = books.filter((b) => b.open).length;
+  const done = books.filter((b) => b.read).length;
+  const markRead = update ? (id) => { setFresh(id); update((s) => markBook(s, id)); } : null;
   const met = people.filter((p) => p.met).length;
   return (
     <>
@@ -118,17 +147,18 @@ export default function Library({ learn }) {
       <Card style={{ margin: '12px 0' }} data-testid="prof-shelf">
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
           <div className="ds-h3" style={{ flex: 1 }}>Книжная полка</div>
-          <span className="ds-num ds-faint" style={{ fontSize: 13 }} data-testid="shelf-count">{open} из {books.length}</span>
+          <span className="ds-num ds-faint" style={{ fontSize: 13 }} data-testid="shelf-count">{open} из {books.length}{done ? <> · <span data-testid="shelf-read">прочитано {done}</span></> : null}</span>
         </div>
         <div className="ds-sub" style={{ fontSize: 13.5, marginTop: 2 }}>Целые отрывки из книг, которые изменили экономику, — больше, чем цитата в уроке.</div>
         <div className="lb-shelf" role="list">
           {books.map((b) => {
             const h = 112 + (wordsIn(b) % 5) * 8; const w = 36 + (b.passages.length - 1) * 4;
             return (
-              <button key={b.id} type="button" role="listitem" className={`lb-book${b.open ? '' : ' locked'}`} style={{ '--b': b.color, '--h': `${h}px`, '--w': `${w}px` }}
-                data-testid="shelf-book" data-book={b.id} data-open={String(b.open)} aria-label={`${b.author}, «${b.short}», ${b.year}${b.open ? '' : ' — закрыта'}`}
+              <button key={b.id} type="button" role="listitem" className={`lb-book${b.open ? '' : ' locked'}${b.open && b.read ? ' read' : ''}${fresh === b.id ? ' fresh' : ''}`} style={{ '--b': b.color, '--h': `${h}px`, '--w': `${w}px` }}
+                data-testid="shelf-book" data-book={b.id} data-open={String(b.open)} data-read={String(b.read)} aria-label={`${b.author}, «${b.short}», ${b.year}${b.open ? (b.read ? ' — прочитана' : '') : ' — закрыта'}`}
                 onClick={() => { Audio.play(b.open ? 'paper' : 'tick'); if (b.open) setReading(b.id); else setLocked(b); }}>
                 <span>{b.short}</span>{!b.open && <Lock size={13} aria-hidden="true" />}
+                {b.open && b.read && <><i className="lb-ribbon" aria-hidden="true" /><i className="lb-tick" aria-hidden="true"><Check size={13} strokeWidth={3} /></i></>}
               </button>
             );
           })}
@@ -148,7 +178,7 @@ export default function Library({ learn }) {
           ))}
         </div>
       </Card>
-      {reading && <Reader id={reading} onClose={() => setReading(null)} />}
+      {reading && <Reader id={reading} onClose={() => setReading(null)} readAt={bookReadAt(learn, reading)} onRead={markRead} />}
       {locked && (
         <Sheet label={locked.short} onClose={() => setLocked(null)} testid="shelf-locked">
           <div style={{ textAlign: 'center' }}>

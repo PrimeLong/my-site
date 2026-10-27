@@ -1,29 +1,18 @@
-/* УРОВЕНЬ В КУРСЕ ЭКОНОМИКИ — наверху Пути (docs/mechanics.md, «Путь»). Не школьная оценка, а шкала
-   владения предметом, как A1…C2 в языках: весь курс — 1000 условных единиц (ед.), и ступень — по тому,
-   сколько их набрано. Единицы делятся между уровнями курса (Начальный 100, Базовый 200, Средний 250,
-   Продвинутый 250, Профессиональный 200), внутри уровня — поровну между его юнитами (и теми, что ещё
-   готовятся: выйдет новый юнит — набранное не уменьшится), внутри юнита — поровну между уроками.
-   Урок даёт свою долю целиком при точности 100% (и в алмазном уроке) и не меньше 70% доли при любой
-   точности: главное — пройти, точность добавляет до трети. Юнит, сданный тестом без уроков, — 85%.
-
-   Ступени: A1 — с нуля, A2 — Начальный уровень пройден (85 ед.), B1 — Базовый (255), B2 — Средний
-   (470), C1 — Продвинутый (680), C2 — Профессиональный (850). Порог — 85% единиц всех уровней до
-   него: пройти уровень и не получить его ступень можно, только отвечая почти наугад (точность ниже 50%).
+/* УРОВЕНЬ В КУРСЕ ЭКОНОМИКИ — наверху Пути (docs/mechanics.md, «Путь»). Не школьная оценка и не
+   ступени — просто число: сколько условных единиц (ед.) курса набрано из 1000. Единицы делятся между
+   уровнями курса (Начальный 100, Базовый 200, Средний 250, Продвинутый 250, Профессиональный 200),
+   внутри уровня — поровну между его юнитами (и теми, что ещё готовятся: выйдет новый юнит — набранное
+   не уменьшится), внутри юнита — поровну между уроками. Урок даёт свою долю целиком при точности 100%
+   (и в алмазном уроке) и не меньше 70% доли при любой точности: главное — пройти, точность добавляет
+   до трети. Юнит, сданный тестом без уроков, — 85%.
    Модуль чистый: его читают Путь и тесты. */
 import { pathState } from './course.js';
 import { LEVELS, UNIT_LEVEL } from '../textbook/levels.js';
 
 export const SCALE_MAX = 1000;
 export const LEVEL_POINTS = { start: 100, basic: 200, middle: 250, advanced: 250, pro: 200 };
-export const BANDS = [
-  { id: 'A1', from: 0, title: 'Знакомство', text: 'Первые термины курса: выбор, цена, деньги.' },
-  { id: 'A2', from: 85, title: 'Основы', text: 'Начальный уровень: альтернативная стоимость и границы возможностей.' },
-  { id: 'B1', from: 255, title: 'Рынок', text: 'Базовый уровень: спрос и предложение, эластичность, деньги, инфляция.' },
-  { id: 'B2', from: 470, title: 'Анализ', text: 'Средний уровень: потребитель, издержки, прибыль, конкуренция.' },
-  { id: 'C1', from: 680, title: 'Модели', text: 'Продвинутый уровень: модели экономики и статистика.' },
-  { id: 'C2', from: 850, title: 'Эксперт', text: 'Профессиональный уровень: полноценный экономический анализ.' },
-];
-export const bandOf = (points) => BANDS.filter((b) => points >= b.from).pop();
+// где на шкале курса начинается каждый уровень: 0, 100, 300, 550, 800
+export const LEVEL_FROM = LEVELS.reduce((acc, l, k) => ({ ...acc, [l.id]: k ? acc[LEVELS[k - 1].id] + LEVEL_POINTS[LEVELS[k - 1].id] : 0 }), {});
 // доля урока: 70% за то, что пройден, и до 30% — за точность
 export const lessonQuality = (best, diamond = false) => (diamond ? 1 : 0.7 + 0.3 * Math.max(0, Math.min(100, best || 0)) / 100);
 export const TESTED_QUALITY = 0.85;
@@ -46,11 +35,11 @@ export function courseLevel(learn) {
   points = Math.min(SCALE_MAX, Math.round(points));
   const all = units.flatMap((s) => s.lessons);
   const done = all.filter((l) => l.done).length;
-  const band = bandOf(points);
-  const next = BANDS[BANDS.indexOf(band) + 1] || null;
+  const got = Object.fromEntries(Object.entries(byLevel).map(([k, v]) => [k, Math.round(v)]));
+  // уровень курса, где ученик сейчас: первый, где единицы ещё не набраны (весь курс — последний)
+  const lv = LEVELS.find((l) => got[l.id] < LEVEL_POINTS[l.id]) || LEVELS[LEVELS.length - 1];
   return {
-    points, band, next, toNext: next ? next.from - points : 0,
-    done, total: all.length, share: all.length ? done / all.length : 0,
-    byLevel: Object.fromEntries(Object.entries(byLevel).map(([k, v]) => [k, Math.round(v)])),
+    points, done, total: all.length, share: all.length ? done / all.length : 0, byLevel: got,
+    level: { id: lv.id, title: lv.title, got: Math.min(got[lv.id], LEVEL_POINTS[lv.id]), max: LEVEL_POINTS[lv.id] },
   };
 }

@@ -3,7 +3,8 @@
    урока). Три вещицы, у каждой своя физика:
    • «Гирлянда флажков» — верёвка из звеньев (интегрирование Верле): потяните — флажки качаются;
      верный ответ — порыв ветра, ошибка — гирлянда вздрагивает и провисает;
-   • «Колыбель Ньютона» — пять шариков-маятников: оттяните крайний — удар проходит по ряду;
+   • «Колыбель Ньютона» — пять шариков-маятников: оттяните крайний — удар проходит по ряду, толкните
+     крайний внутрь — качаются все; взмах передаёт шарикам скорость руки;
      верный ответ — щелчок сам;
    • «Мобиле из монет» — монетки на нитях разной длины: качаются и вращаются, касание закручивает;
      верный ответ — все крутятся и вспыхивают.
@@ -78,18 +79,18 @@ function makeCradle(W, H) {
   return { kind: 'cradle', r, L, balls, top, clicks: 0, t: 0 };
 }
 const ballPos = (m, b) => ({ x: b.ax + Math.sin(b.a) * m.L, y: m.top + Math.cos(b.a) * m.L });
-/* Взять можно любой шарик — с ним идут все шарики до края, как в настоящей колыбели: взяли второй слева
-   — подняли два. Средний — в ту сторону, куда потянули. Отпустили — сколько ударило, столько и вылетит. */
+/* Взять можно любой шарик и вести в любую сторону — он толкает все шарики до края в эту сторону, как в
+   настоящей колыбели: второй слева влево — подняли два, вправо — толкает четыре; правый крайний влево —
+   качаются все пять. Отпустили — сколько ударило, столько и вылетит. */
 export function cradleGroup(m, idx, dir) {
-  const mid = (m.balls.length - 1) / 2;
-  const left = idx < mid || (idx === mid && dir < 0);
+  const left = dir < 0;
   return { left, group: left ? m.balls.slice(0, idx + 1) : m.balls.slice(idx) };
 }
 // держать шарик idx, оттянутый на dx по горизонтали: группа до края висит на одном угле
 export function holdCradle(m, idx, dx) {
   const L = m.L; const d = Math.max(-L * 0.9, Math.min(L * 0.9, dx));
-  const { left, group } = cradleGroup(m, idx, d);
-  const a = left ? Math.min(0, Math.asin(d / L)) : Math.max(0, Math.asin(d / L));
+  const { group } = cradleGroup(m, idx, d);
+  const a = Math.asin(d / L);
   m.balls.forEach((b) => { b.drag = group.includes(b); if (b.drag) { b.a = a; b.w = 0; } });
   return group.length;
 }
@@ -234,14 +235,22 @@ export function DeskDecor({ id, height = 56, preview = false, label = null }) {
       if (!drag) return;
       const p = local(e);
       if (drag.kind === 'pt') placePt(drag.q, p.x, p.y + drag.dy, H);
-      if (drag.kind === 'ball') holdCradle(m, drag.idx, p.x - m.balls[drag.idx].ax);
+      if (drag.kind === 'ball') {
+        holdCradle(m, drag.idx, p.x - m.balls[drag.idx].ax);
+        // последние положения руки — чтобы взмах при отпускании передал шарикам скорость
+        const now = performance.now(); drag.hist = (drag.hist || []).filter((h) => now - h.t < 90).concat({ t: now, a: m.balls[drag.idx].a });
+      }
       if (drag.kind === 'coin') { const c = drag.c; c.a = Math.max(-0.9, Math.min(0.9, (p.x - c.ax) / (c.L + 10))); c.w = 0; }
       wake();
     };
     const up = () => {
       if (!drag) return;
       if (drag.kind === 'pt') drag.q.drag = false;
-      if (drag.kind === 'ball') m.balls.forEach((b) => { b.drag = false; });
+      if (drag.kind === 'ball') {
+        const h = drag.hist || []; const span = h.length > 1 ? (h[h.length - 1].t - h[0].t) / 1000 : 0;
+        const w = span > 0.008 ? Math.max(-7, Math.min(7, (h[h.length - 1].a - h[0].a) / span)) : 0;
+        m.balls.forEach((b) => { if (b.drag) b.w = w; b.drag = false; });
+      }
       if (drag.kind === 'coin') drag.c.drag = false;
       drag = null; el.dataset.drag = 'false'; wake();
     };

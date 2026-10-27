@@ -1651,7 +1651,7 @@ test('путь: выход после первого ответа — урок �
   // продолжить — с того же места: прогресс урока не с нуля
   await openTab(page, 'path');
   await startLesson(page, 'sd-l3', 'Продолжить');
-  expect(Number(await page.getByTestId('lesson-progress').getAttribute('aria-valuenow'))).toBeGreaterThan(0);
+  expect(Number(await page.getByTestId('lesson-progress').getByRole('progressbar').getAttribute('aria-valuenow'))).toBeGreaterThan(0);
   await page.getByRole('button', { name: 'Выйти из урока' }).click();
   await page.getByRole('dialog', { name: 'Выйти из урока?' }).getByRole('button', { name: 'Выйти', exact: true }).click();
   // не продолжили за сутки — урок брошен: только теперь он в «не доведён до конца»
@@ -2249,8 +2249,8 @@ test('лавка → сад: урожай с редкостью — продат
   expect(errors).toEqual([]);
 });
 
-// лиги по минутам: на вкладке — сколько минут уроков в день хватает, чтобы остаться и подняться
-test('лиги: темп лиги — «остаться хватит около 5 минут, подняться — около 8»', async ({ page }) => {
+// лиги по минутам: темп лиги нигде не называется минутами — только «чем выше лига, тем сильнее соперники»
+test('лиги: на вкладке нет «остаться хватит около N минут», в правилах — без минут', async ({ page }) => {
   await page.clock.setFixedTime(new Date('2026-11-04T12:00:00'));
   await withTestFlag(page);
   await page.addInitScript(() => {
@@ -2260,9 +2260,12 @@ test('лиги: темп лиги — «остаться хватит около
     localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons: { 'sc-i1': { at: Date.now() - 86400000, runs: 1, best: 90 } }, xp: { '2026-11-02': 20, '2026-11-03': 20 }, done: { '2026-11-02': 1, '2026-11-03': 1 } } }));
   });
   const { errors } = await openApp(page, '/', '{}', { tab: 'league' });
-  await expect(page.getByTestId('league-pace')).toHaveText('В Бронзовой лиге остаться хватит около 5 минут уроков в день, подняться — около 8.');
+  await expect(page.getByTestId('league')).toBeVisible();
+  await expect(page.getByTestId('league-pace')).toHaveCount(0);
+  await expect(page.getByTestId('league')).not.toContainText('минут уроков в день');
   await page.getByTestId('league-rules-toggle').click();
-  await expect(page.getByTestId('league-rules')).toContainText('в Серебряной — 10, в Золотой — 15');
+  await expect(page.getByTestId('league-rules')).toContainText('Чем выше лига, тем сильнее соперники');
+  await expect(page.getByTestId('league-rules')).not.toContainText('минут');
   expect(errors).toEqual([]);
 });
 
@@ -2799,11 +2802,12 @@ test('вход: программа — вступительный тест, су
   await expect(page.getByTestId('path')).toBeVisible();
   // ответы при регистрации — в программе ученика: цель дня — 15 минут занятий
   await expect(page.getByTestId('goal')).toContainText('0/15');
-  // наверху Пути — уровень в курсе вместо опыта и монет: до первого урока — A1, 0 ед.
+  // наверху Пути — уровень в курсе вместо опыта и монет: до первого урока — 0 ед. из 1000, без ступеней
   await expect(page.getByTestId('wallet-balance')).toHaveCount(0);
   await expect(page.getByTestId('course-level')).toHaveAttribute('data-done', '0');
-  await expect(page.getByTestId('course-level')).toHaveAttribute('data-band', 'A1');
-  await expect(page.getByTestId('course-points')).toHaveText('0из 1000 ед.');
+  await expect(page.getByTestId('course-points')).toHaveText('0');
+  await expect(page.getByTestId('course-level')).toContainText('из 1000 за весь курс');
+  await expect(page.getByTestId('course-level')).not.toContainText('A1');
   await expect(page.getByTestId('chest')).toHaveCount(0);
   // задания дня и испытание месяца — экран «Задания» с карточки наверху Пути; испытание считается от цели в минутах
   await expect(page.getByTestId('quests')).toHaveCount(0);
@@ -4447,6 +4451,13 @@ test('урок: назад ровно на одну карточку — про�
   const peek = page.getByTestId('lesson-peek');
   await expect(peek).toHaveAttribute('data-type', 'ex');
   await expect(page.getByTestId('lesson-peek-verdict')).toContainText('Вы ответили верно');
+  // назад — касанием отрезка полосы прогресса перед текущим, без отдельной кнопки-стрелки в шапке
+  expect(await page.getByTestId('lesson').locator('.ln-head [data-testid=lesson-progress]').count()).toBe(1);
+  // на прошлой карточке есть флажок «Сообщить об ошибке»: нажали «Дальше» на автомате — вернулись и пожаловались
+  await peek.getByRole('button', { name: 'Сообщить об ошибке' }).click();
+  await expect(page.getByTestId('report-sheet')).toBeVisible();
+  await page.getByTestId('report-sheet-back').click({ position: { x: 8, y: 8 } });
+  await expect(page.getByTestId('report-sheet')).toHaveCount(0);
   // пока смотрим назад, второго шага назад нет
   await expect(page.getByTestId('lesson-back')).toHaveCount(0);
   await page.getByTestId('lesson-peek-return').click();
@@ -4455,7 +4466,7 @@ test('урок: назад ровно на одну карточку — про�
   expect(errors).toEqual([]);
 });
 
-test('уведомления: смахнуть в сторону — прочитано, касание по-прежнему ведёт к делу', async ({ page, isMobile }) => {
+test('уведомления: смахнуть в сторону — прочитано, ещё раз из «Ранее» — убрано; текст не выделяется', async ({ page, isMobile }) => {
   await page.clock.setFixedTime(new Date('2026-10-21T16:00:00'));
   await withTestFlag(page);
   await page.addInitScript(() => {
@@ -4472,21 +4483,35 @@ test('уведомления: смахнуть в сторону — прочи�
   const note = page.locator('[data-testid=notifications] [data-id^="book-review:"]');
   await expect(note).toHaveAttribute('data-unread', 'true');
   await expect(page.getByTestId('notify-swipe-hint')).toBeVisible();
-  const box = await note.boundingBox();
-  const y = box.y + box.height / 2;
-  if (isMobile) {
-    // пальцем: касание — тоже указатель
-    await note.dispatchEvent('pointerdown', { pointerId: 7, pointerType: 'touch', clientX: box.x + box.width / 2, clientY: y, isPrimary: true, button: 0 });
-    for (let k = 1; k <= 8; k += 1) await note.dispatchEvent('pointermove', { pointerId: 7, pointerType: 'touch', clientX: box.x + box.width / 2 - k * 25, clientY: y, isPrimary: true });
-    await note.dispatchEvent('pointerup', { pointerId: 7, pointerType: 'touch', clientX: box.x + box.width / 2 - 200, clientY: y, isPrimary: true });
-  } else {
-    await page.mouse.move(box.x + box.width / 2, y); await page.mouse.down();
-    await page.mouse.move(box.x + box.width / 2 - 200, y, { steps: 10 }); await page.mouse.up();
-  }
+  const swipeLeft = async (el) => {
+    const box = await el.boundingBox();
+    const y = box.y + box.height / 2;
+    if (isMobile) {
+      // пальцем: касание — тоже указатель
+      await el.dispatchEvent('pointerdown', { pointerId: 7, pointerType: 'touch', clientX: box.x + box.width / 2, clientY: y, isPrimary: true, button: 0 });
+      for (let k = 1; k <= 8; k += 1) await el.dispatchEvent('pointermove', { pointerId: 7, pointerType: 'touch', clientX: box.x + box.width / 2 - k * 25, clientY: y, isPrimary: true });
+      await el.dispatchEvent('pointerup', { pointerId: 7, pointerType: 'touch', clientX: box.x + box.width / 2 - 200, clientY: y, isPrimary: true });
+    } else {
+      await page.mouse.move(box.x + box.width / 2, y); await page.mouse.down();
+      await page.mouse.move(box.x + box.width / 2 - 200, y, { steps: 10 });
+      // тянем мышью — текст уведомления не выделяется
+      expect(await page.evaluate(() => String(window.getSelection()))).toBe('');
+      await page.mouse.up();
+    }
+  };
+  await swipeLeft(note);
   // смахнутое — в «Ранее», непрочитанных больше нет; вкладка не сменилась
   await expect(page.locator('[data-testid=notifications] [data-id^="book-review:"][data-unread="true"]')).toHaveCount(0);
-  await expect(page.locator('[data-testid=notifications] [data-id^="book-review:"][data-unread="false"]')).toHaveCount(1);
+  const read = page.locator('[data-testid=notifications] [data-id^="book-review:"][data-unread="false"]');
+  await expect(read).toHaveCount(1);
   await expect(page.getByTestId('review')).toHaveCount(0);
+  // смахнули прочитанное в «Ранее» — оно уходит из списка, без пустого места; и не возвращается
+  await swipeLeft(read);
+  await expect(page.locator('[data-testid=notifications] [data-id^="book-review:"]')).toHaveCount(0);
+  await page.getByTestId('notifications').locator('[data-nav="back"]').click();
+  await page.getByTestId('bell').first().click();
+  await expect(page.getByTestId('notifications')).toBeVisible();
+  await expect(page.locator('[data-testid=notifications] [data-id^="book-review:"]')).toHaveCount(0);
   expect(errors).toEqual([]);
 });
 
@@ -4501,7 +4526,7 @@ test('лига: до первого урока ученика в лиге нет
   expect(errors).toEqual([]);
 });
 
-test('Путь: наверху — уровень в курсе по шкале A1…C2 в условных единицах и шкала курса', async ({ page }) => {
+test('Путь: наверху — уровень в курсе числом условных единиц и шкала курса по уровням', async ({ page }) => {
   await page.addInitScript(() => {
     if (localStorage.getItem('ems-textbook-v1')) return;
     const at = Date.now() - 86400000;
@@ -4511,13 +4536,15 @@ test('Путь: наверху — уровень в курсе по шкале 
   const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
   const grade = page.getByTestId('course-level');
   await expect(grade).toHaveAttribute('data-done', '4');
-  // 4 урока из 14 юнита «Мастерская» (100 ед.) на 90%: 4 × 100/14 × 0,97 ≈ 28 ед.
-  await expect(grade).toHaveAttribute('data-band', 'A1');
+  // 4 урока из 14 юнита «Мастерская» (100 ед.) на 90%: 4 × 100/14 × 0,97 ≈ 28 ед. — числом, без ступеней A1…C2
   await expect(grade).toHaveAttribute('data-points', '28');
+  await expect(page.getByTestId('course-points')).toHaveText('28');
   await expect(grade).toContainText('Ваш уровень в курсе экономики');
-  await expect(page.getByTestId('course-next')).toContainText('до A2 — 57 ед. · 4 из 104 уроков');
-  await expect(grade.locator('.ln-scale-seg')).toHaveCount(6);
-  await expect(grade.locator('.ln-scale-seg.on')).toHaveText('A1');
+  await expect(grade).toContainText('4 из 104 уроков');
+  await expect(page.getByTestId('course-next')).toHaveText('Начальный уровень курса: 28 из 100 ед.');
+  await expect(grade.locator('.ln-scale-seg')).toHaveCount(5);
+  await expect(grade.locator('.ln-scale-seg.on')).toHaveText('1');
+  await expect(grade).not.toContainText(/\b[ABC][12]\b/);
   await expect(page.getByTestId('wallet-balance')).toHaveCount(0);
   // на узком телефоне подписи не вылезают за рамку
   // текст для чтения с экрана обрезан нарочно — его не считаем
@@ -4840,12 +4867,22 @@ test('«Персоналии» — урок на дороге юнита: три
   await expect(page.getByTestId('gallery-count')).toHaveText('3 из 30');
   await expect(shelf.locator('[data-testid=gallery-person][data-met="true"]')).toHaveCount(3);
   await expect(page.getByTestId('shelf-count')).toHaveText('2 из 9');
+  await expect(page.getByTestId('shelf-read')).toHaveCount(0);
   await shelf.locator('[data-testid=shelf-book][data-book="smith-wealth"]').click();
   const book = page.getByTestId('book-reader');
   await expect(book).toBeVisible();
   await expect(book.getByTestId('book-passage')).toHaveCount(5);
   await expect(book).toContainText('Не от благожелательности мясника, пивовара или булочника');
+  // дочитали — в конце «Отметить прочитанной»: штамп с датой, на полке — закладка
+  await book.getByTestId('book-mark-read').click();
+  await expect(book.getByTestId('book-read-stamp')).toContainText('Прочитано');
   await page.getByTestId('book-close').click();
+  const smith = shelf.locator('[data-testid=shelf-book][data-book="smith-wealth"]');
+  await expect(smith).toHaveAttribute('data-read', 'true');
+  await expect(smith).toHaveAttribute('aria-label', /прочитана/);
+  await expect(smith.locator('.lb-ribbon')).toHaveCount(1);
+  await expect(page.getByTestId('shelf-read')).toHaveText('прочитано 1');
+  await expect(shelf.locator('[data-testid=shelf-book][data-book="ricardo-principles"]')).toHaveAttribute('data-read', 'false');
   // закрытая книга — подсказка, что её откроет
   await shelf.locator('[data-testid=shelf-book][data-book="keynes-tract"]').click();
   await expect(page.getByTestId('shelf-locked')).toContainText('«Гастроном»');

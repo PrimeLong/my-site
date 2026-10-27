@@ -63,14 +63,16 @@ export const FRIENDS_CSS = `
   .fr-fill { width: calc(var(--p) * 100%); background: color-mix(in srgb, var(--ds-ink3) 55%, var(--ds-rule)); transition: width 1s cubic-bezier(.3,.8,.4,1); }
   .fr-lane.me .fr-fill { background: var(--u); }
   .fr-runner { position: absolute; bottom: 9px; left: calc(var(--p) * 100%); transform: translateX(-50%); transition: left 1s cubic-bezier(.3,.8,.4,1); line-height: 0; }
-  .fr-runner .fr-run { display: inline-block; animation: fr-run .5s ease-in-out infinite alternate; }
-  .fr-goal { position: absolute; right: -20px; bottom: 2px; color: var(--ds-bad); fill: currentColor; animation: fr-wave 1.4s ease-in-out infinite; transform-origin: 2px 15px; }
+  /* бег — спокойная трусца: лёгкий наклон к финишу и подскок раз в шаг, без раскачивания из стороны в сторону */
+  .fr-runner .fr-run { display: inline-block; transform-origin: 50% 100%; animation: fr-run 1.1s ease-in-out infinite; }
+  .fr-goal { position: absolute; right: -20px; bottom: 2px; color: var(--ds-bad); fill: currentColor; animation: fr-flutter 3.6s ease-in-out infinite; transform-origin: 2.5px 50%; }
   .fr-race-state { font-size: 14px; }
   .fr-race-ava { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; background: color-mix(in srgb, var(--u) 10%, var(--ds-card)); flex: none; overflow: hidden; }
   .fr-race-facts { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
   .fr-race-facts span { padding: 4px 10px; border-radius: 999px; background: color-mix(in srgb, var(--u) 8%, var(--ds-card)); border: 1px solid var(--ds-rule); font: 600 13px var(--ds-sans); color: var(--ds-ink2); }
   .fr-race-head { display: flex; align-items: center; gap: 10px; }
-  .fr-race-ico { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: color-mix(in srgb, var(--ds-bad) 14%, var(--ds-card)); color: var(--ds-bad); animation: fr-wave 2s ease-in-out infinite; }
+  .fr-race-ico { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: color-mix(in srgb, var(--ds-bad) 14%, var(--ds-card)); color: var(--ds-bad); }
+  .fr-race-ico svg { transform-origin: 17% 50%; animation: fr-flutter 3.6s ease-in-out infinite; }
   .fr-race-res { font: 700 22px/1.2 var(--ds-head); text-align: center; margin: 4px 0; animation: fr-pop .5s cubic-bezier(.3,1.5,.5,1) both; }
   .fr-offer { position: relative; overflow: hidden; text-align: left; margin-top: 14px; border: 2px solid color-mix(in srgb, var(--ds-bad) 40%, var(--ds-rule2)); animation: fr-pop .5s cubic-bezier(.3,1.4,.5,1) .3s both; }
   .fr-dash { position: relative; height: 64px; margin: 4px -16px 6px; overflow: hidden; background: linear-gradient(180deg, transparent 0 70%, color-mix(in srgb, var(--u) 12%, var(--ds-card)) 70%); }
@@ -81,10 +83,11 @@ export const FRIENDS_CSS = `
   .fr-chip[aria-pressed="true"] { border-color: var(--u); background: color-mix(in srgb, var(--u) 10%, var(--ds-card)); transform: scale(1.04); }
   @keyframes fr-in { from { opacity: 0; transform: translateY(6px) } to { opacity: 1; transform: none } }
   @keyframes fr-pop { from { opacity: 0; transform: scale(.7) } to { opacity: 1; transform: none } }
-  @keyframes fr-run { from { transform: translateY(0) rotate(-4deg) } to { transform: translateY(-5px) rotate(4deg) } }
-  @keyframes fr-wave { 0%, 100% { transform: rotate(0) } 50% { transform: rotate(-10deg) } }
+  @keyframes fr-run { 0%, 100% { transform: translateY(0) rotate(3deg) } 50% { transform: translateY(-2.5px) rotate(3deg) } }
+  /* флажок колышется полотнищем, древко стоит: перекос и сжатие от древка */
+  @keyframes fr-flutter { 0%, 100% { transform: none } 50% { transform: skewY(-5deg) scaleX(.93) } }
   @keyframes fr-dash { from { left: -60px } to { left: 105% } }
-  @media (prefers-reduced-motion: reduce) { .fr-row, .fr-tile, .fr-seal, .fr-ev, .fr-hero .fr-big, .fr-runner .fr-run, .fr-goal, .fr-race-ico, .fr-race-res, .fr-offer, .fr-dash > span { animation: none !important; } .fr-runner, .fr-fill { transition: none; } }
+  @media (prefers-reduced-motion: reduce) { .fr-row, .fr-tile, .fr-seal, .fr-ev, .fr-hero .fr-big, .fr-runner .fr-run, .fr-goal, .fr-race-ico svg, .fr-race-res, .fr-offer, .fr-dash > span { animation: none !important; } .fr-runner, .fr-fill { transition: none; } }
 `;
 
 const SEAL_ICON = { footprints: Footprints, check: Check, flame: Flame, landmark: Landmark, shapes: Shapes, graduation: GraduationCap, scroll: ScrollText, shopping: ShoppingBag, shirt: Shirt, sunrise: Sunrise, moon: Moon, piggy: PiggyBank, calendar: CalendarDays, gem: Gem, flag: Flag };
@@ -215,7 +218,7 @@ export function RaceTrack({ v, myWear }) {
         <span className="fr-who"><b>{name}</b><span>{x || 0} опыта</span></span>
         <span className="fr-road" style={{ '--p': p }}>
           <i className="fr-fill" />
-          <span className="fr-runner"><span className={running ? 'fr-run' : ''} style={{ animationDelay: me ? '0s' : '.25s' }}><Mascot mood={mood} size={30} outfit={wear} /></span></span>
+          <span className="fr-runner"><span className={running ? 'fr-run' : ''} style={{ animationDelay: me ? '0s' : '-.45s' }}><Mascot mood={mood} size={30} outfit={wear} /></span></span>
           <Flag className="fr-goal" size={15} aria-hidden="true" />
         </span>
       </div>

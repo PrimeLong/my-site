@@ -10,7 +10,7 @@ import { streak, goalToday, dayOf, addDays, dayAt } from '../textbook/learn-stat
 import { leagueState, pendingRewards, standings, LEAGUE_BY_ID, LESSON_XP } from './league.js';
 import { gardenPlots, growth, PLANT_BY_ID } from './garden.js';
 import { piggyState, monthChallenge, hasClaim, chestKey, coinsWord, plural } from './rewards.js';
-import { pathState, practiceIds } from './course.js';
+import { pathState, practiceIds, unitTitle } from './course.js';
 import { placeOf } from '../ds-tokens.js';
 import { NEWS, newsForLearner, learnerSince } from './news.js';
 import { halloween } from './halloween.js';
@@ -22,7 +22,7 @@ export const NOTIFY_KINDS = [
   { id: 'streak', title: 'Серия и цель дня', text: 'Напомнить, если сегодня ещё не занимались' },
   { id: 'league', title: 'Лига', text: 'Обогнали, зона повышения или понижения, итоги недели' },
   { id: 'garden', title: 'Сад и копилка', text: 'Урожай созрел, грядке нужна вода, вклад готов' },
-  { id: 'path', title: 'Путь и задания', text: 'Сундук не открыт, ошибки и задачи учебника ждут повторения, испытание месяца' },
+  { id: 'path', title: 'Путь и задания', text: 'Сундук не открыт, ошибки и задачи учебника ждут повторения, испытание месяца, изредка — глава учебника к юниту' },
   { id: 'news', title: 'Новости', text: 'Вышел новый выпуск «Что нового»' },
   { id: 'friends', title: 'Друзья', text: 'Заявки в друзья, приглашения на забег, итоги забега' },
 ];
@@ -30,6 +30,24 @@ export const NOTIFY_KINDS = [
 export const REMIND_HOURS = [9, 13, 17, 19, 21];
 // напоминание о повторении учебника — от стольких задач, которым подошёл срок
 export const BOOK_REVIEW_MIN = 5;
+/* Учебник — редкое приглашение почитать главу к юниту, который ученик сейчас проходит на Пути.
+   Редко и к месту: не чаще раза в BOOK_NUDGE_DAYS дней (окна по дням UTC), только тому, кто занимается
+   (отвечал на Пути за последнюю неделю), но не открывал учебник BOOK_QUIET_DAYS дней, и только если глава
+   этого юнита ещё не отмечена прочитанной. book — прогресс учебника { read, days } (src/textbook/progress.js). */
+export const BOOK_NUDGE_DAYS = 14;
+export const BOOK_QUIET_DAYS = 10;
+export function bookNudge(learn, now, book) {
+  if (!book) return null;
+  const st = pathState(learn).find((s) => s.current && !s.complete && !s.tested);
+  if (!st || (book.read || {})[st.course.id]) return null;
+  const day = dayOf(now);
+  const last = Math.max(learn.recentAt || 0, ...Object.values(learn.lessons || {}).map((l) => l.at || 0));
+  if (!last || now - last > 7 * 24 * HOUR) return null;
+  const studied = Object.keys(book.days || {}).filter((k) => book.days[k] > 0).sort().pop();
+  if (studied && studied > addDays(day, -BOOK_QUIET_DAYS)) return null;
+  const slot = Math.floor(Math.round(dayAt(day, 0) / (24 * HOUR)) / BOOK_NUDGE_DAYS);
+  return { unitId: st.course.id, title: unitTitle(st.course.id), slot };
+}
 export const DEFAULT_PREFS = { streak: true, league: true, garden: true, path: true, news: true, friends: true, browser: false, remindAt: 19 };
 
 const store = {
@@ -65,7 +83,7 @@ const place = (n) => `${n}-е место`;
 /* Уведомления к моменту now. opts.since — первый день ученика (новости до него не «новые»),
    opts.prefs — включённые виды. Каждое: id (одно и то же событие — один id), kind (вид для
    настроек), icon, tone (цвет значка), title, text, at (когда случилось), go (куда ведёт касание:
-   path | league | shop | garden | piggy | tasks | news | friends | book-review | rename), toast — показать плашкой, если появилось,
+   path | league | shop | garden | piggy | tasks | news | friends | book-review | book-chapter (с chapter) | rename), toast — показать плашкой, если появилось,
    пока приложение открыто, push — можно отправить в браузер. */
 export function notificationsOf(learn, now = Date.now(), opts = {}) {
   const prefs = { ...DEFAULT_PREFS, ...opts.prefs };
@@ -177,6 +195,11 @@ export function notificationsOf(learn, now = Date.now(), opts = {}) {
   if (due >= BOOK_REVIEW_MIN && hour >= 15) {
     add({ id: `book-review:${day}`, kind: 'path', icon: 'book', tone: '#3E6FA8', at: at(day, 15), go: 'book-review', toast: true, push: true,
       title: 'Пора повторить учебник', text: `${due} ${plural(due, 'задача', 'задачи', 'задач')} из учебника — подошёл срок повторения. Это пара минут.` });
+  }
+  const nudge = bookNudge(learn, now, opts.book);
+  if (nudge) {
+    add({ id: `book-read:${nudge.slot}`, kind: 'path', icon: 'book', tone: '#8A5A2B', at: at(day, 16), go: 'book-chapter', chapter: nudge.unitId, toast: true, push: true,
+      title: 'Загляните в учебник', text: `Глава «${nudge.title}» — про юнит, который вы сейчас проходите. Пара страниц — и задачи на Пути пойдут легче.` });
   }
   const m = monthChallenge(learn, now);
   if (m.claimed) {

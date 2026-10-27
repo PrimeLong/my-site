@@ -51,7 +51,7 @@ export const emptyLearn = () => ({
   coins: {}, spent: {}, claimed: {}, owned: {}, skipped: {}, wear: { head: null, face: null, neck: null, hand: null, frame: null, at: 0 }, freezeBuy: {}, frozen: {},
   policyAt: 0, policyOff: 0, policyLapse: 0, premiums: {}, monthPlan: {},
   seen: {}, best: {}, boost: 0, piggy: {}, piggyOut: {}, piggyTop: {}, piggyAdd: {}, garden: {}, harvest: {}, water: {},
-  shown: {}, read: {}, met: {}, fixed: {},
+  shown: {}, read: {}, met: {}, fixed: {}, books: {},
 });
 /* Показанное ученику — общее для всех его устройств (жалоба: «прошёл юнит на ПК — марка и уведомления
    повторяются на телефоне»): ключ → когда впервые показали. Префиксы: c: — церемония (марка, печать),
@@ -74,6 +74,12 @@ export function markRead(s, id, now = Date.now()) {
 export function markMet(s, id, now = Date.now()) {
   if (!okKey(id) || (s.met || {})[id]) return s;
   return upd(s, { met: { ...s.met, [id]: now } });
+}
+/* Книга полки профиля (src/learn/shelf.js) отмечена прочитанной: id книги → когда. Один раз, общее
+   для всех устройств; на полке у прочитанной — закладка-ляссе с галочкой. */
+export function markBook(s, id, now = Date.now()) {
+  if (!okKey(id) || (s.books || {})[id]) return s;
+  return upd(s, { books: { ...s.books, [id]: now } });
 }
 export function markFixed(s, unitId, now = Date.now()) {
   if (!okKey(unitId) || (s.fixed || {})[unitId]) return s;
@@ -578,7 +584,7 @@ function normalizeProgram(r) {
     seen: countMap(r.seen, MAX_SEEN, 9999), best: countMap(r.best, MAX_BEST, 1e6), boost: cnt(r.boost, 1e14),
     piggy: piggyMap(r.piggy), piggyOut: piggyMap(r.piggyOut), piggyTop: piggyTopMap(r.piggyTop), piggyAdd: piggyAddMap(r.piggyAdd), garden: gardenMap(r.garden), harvest: harvestMap(r.harvest), water: waterMap(r.water),
     // показанное: самые свежие SHOWN_MAX по времени
-    read: tsMap(r.read, 200), met: tsMap(r.met, 200), fixed: tsMap(r.fixed, 200),
+    read: tsMap(r.read, 200), met: tsMap(r.met, 200), fixed: tsMap(r.fixed, 200), books: tsMap(r.books, 100),
     shown: Object.fromEntries(Object.entries(tsMap(r.shown, 5000)).sort((a, b) => a[1] - b[1] || (a[0] < b[0] ? -1 : 1)).slice(-SHOWN_MAX)),
   };
 }
@@ -607,7 +613,7 @@ function mergeProgram(x, y) {
     harvest: minTs(x.harvest, y.harvest),
     water: Object.fromEntries([...new Set([...Object.keys(x.water), ...Object.keys(y.water)])].map((k) => [k, [x.water[k], y.water[k]].filter(Boolean).sort()[0]])),
     shown: minTs(x.shown, y.shown),
-    read: minTs(x.read, y.read), met: minTs(x.met, y.met), fixed: minTs(x.fixed, y.fixed),
+    read: minTs(x.read, y.read), met: minTs(x.met, y.met), fixed: minTs(x.fixed, y.fixed), books: minTs(x.books, y.books),
   };
 }
 /* Слияние двух устройств: счётчики — по максимуму (одно и то же занятие не удваивается),

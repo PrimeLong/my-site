@@ -322,7 +322,7 @@ function FriendsEntry({ friends, guest, onOpen }) {
 }
 
 const Library = React.lazy(() => import('./learn-shelf.jsx'));
-export function ProfileView({ learn, onOpenBook, onSettings, onNotify, unread = 0, friends = null, guest = false, onFriends = () => {} }) {
+export function ProfileView({ learn, update = null, onOpenBook, onSettings, onNotify, unread = 0, friends = null, guest = false, onFriends = () => {} }) {
   const st = streak(learn); const stats = learnStats(learn);
   const bw = bestWeek(learn);
   const [page, setPage] = useState(null); // null | 'album' | 'seal' | 'month'
@@ -369,7 +369,7 @@ export function ProfileView({ learn, onOpenBook, onSettings, onNotify, unread = 
       <Shelf kind="seal" items={seals} testid="prof-seals" itemTestid="ach-mini" onOpen={setOpen} onAll={() => setPage('seal')} />
       <Shelf kind="month" items={months} testid="prof-months" itemTestid="month-mini" onOpen={setOpen} onAll={() => setPage('month')} />
       {/* книжная полка и галерея персоналий — отдельным чанком (src/learn-shelf.jsx) */}
-      <React.Suspense fallback={null}><Library learn={learn} /></React.Suspense>
+      <React.Suspense fallback={null}><Library learn={learn} update={update} /></React.Suspense>
 
       <StudyWeeks learn={learn} />
       <MenuCard icon={Target} tone="var(--ds-ok)" title="Мой прогресс в учебнике" data-testid="prof-book-stats" data-nav-target="book:stats" right={arrow} text="Разделы, точность, слабые темы и журнал занятий" onClick={() => { Audio.play('paper'); onOpenBook({ kind: 'stats' }); }} />
