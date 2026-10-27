@@ -16,7 +16,7 @@ import {
   X, ArrowLeft, Flame, Coins, Target, Lock, Check, Gem, ChevronLeft, Calculator, BookOpenText, BookOpen, Trophy, Timer, Delete, ChevronRight, RotateCcw, Sparkles, Dumbbell,
   Clock, Scale, Hourglass, Ticket, TrendingUp, CircleCheck, Medal, ArrowLeftRight, Handshake, Coffee, Wallet, Link, Utensils, Boxes, Users,
   Snowflake, ArrowDownToLine, ArrowUpToLine, Languages, MessageCircle, Headphones, Gamepad2, Repeat, Flag, Croissant, Landmark, Radio, MapPin, ArrowUp, ChevronDown, SkipForward,
-  Wrench, Feather,
+  Wrench, Feather, ChartSpline,
 } from 'lucide-react';
 import { unitStops, EXTRA_KIND } from './learn/stops.js';
 import { STATS_CSS } from './learn-stats.jsx';
@@ -72,6 +72,7 @@ import { placeOf, unitColor, DIAMOND_COLOR, dsThemeId } from './ds-tokens.js';
 import { countryPath, RIVER, curveTo } from './lib/mapgeo.js';
 import { levelRegions, mapSlots } from './learn/levelmap.js';
 import { featureOpen, FeatureLocked } from './learn-unlock.jsx';
+import { GRAPH_BY_CHART, GRAPH_EVENT, openGraph } from './learn/graphs.js';
 import { BrandLoader } from './logo.jsx';
 import { FRIENDS_CSS, FriendsPage, FriendProfile, RaceCard, RaceOffer, racesToShow } from './learn-friends.jsx';
 import { Sketch, SKETCH_CSS, SKETCH_QUERY, SKETCH_BOOK_QUERY } from './learn-sketch.jsx';
@@ -303,6 +304,13 @@ const CSS = `
   .ln-token.ln-extra { border-radius: 22px; --x: #3E6FA8; border-color: color-mix(in srgb, var(--x) 55%, var(--ds-rule2)); color: var(--x);
     background: color-mix(in srgb, var(--x) 9%, var(--ds-card)); box-shadow: 0 5px 0 color-mix(in srgb, var(--x) 35%, var(--ds-rule2)); }
   .ln-token.ln-extra.read { --x: #8A5A2B; }
+  .ln-token.ln-extra.graph { --x: #2459A6; }
+  .ln-graph-btn { display: inline-flex; align-items: center; gap: 7px; padding: 8px 14px; border-radius: 999px; cursor: pointer;
+    border: 1.5px solid color-mix(in srgb, #2459A6 45%, var(--ds-rule2)); background: color-mix(in srgb, #2459A6 8%, var(--ds-card)); color: var(--ds-ink);
+    font: 700 14px var(--ds-sans); transition: transform .15s, background .2s; }
+  .ln-graph-btn:hover { transform: translateY(-1px); background: color-mix(in srgb, #2459A6 14%, var(--ds-card)); }
+  .ln-graph-btn svg { color: #2459A6; }
+  .ds-dark .ln-graph-btn svg { color: #8DB6F2; }
   .ln-token.ln-extra.fix { --x: var(--ds-bad); border-width: 3px; }
   .ln-token.ln-extra.fix::after { content: ''; position: absolute; inset: -9px; border-radius: 26px; border: 3px solid color-mix(in srgb, var(--ds-bad) 55%, transparent); animation: ds-ring 1.8s ease-out infinite; pointer-events: none; }
   .ds-dark .ln-token.ln-extra { color: color-mix(in srgb, var(--x) 55%, #fff); }
@@ -533,6 +541,24 @@ function useAnimValues(type, attrs) {
   if (!anim) return null;
   const to = parseAnim(anim); const t = reduced ? 1 : k;
   return Object.fromEntries(Object.entries(chartDefaults(type, attrs)).map(([id, x]) => [id, id in to ? x + (to[id] - x) * t : x]));
+}
+/* картинка карточки: график, а если для него есть «Разбор графика» (src/learn/graphs.js) — под ним
+   кнопка «Разобрать график по шагам»: разбор открывается поверх урока, без опыта */
+function CardPicture({ c }) {
+  if (!c.chart) return c.pic ? <Pic name={c.pic} /> : null;
+  const tour = GRAPH_BY_CHART[c.chart];
+  return (
+    <>
+      <MiniChart type={c.chart} attrs={c.attrs} />
+      {tour && (
+        <div style={{ textAlign: 'center', margin: '-2px 0 10px' }}>
+          <button type="button" className="ln-graph-btn" data-testid="graph-open" data-graph={tour.id} onClick={() => { Audio.play('paper'); openGraph(tour.id); }}>
+            <ChartSpline size={16} aria-hidden="true" />Разобрать график по шагам
+          </button>
+        </div>
+      )}
+    </>
+  );
 }
 function MiniChart({ type, attrs, values = null }) {
   const def = CHARTS[type];
@@ -1307,7 +1333,7 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
           if (!last) { setCardIdx(cardIdx + 1); return; }
           cardsSeen.current.add(cur.uid); acc.current.itemStart = activeNow(); setCardIdx(0); setStage('work');
         };
-        const picture = c.chart ? <MiniChart type={c.chart} attrs={c.attrs} /> : c.pic ? <Pic name={c.pic} /> : null;
+        const picture = <CardPicture c={c} />;
         // «Слова» — колода со своими кнопками: вспомнить, открыть, «Знаю» / «Ещё раз»
         if (c.flash) {
           const done = () => { setPrevShot(null); setPeek(false); cardsSeen.current.add(cur.uid); acc.current.itemStart = activeNow(); setCardIdx(0); setStage('work'); };
@@ -1444,7 +1470,7 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
             <div className="ln-body"><div className="ln-inner">
               <Feed mode={lesson.kind} title={bareTitle(lesson.title)} skipTitle={lesson.title} entries={entries}
                 flagFor={(e) => <ReportFlag context={() => stepContext(e.card, lesson, `сообщение ${e.index}`)} />}
-                picture={(c) => (c.chart ? <MiniChart type={c.chart} attrs={c.attrs} /> : c.pic ? <Pic name={c.pic} /> : null)} />
+                picture={(c) => <CardPicture c={c} />} />
             </div></div>
             <div className={`ln-foot ${fb && !fb.empty ? `fb ${fb.ok ? 'ok' : 'bad'}` : ''}`} data-testid="lesson-foot">
               {!liveCard && fb && !fb.empty ? verdictBar : (
@@ -1976,7 +2002,7 @@ function propsFor(id, i, W, y, left, spooky = false) {
 /* Остановки дороги: уроки юнита и особые уроки между ними («Персоналии», «Чтение», «Работа над
    ошибками» — src/learn/stops.js). У особого — свой значок и цвет; «Работа над ошибками» — с меткой
    «сначала ошибки» и закрывает следующий урок. */
-const EXTRA_ICON = { people: Users, read: Feather, fix: Wrench };
+const EXTRA_ICON = { people: Users, read: Feather, graph: ChartSpline, fix: Wrench };
 function Route({ st, stops, seen, reduced, visible, resumes, onLesson, onExtra = () => {}, rec = null, chest = null, onChest, spooky = false }) {
   const W = 300;
   // пройденный юнит — в конце дороги сундук
@@ -2585,6 +2611,7 @@ const SettingsView = React.lazy(() => import('./learn-profile.jsx').then((m) => 
 const NewsView = React.lazy(() => import('./learn-news.jsx'));
 const ReadingView = React.lazy(() => import('./learn-reading.jsx'));
 const PeopleView = React.lazy(() => import('./learn-people.jsx'));
+const GraphLesson = React.lazy(() => import('./learn-graph.jsx'));
 const Lazy = ({ children }) => <React.Suspense fallback={<BrandLoader compact text="Открываем" />}>{children}</React.Suspense>;
 const Celebration = React.lazy(() => import('./learn-celebrate.jsx'));
 /* Церемонии (src/learn/celebrate.js): что из полученного ещё не праздновали. Показанное помнит
@@ -2709,11 +2736,19 @@ export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReo
   /* особые уроки дороги (src/learn/stops.js): «Чтение», «Персоналии», «Работа над ошибками»;
      закрытый — подсказка, когда откроется */
   const [people, setPeople] = useState(null);
+  // «Разбор графика»: с дороги юнита — урок с опытом; с карточки урока (событие) — поверх урока, без опыта
+  const [graph, setGraph] = useState(null);
+  useEffect(() => {
+    const on = (e) => { if (e.detail && e.detail.id) setGraph({ id: e.detail.id, peek: true }); };
+    window.addEventListener(GRAPH_EVENT, on);
+    return () => window.removeEventListener(GRAPH_EVENT, on);
+  }, []);
   const [extraLocked, setExtraLocked] = useState(null);
   const onExtra = (x) => {
     if (!x.open && !x.done) { Audio.play('down'); setExtraLocked(x); return; }
     if (x.type === 'read') setReading(x.id);
     else if (x.type === 'people') setPeople(x.id);
+    else if (x.type === 'graph') setGraph({ id: x.id, peek: false });
     else if (x.type === 'fix') start({ mode: 'fix', unitId: x.unitId });
   };
   // гость: после выбора цели — сразу первый урок Пути, без карточки урока
@@ -2820,6 +2855,7 @@ export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReo
       )}
       {run && <Runner key={JSON.stringify({ ...run, resume: !!run.resume })} run={run} learn={learn} update={update} hidden={!!book} guest={guest}
         onClose={() => setRun(null)} onOpenBook={(page) => openBook(page)} />}
+      {graph && <Lazy><GraphLesson id={graph.id} learn={learn} update={update} peek={graph.peek} onClose={() => setGraph(null)} /></Lazy>}
     </DsRoot>
     </OutfitContext.Provider>
   );

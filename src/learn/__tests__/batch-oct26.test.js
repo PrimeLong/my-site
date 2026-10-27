@@ -204,8 +204,8 @@ describe('остановки дороги юнита', async () => {
   const stopsOf = (learn) => unitStops(pathState(learn).find((s) => s.course.id === 'scarcity'), learn);
   it('«Персоналии» — после второго урока, «Чтение» — на середине; открываются, когда пройден урок перед ними', () => {
     const s0 = stopsOf(emptyLearn());
-    // в «Мастерской» 14 уроков: «Персоналии» — после 2-го, «Чтение» — после 8-го
-    expect(s0.map((x) => x.type)).toEqual(['lesson', 'lesson', 'people', ...Array(6).fill('lesson'), 'read', ...Array(6).fill('lesson')]);
+    // в «Мастерской» 14 уроков: «Персоналии» — после 2-го, «Разбор графика» — после 5-го (выпуск 27 октября), «Чтение» — после 8-го
+    expect(s0.map((x) => x.type)).toEqual(['lesson', 'lesson', 'people', 'lesson', 'lesson', 'lesson', 'graph', 'lesson', 'lesson', 'lesson', 'read', ...Array(6).fill('lesson')]);
     expect(s0.find((x) => x.type === 'people')).toMatchObject({ id: 'people-scarcity', open: false, done: false });
     const s2 = stopsOf(doneFirst(2));
     expect(s2.find((x) => x.type === 'people').open).toBe(true);

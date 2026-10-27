@@ -1509,7 +1509,8 @@ test('путь: карточка урока, «Знакомство» шагам
   await expect(path.getByTestId('level-next')).toHaveAttribute('data-locked', 'true');
   await expect(path.getByTestId('path-lesson')).toHaveCount(14);
   await expect(path.getByTestId('path-level')).toContainText('основные термины');
-  await expect(path.getByTestId('path-soon')).toHaveCount(0);
+  // строится — «Рынок труда»: он в Начальном уровне (по пять юнитов на уровень), пока в планах
+  await expect(path.getByTestId('path-soon')).toHaveCount(1);
   // в списке уровней: Начальный открыт, Базовый — с тестом (по Начальному), Средний — после него,
   // Продвинутый и Профессиональный строятся
   await path.getByTestId('level-switch-open').click();
@@ -4979,5 +4980,59 @@ test('открытия: новичку лиги, лавка, копилка и �
   await expect(page.getByTestId('shop-switch').getByTestId('garden-lock')).toHaveCount(1);
   await page.getByTestId('shop-switch').locator('[data-view="garden"]').click();
   await expect(page.locator('[data-testid=feature-locked][data-feature="garden"]')).toContainText('Сад — после 6-го урока');
+  expect(errors).toEqual([]);
+});
+
+test('«Разбор графика» — остановка на дороге юнита: график собирается по шагам, вопрос, +10 опыта; кнопка на карточке урока', async ({ page }) => {
+  await page.addInitScript(() => {
+    if (localStorage.getItem('ems-textbook-v1')) return;
+    const at = Date.now() - 86400000;
+    const ids = ['sc-i1', 'sc-l1', 'sc-l2', 'sc-i2', 'sc-l3'];
+    localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons: Object.fromEntries(ids.map((id) => [id, { at, runs: 1, best: 90 }])) } }));
+  });
+  const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
+  const stop = page.locator('[data-testid=path-extra][data-extra="graph"]');
+  await expect(stop).toHaveAttribute('data-state', 'open');
+  await stop.scrollIntoViewIfNeeded();
+  await stop.click();
+  const g = page.getByTestId('graph-lesson');
+  await expect(g).toHaveAttribute('data-id', 'graph-ppf');
+  // первый шаг — оси в фокусе; дальше на каждом шаге новое — подсвечено
+  await expect(g.locator('[data-testid=graph-el][data-el="axes"]')).toHaveAttribute('data-on', 'true');
+  await expect(g.getByTestId('graph-back')).toBeDisabled();
+  await g.getByTestId('graph-next').click();
+  await expect(g.locator('[data-testid=graph-el][data-el="PPF"]')).toHaveAttribute('data-on', 'true');
+  await expect(g.getByTestId('graph-text')).toContainText('КПВ');
+  await expect(g.getByTestId('graph-mark')).toHaveCount(2);
+  await g.getByTestId('graph-next').click();
+  await expect(g.locator('[data-testid=graph-el][data-el="pt:A"]')).toHaveAttribute('data-on', 'true');
+  await expect(g.locator('[data-testid=graph-el][data-el="PPF"]')).toHaveAttribute('data-on', 'false');
+  // назад — на шаг раньше
+  await g.getByTestId('graph-back').click();
+  await expect(g.getByTestId('graph-text')).toContainText('Шаг 2 из 8');
+  for (let k = 2; k < 8; k += 1) await g.getByTestId('graph-next').click();
+  await expect(g.getByTestId('graph-next')).toHaveText(/К вопросу/);
+  await g.getByTestId('graph-next').click();
+  // вопрос: сначала ошибка — объяснение, потом верно
+  await expect(g).toHaveAttribute('data-phase', 'quiz');
+  await expect(g.getByTestId('graph-next')).toBeDisabled();
+  await g.locator('[data-testid=graph-opt][data-ok="false"]').first().click();
+  await expect(g.getByTestId('graph-feedback')).toHaveAttribute('data-ok', 'false');
+  await g.locator('[data-testid=graph-opt][data-ok="true"]').click();
+  await expect(g.getByTestId('graph-feedback')).toHaveAttribute('data-ok', 'true');
+  await g.getByTestId('graph-next').click();
+  await expect(g.getByTestId('graph-done')).toContainText('+10 опыта');
+  await g.getByTestId('graph-finish').click();
+  await expect(stop).toHaveAttribute('data-state', 'done');
+  // карточка урока с этим графиком — «Разобрать график по шагам»: разбор поверх урока, без опыта
+  await page.locator('[data-testid=path-lesson][data-lesson="sc-i2"]').click();
+  await page.getByTestId('lesson-start').click();
+  const btn = page.getByTestId('lesson').getByTestId('graph-open');
+  await expect(btn).toHaveAttribute('data-graph', 'graph-ppf');
+  await btn.click();
+  await expect(page.getByTestId('graph-lesson')).toBeVisible();
+  await page.getByTestId('graph-close').click();
+  await expect(page.getByTestId('graph-lesson')).toHaveCount(0);
+  await expect(page.getByTestId('lesson')).toBeVisible();
   expect(errors).toEqual([]);
 });

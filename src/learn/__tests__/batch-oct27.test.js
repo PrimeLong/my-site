@@ -87,3 +87,53 @@ describe('открытия: возможности — постепенно', as
     expect(pendingMoments(l, {}, T('2026-11-05T09:00:00Z')).filter((m) => m.kind === 'unlock')).toHaveLength(0);
   });
 });
+
+describe('разбор графика: шаги и числа совпадают с моделями', async () => {
+  const { GRAPHS, GRAPH_BY_UNIT, stepView } = await import('../graphs.js');
+  const { CHARTS } = await import('../../textbook/charts.js');
+  const { UNIT_BY_ID } = await import('../course.js');
+  const { unitStops } = await import('../stops.js');
+  const { pathState } = await import('../course.js');
+  const sceneAt = (g, k) => {
+    const def = CHARTS[g.chart];
+    const v = { ...Object.fromEntries(def.controls(g.attrs).map((c) => [c.id, c.def])), ...stepView(g, k).values };
+    return def.build(g.attrs, v);
+  };
+  const idsOf = (sc) => new Set(['axes', ...sc.curves.map((c) => c.id), ...sc.points.flatMap((p, i) => [`pt:${p.label}`, `pt#${i}`, `guide:${p.label}`, `guide#${i}`]),
+    ...(sc.rects || []).map((r, i) => `rect:${i}`), ...(sc.polys || []).flatMap((p, i) => [`poly:${p.label}`, `poly#${i}`])]);
+  it('каждый шаг ссылается только на то, что есть на графике в этот момент', () => {
+    GRAPHS.forEach((g) => {
+      expect(UNIT_BY_ID[g.unitId], g.id).toBeTruthy();
+      expect(g.steps.length, g.id).toBeGreaterThanOrEqual(6);
+      g.steps.forEach((s, k) => {
+        const have = idsOf(sceneAt(g, k));
+        [...(s.add || []), ...(s.focus || [])].forEach((id) => expect(have.has(id), `${g.id} шаг ${k + 1}: ${id}`).toBe(true));
+        expect(s.text.length, `${g.id} шаг ${k + 1}`).toBeGreaterThan(40);
+      });
+      expect(g.quiz.options.filter((o) => o.ok)).toHaveLength(1);
+      g.quiz.options.forEach((o) => expect(o.why, g.id).toBeTruthy());
+    });
+  });
+  it('числа в текстах — из моделей: равновесие, монополия, издержки, КПВ', () => {
+    const sd = GRAPH_BY_UNIT['supply-demand'];
+    const e0 = sceneAt(sd, 3).points.find((p) => p.label === 'E'); expect([e0.x, e0.y]).toEqual([60, 20]);
+    const e1 = sceneAt(sd, 6).points.find((p) => p.label === 'E'); expect([e1.x, e1.y]).toEqual([80, 25]);
+    const mon = GRAPH_BY_UNIT['competition-monopoly'];
+    const m = sceneAt(mon, 7);
+    expect(m.points.find((p) => p.label === 'M')).toMatchObject({ x: 40, y: 60 });
+    expect(m.rects[0]).toMatchObject({ x0: 0, x1: 40, y0: 20, y1: 60 });
+    expect(CHARTS.monopoly.measure(mon.attrs, { dA: 0, mc: 20 }).dwl).toBe(800);
+    const costs = GRAPH_BY_UNIT.costs;
+    expect(sceneAt(costs, 4).points.find((p) => p.label === 'P = MC').x).toBeCloseTo(6);
+    const avc = sceneAt(costs, 1).points.find((p) => p.label === 'min AVC'); expect(avc.x).toBeCloseTo(3); expect(avc.y).toBeCloseTo(11);
+    const atc = sceneAt(costs, 2).points.find((p) => p.label === 'min ATC'); expect(atc.x).toBeCloseTo(5); expect(atc.y).toBeCloseTo(35);
+    const ppf = GRAPH_BY_UNIT.scarcity;
+    expect(Math.round(sceneAt(ppf, 5).points.find((p) => p.label === 'A').y)).toBe(44);
+  });
+  it('на дороге юнита — остановка «Разбор графика» после трети уроков; открывается, когда пройден урок перед ней', () => {
+    const st = pathState(emptyLearn()).find((s) => s.course.id === 'competition-monopoly');
+    const stop = unitStops(st, emptyLearn()).find((x) => x.type === 'graph');
+    expect(stop).toMatchObject({ id: 'graph-monopoly', title: 'Монополия и безвозвратные потери', open: false, done: false });
+    expect(unitStops(st, { ...emptyLearn(), graphs: { 'graph-monopoly': 1 } }).find((x) => x.type === 'graph').done).toBe(true);
+  });
+});
