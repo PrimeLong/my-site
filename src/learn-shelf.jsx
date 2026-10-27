@@ -16,7 +16,7 @@ import { galleryOf } from './learn/people.js';
 import { READING_BY_UNIT } from './learn/reading.js';
 import { PEOPLE_BY_UNIT } from './learn/people.js';
 import { placeOf } from './ds-tokens.js';
-import { Portrait, PEOPLE_CSS, photoCredit } from './learn-people.jsx';
+import { Portrait, PEOPLE_CSS, PhotoCredit } from './learn-people.jsx';
 
 const CSS = `
   .lb-shelf { position: relative; display: flex; align-items: flex-end; gap: 6px; padding: 14px 10px 0; margin: 10px 0 18px; min-height: 164px; overflow-x: auto; scrollbar-width: thin; }
@@ -193,7 +193,7 @@ export default function Library({ learn, update = null }) {
         <Sheet label={person.name} onClose={() => setPerson(null)} testid="gallery-card">
           <div style={{ '--pp': person.group.color, '--pp-ink': `color-mix(in srgb, ${person.group.color} 82%, #000)` }}>
             <div className="pp-hero" style={{ animation: 'none' }}>
-              <div><div className="pp-frame"><Portrait p={person} color={person.group.color} /></div>{photoCredit(person) && <div className="pp-credit">{photoCredit(person)}</div>}</div>
+              <div><div className="pp-frame"><Portrait p={person} color={person.group.color} /></div><PhotoCredit p={person} /></div>
               <div style={{ minWidth: 0 }}>
                 <div className="pp-name" style={{ fontSize: 26 }}>{person.name}</div>
                 <div className="pp-role"><span>{person.years}</span><span>{person.role}</span></div>

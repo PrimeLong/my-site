@@ -9,7 +9,7 @@ import { Audio } from './MacroSimulator.jsx';
 import { Button, IconButton } from './ds.jsx';
 import { useReducedMotion } from './ds-art.jsx';
 import { PEOPLE_BY_ID, MET_XP, isMet, initialsOf, eraPos, galleryOf } from './learn/people.js';
-import { PHOTOS } from './learn/people-photos.js';
+import { cachedPhoto, loadPhoto } from './learn/portraits.js';
 import { finishLesson, markMet } from './textbook/learn-state.js';
 
 export const PEOPLE_CSS = `
@@ -38,7 +38,8 @@ export const PEOPLE_CSS = `
   .pp-pic::after { content: ''; position: absolute; inset: 0; background: linear-gradient(115deg, transparent 35%, rgba(255,255,255,.28) 50%, transparent 65%); background-size: 260% 100%;
     animation: pp-sheen 5s ease-in-out 1s infinite; pointer-events: none; }
   @keyframes pp-sheen { 0% { background-position: 130% 0 } 40%, 100% { background-position: -40% 0 } }
-  .pp-credit { margin-top: 6px; font-size: 11px; line-height: 1.3; color: var(--ds-ink3); max-width: 168px; }
+  .pp-credit { margin-top: 6px; font-size: 12px; line-height: 1.3; color: var(--ds-ink2); max-width: 168px; overflow-wrap: anywhere; }
+  .pp-credit a { color: inherit; }
   .pp-name { font: 700 clamp(26px, 4.4vw, 36px)/1.08 var(--ds-news, 'PT Serif', Georgia, serif); letter-spacing: -.01em; }
   .pp-role { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
   .pp-role span { padding: 4px 10px; border-radius: 999px; font: 600 13px var(--ds-sans); background: color-mix(in srgb, var(--pp) 12%, var(--ds-card)); color: var(--pp-ink);
@@ -99,14 +100,28 @@ export const PEOPLE_CSS = `
   @media (prefers-reduced-motion: reduce) { .pp-hero, .pp-pic img, .pp-pic::after, .pp-era-life, .pp-era-mark, .pp-hang, .pp-fb { animation: none; } }
 `;
 
-/* Портрет: фото с Commons, если скачано (src/learn/people-photos.js), иначе — гравированный медальон:
-   штриховка гравюры, двойная рамка и инициалы антиквой. */
+/* Фото человека: скачанное заранее или с Википедии (src/learn/portraits.js) — пока грузится или если
+   свободного фото нет, null */
+export function usePhoto(p, off = false) {
+  const [ph, setPh] = useState(() => (off ? null : cachedPhoto(p) || null));
+  useEffect(() => {
+    if (off) { setPh(null); return undefined; }
+    let alive = true;
+    loadPhoto(p).then((x) => { if (alive) setPh(x || null); });
+    return () => { alive = false; };
+  }, [p.id, off]); // eslint-disable-line react-hooks/exhaustive-deps
+  return ph;
+}
+/* Портрет: фото с Commons (свободная лицензия), иначе — гравированный медальон: штриховка гравюры,
+   двойная рамка и инициалы антиквой. Фото не загрузилось — тоже медальон. */
 export function Portrait({ p, color, hidden = false }) {
-  const photo = hidden ? null : PHOTOS[p.id];
+  const loaded = usePhoto(p, hidden);
+  const [broken, setBroken] = useState(false);
+  const photo = loaded && !broken ? loaded : null;
   const gid = `pp-h-${p.id}`;
   return (
     <div className="pp-pic" data-testid="people-portrait" data-photo={photo ? 'true' : 'false'}>
-      {photo ? <img src={photo.file} alt={`Портрет: ${p.name}`} loading="lazy" decoding="async" />
+      {photo ? <img src={photo.file} alt={`Портрет: ${p.name}`} loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setBroken(true)} />
         : (
           <svg viewBox="0 0 120 150" width="100%" height="100%" role="img" aria-label={hidden ? 'Ещё не знакомы' : `${p.name} — медальон с инициалами`} preserveAspectRatio="xMidYMid slice">
             <defs>
@@ -126,7 +141,16 @@ export function Portrait({ p, color, hidden = false }) {
     </div>
   );
 }
-export const photoCredit = (p) => { const ph = PHOTOS[p.id]; return ph ? `Фото: ${ph.author} · ${ph.license} · Wikimedia Commons` : null; };
+// подпись под портретом: автор и лицензия, ссылка — на страницу файла на Commons
+export function PhotoCredit({ p }) {
+  const ph = usePhoto(p);
+  if (!ph) return null;
+  return (
+    <div className="pp-credit" data-testid="people-credit">
+      Фото: {ph.author} · {ph.license} · {ph.source ? <a href={ph.source} target="_blank" rel="noopener noreferrer">Wikimedia Commons</a> : 'Wikimedia Commons'}
+    </div>
+  );
+}
 
 function Era({ p }) {
   const ticks = [1700, 1800, 1900, 2000];
@@ -188,7 +212,7 @@ export default function PeopleView({ id, learn, update, onClose }) {
           <div className="pp-hero">
             <div>
               <div className="pp-frame"><Portrait p={p} color={g.color} /></div>
-              {photoCredit(p) && <div className="pp-credit">{photoCredit(p)}</div>}
+              <PhotoCredit p={p} />
             </div>
             <div style={{ minWidth: 0 }}>
               <div className="pp-name" data-testid="people-name">{p.name}</div>

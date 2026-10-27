@@ -13,7 +13,11 @@ import { PEOPLE } from '../src/learn/people.js';
 const UA = { 'User-Agent': 'InflatiaPortraits/1.0 (educational app; portraits with attribution)' };
 const FREE = /public domain|^pd|cc0|cc[- ]by/i;
 const NONFREE = /fair use|non-free|copyrighted/i;
-const strip = (html = '') => String(html).replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+// разметка Commons → текст: без тегов, сущности (&amp;, &#39;, &nbsp;…) — символами
+const ENT = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' };
+const strip = (html = '') => String(html).replace(/<[^>]+>/g, '')
+  .replace(/&(#x?[0-9a-f]+|[a-z]+);/gi, (m, e) => (e[0] === '#' ? String.fromCodePoint(e[1].toLowerCase() === 'x' ? parseInt(e.slice(2), 16) : Number(e.slice(1))) : ENT[e.toLowerCase()] ?? m))
+  .replace(/\s+/g, ' ').trim();
 const fileOf = (url) => {
   const parts = decodeURIComponent(new URL(url).pathname).split('/');
   const i = parts.indexOf('thumb');

@@ -13,8 +13,9 @@ async function openApp(page, path = '/', apiBody = '{}', { tab = 'world' } = {})
   const errors = []; const external = [];
   page.on('pageerror', (e) => errors.push(e.message));
   page.on('request', (r) => { if (!r.url().startsWith('http://localhost')) external.push(r.url()); });
-  await page.route('**/api/**', (r) => r.fulfill({ status: 200, contentType: 'application/json',
-    body: typeof apiBody === 'function' ? apiBody(r.request()) : apiBody }));
+  // свой API — только на своём адресе: чужие …/api/… (например, Википедия) тест подменяет сам
+  await page.route('**/api/**', (r) => (!r.request().url().startsWith('http://localhost') ? r.fallback() : r.fulfill({ status: 200, contentType: 'application/json',
+    body: typeof apiBody === 'function' ? apiBody(r.request()) : apiBody })));
   await gotoApp(page, path, tab);
   return { errors, external };
 }
@@ -5034,5 +5035,52 @@ test('«Разбор графика» — остановка на дороге �
   await page.getByTestId('graph-close').click();
   await expect(page.getByTestId('graph-lesson')).toHaveCount(0);
   await expect(page.getByTestId('lesson')).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test('«Персоналии»: портреты с Википедии — только свободные файлы Commons с подписью автора; иначе медальон', async ({ page }) => {
+  // Википедию подменяем: Роббинс — общественное достояние, Мальтус — fair use, Рикардо — локальный файл английской Википедии
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+  await page.route('https://en.wikipedia.org/**', (r) => {
+    const u = r.request().url();
+    const src = u.includes('Robbins') ? 'https://upload.wikimedia.org/wikipedia/commons/a/ab/Robbins.jpg'
+      : u.includes('Malthus') ? 'https://upload.wikimedia.org/wikipedia/commons/c/cd/Malthus.jpg' : 'https://upload.wikimedia.org/wikipedia/en/e/ef/Ricardo.jpg';
+    return r.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ originalimage: { source: src } }) });
+  });
+  await page.route('https://commons.wikimedia.org/**', (r) => {
+    const free = r.request().url().includes('Robbins');
+    const name = free ? 'Robbins' : 'Malthus';
+    return r.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ query: { pages: { 7: { imageinfo: [{
+      thumburl: `https://upload.wikimedia.org/wikipedia/commons/thumb/a/ab/${name}.jpg/480px-${name}.jpg`, descriptionurl: `https://commons.wikimedia.org/wiki/File:${name}.jpg`,
+      extmetadata: { LicenseShortName: { value: free ? 'Public domain' : 'Fair use' }, Artist: { value: '<span>Elliott &amp; Fry</span>' } } }] } } } }) });
+  });
+  await page.route('https://upload.wikimedia.org/**', (r) => r.fulfill({ status: 200, contentType: 'image/png', body: png }));
+  await page.addInitScript(() => {
+    localStorage.setItem('ems-portraits-test', '1');
+    if (localStorage.getItem('ems-textbook-v1')) return;
+    const at = Date.now() - 86400000;
+    localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons: { 'sc-i1': { at, runs: 1, best: 90 }, 'sc-l1': { at, runs: 1, best: 90 } } } }));
+  });
+  const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
+  await page.locator('[data-testid=path-extra][data-extra="people"]').click();
+  const pg = page.getByTestId('people');
+  await expect(pg.getByTestId('people-page')).toHaveAttribute('data-person', 'robbins');
+  await expect(pg.getByTestId('people-portrait')).toHaveAttribute('data-photo', 'true');
+  await expect(pg.getByTestId('people-portrait').locator('img')).toHaveAttribute('src', /upload\.wikimedia\.org\/wikipedia\/commons\/thumb\/a\/ab\/Robbins\.jpg/);
+  await expect(pg.getByTestId('people-credit')).toContainText('Фото: Elliott & Fry · Public domain · Wikimedia Commons');
+  await expect(pg.getByTestId('people-credit').locator('a')).toHaveAttribute('href', 'https://commons.wikimedia.org/wiki/File:Robbins.jpg');
+  // ответ запомнен устройством — без повторного запроса к Википедии
+  expect(await page.evaluate(() => Object.keys(JSON.parse(localStorage.getItem('ems-portraits-v1') || '{}')))).toContain('robbins');
+  await pg.locator('[data-testid=people-opt][data-ok="true"]').click();
+  await page.getByTestId('people-next').click();
+  // Мальтус: fair use — медальон и без подписи
+  await expect(pg.getByTestId('people-page')).toHaveAttribute('data-person', 'malthus');
+  await expect(pg.getByTestId('people-portrait')).toHaveAttribute('data-photo', 'false');
+  await expect(pg.getByTestId('people-credit')).toHaveCount(0);
+  await pg.locator('[data-testid=people-opt][data-ok="true"]').click();
+  await page.getByTestId('people-next').click();
+  // Рикардо: файл не на Commons — медальон
+  await expect(pg.getByTestId('people-page')).toHaveAttribute('data-person', 'ricardo');
+  await expect(pg.getByTestId('people-portrait')).toHaveAttribute('data-photo', 'false');
   expect(errors).toEqual([]);
 });

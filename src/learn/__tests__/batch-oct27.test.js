@@ -137,3 +137,36 @@ describe('разбор графика: шаги и числа совпадают
     expect(unitStops(st, { ...emptyLearn(), graphs: { 'graph-monopoly': 1 } }).find((x) => x.type === 'graph').done).toBe(true);
   });
 });
+
+describe('портреты «Персоналий» с Википедии: только свободные файлы Commons', async () => {
+  const { commonsFile, photoFromCommons, isFreeLicense, loadPhoto } = await import('../portraits.js');
+  const meta = (license, artist = 'John Doe') => ({ extmetadata: { LicenseShortName: { value: license }, Artist: { value: `<a href="x">${artist}</a>` } },
+    thumburl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/a/ab/Smith.jpg/480px-Smith.jpg', descriptionurl: 'https://commons.wikimedia.org/wiki/File:Smith.jpg' });
+  it('файл Commons из ссылки на картинку; локальный файл Википедии — нет', () => {
+    expect(commonsFile('https://upload.wikimedia.org/wikipedia/commons/thumb/a/ab/Adam_Smith.jpg/320px-Adam_Smith.jpg')).toBe('Adam_Smith.jpg');
+    expect(commonsFile('https://upload.wikimedia.org/wikipedia/commons/a/ab/Adam_Smith.jpg')).toBe('Adam_Smith.jpg');
+    expect(commonsFile('https://upload.wikimedia.org/wikipedia/en/a/ab/Fair.jpg')).toBeNull();
+    expect(commonsFile('https://example.com/wikipedia/commons/a/ab/X.jpg')).toBeNull();
+  });
+  it('лицензия: общественное достояние и CC — да, fair use — нет; автор без разметки', () => {
+    ['Public domain', 'PD-US', 'CC0', 'CC BY-SA 4.0', 'CC BY 2.0'].forEach((l) => expect(isFreeLicense(l), l).toBe(true));
+    ['Fair use', 'Non-free media', '', 'All rights reserved'].forEach((l) => expect(isFreeLicense(l), l).toBe(false));
+    expect(photoFromCommons(meta('Public domain'))).toMatchObject({ author: 'John Doe', license: 'Public domain', file: 'https://upload.wikimedia.org/wikipedia/commons/thumb/a/ab/Smith.jpg/480px-Smith.jpg' });
+    expect(photoFromCommons(meta('Fair use'))).toBeNull();
+    expect(photoFromCommons(meta('CC BY 4.0', 'Elliott &amp; Fry &#8212; studio&nbsp;London')).author).toBe('Elliott & Fry — studio London');
+  });
+  it('загрузка: статья → файл Commons → свободная лицензия; несвободное — медальон, сеть упала — медальон', async () => {
+    const real = globalThis.fetch;
+    const reply = (x) => Promise.resolve({ json: () => Promise.resolve(x) });
+    try {
+      globalThis.fetch = (url) => (String(url).includes('en.wikipedia.org')
+        ? reply({ originalimage: { source: 'https://upload.wikimedia.org/wikipedia/commons/a/ab/Smith.jpg' } })
+        : reply({ query: { pages: { 1: { imageinfo: [meta(String(url).includes('Smith') ? 'Public domain' : 'x')] } } } }));
+      expect(await loadPhoto({ id: 'test-a', wiki: 'Adam_Smith' })).toMatchObject({ license: 'Public domain' });
+      globalThis.fetch = () => reply({ originalimage: { source: 'https://upload.wikimedia.org/wikipedia/en/a/ab/Fair.jpg' } });
+      expect(await loadPhoto({ id: 'test-b', wiki: 'Someone' })).toBeNull();
+      globalThis.fetch = () => Promise.reject(new Error('offline'));
+      expect(await loadPhoto({ id: 'test-c', wiki: 'Someone_else' })).toBeNull();
+    } finally { globalThis.fetch = real; }
+  });
+});
