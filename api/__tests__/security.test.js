@@ -69,12 +69,16 @@ describe('заголовки сайта (vercel.json)', () => {
     const csp = Object.fromEntries(get('Content-Security-Policy').split(';').map((d) => d.trim().split(/\s+/)).map(([k, ...v]) => [k, v]));
     expect(csp['default-src']).toEqual(["'self'"]);
     expect(csp['script-src']).toEqual(["'self'"]);
-    expect(csp['connect-src']).toEqual(["'self'"]);
+    // единственное исключение — портреты «Персоналий» с Википедии (src/learn/portraits.js): статья и
+    // сведения о файле — запросом, сама картинка — с upload.wikimedia.org
+    expect(csp['connect-src']).toEqual(["'self'", 'https://en.wikipedia.org', 'https://commons.wikimedia.org']);
     expect(csp['font-src']).toEqual(["'self'", 'data:']);
-    expect(csp['img-src']).toEqual(expect.arrayContaining(["'self'", 'data:']));
+    expect(csp['img-src']).toEqual(expect.arrayContaining(["'self'", 'data:', 'https://upload.wikimedia.org']));
     expect(csp['frame-ancestors']).toEqual(["'none'"]);
     expect(csp['object-src']).toEqual(["'none'"]);
-    // ни одного внешнего адреса и ни одного unsafe-eval
-    expect(get('Content-Security-Policy')).not.toMatch(/https?:|unsafe-eval|\*/);
+    // других внешних адресов нет, ни одного unsafe-eval и ни одной звёздочки
+    const external = get('Content-Security-Policy').match(/https?:\/\/[^\s;]+/g) || [];
+    expect([...new Set(external)].sort()).toEqual(['https://commons.wikimedia.org', 'https://en.wikipedia.org', 'https://upload.wikimedia.org']);
+    expect(get('Content-Security-Policy')).not.toMatch(/unsafe-eval|\*/);
   });
 });
