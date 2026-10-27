@@ -72,21 +72,26 @@ describe('уровень в курсе — число условных един�
       expect(sum).toBeCloseTo(LEVEL_POINTS[lv]);
     });
   });
-  it('без уроков — 0 ед., уровень курса «Начальный» 0 из 100; Начальный пройден на 100% — ровно 100 ед., дальше Базовый', () => {
+  // Начальный уровень — «Мастерская» и будущий «Рынок труда»: вышедшая «Мастерская» весит половину уровня
+  const startOpen = unitPoints('scarcity');
+  it('без уроков — 0 ед., уровень курса «Начальный» 0 из 100; всё вышедшее в Начальном пройдено на 100% — дальше Базовый', () => {
     const none = courseLevel(emptyLearn());
-    expect(none).toMatchObject({ points: 0, level: { id: 'start', got: 0, max: 100 } });
+    expect(none).toMatchObject({ points: 0, past: [], level: { id: 'start', got: 0, max: 100 } });
     expect(none.band).toBeUndefined();
+    expect(startOpen).toBe(50);
     const start = { ...emptyLearn(), lessons: doneAll(ids('start')) };
-    expect(courseLevel(start)).toMatchObject({ points: 100, level: { id: 'basic', got: 0, max: 200 } });
+    // уровень не застревает в ожидании будущего юнита: Начальный — пройден, дальше Базовый
+    expect(courseLevel(start)).toMatchObject({ points: startOpen, past: ['start'], level: { id: 'basic', got: 0, max: 200 } });
     const sloppy = { ...emptyLearn(), lessons: doneAll(ids('start'), 50) };
-    expect(courseLevel(sloppy).points).toBe(Math.round(100 * lessonQuality(50)));
+    expect(Math.abs(courseLevel(sloppy).points - startOpen * lessonQuality(50))).toBeLessThanOrEqual(0.5 + 1e-9);
     expect(courseLevel(sloppy).level.id).toBe('start');
   });
-  it('Базовый пройден — 300 ед.; доля урока: 70% за прохождение и до 30% за точность; алмаз — полная', () => {
+  it('Базовый пройден — Начальный и Базовый позади; доля урока: 70% за прохождение и до 30% за точность; алмаз — полная', () => {
     const basic = { ...emptyLearn(), lessons: doneAll([...ids('start'), ...ids('basic')]) };
     const c = courseLevel(basic);
-    expect(c.points).toBe(300);
-    expect(c.byLevel).toMatchObject({ start: 100, basic: 200 });
+    expect(c.points).toBe(startOpen + 200);
+    expect(c.byLevel).toMatchObject({ start: startOpen, basic: 200 });
+    expect(c.past).toEqual(['start', 'basic']);
     expect(c.level.id).toBe('middle');
     expect(lessonQuality(0)).toBe(0.7);
     expect(lessonQuality(100)).toBe(1);
@@ -94,7 +99,7 @@ describe('уровень в курсе — число условных един�
   });
   it('юнит, сданный тестом без уроков, — 85% его единиц', () => {
     const tested = { ...emptyLearn(), units: { scarcity: { tested: T('2026-10-20T10:00:00Z') } } };
-    expect(courseLevel(tested).points).toBe(Math.round(unitPoints('scarcity') * 0.85));
+    expect(Math.abs(courseLevel(tested).points - unitPoints('scarcity') * 0.85)).toBeLessThanOrEqual(0.5 + 1e-9);
   });
 });
 

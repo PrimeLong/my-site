@@ -1,5 +1,6 @@
 /* ЦЕРЕМОНИИ (docs/mechanics.md, «Церемонии»): большой момент получает свою сцену во весь экран —
-   новая марка в альбоме (юнит пройден), марка месяца (испытание месяца выполнено), новая печать.
+   новая марка в альбоме (юнит пройден), марка месяца (испытание месяца выполнено), новая печать,
+   открылась новая возможность (лиги, лавка, копилка, сад).
    Модуль чистый: какие моменты есть у ученика и какие ещё не показаны. Показанные помнит
    устройство (ems-celebrated: ключ → когда показали). Первое открытие с церемониями или новое
    устройство запоминает всё уже полученное без сцен: церемония — для того, что получено сейчас,
@@ -7,10 +8,11 @@
 import { albumItems, sealItems, monthItems } from './collections.js';
 import { leagueState, LEAGUE_DAYS } from './league.js';
 import { addDays } from '../textbook/learn-state.js';
+import { unlockedAt } from './unlocks.js';
 
 export const CELEBRATE = { fresh: 3 * 86400000, batch: 3 };
 // порядок сцен: марка юнита, марка месяца, итоги лиги, печати — по времени получения
-const ORDER = { album: 0, month: 1, league: 2, seal: 3 };
+const ORDER = { album: 0, month: 1, league: 2, seal: 3, unlock: 4 };
 /* Итоги недели лиги — тоже церемония (жалоба: «хочется отдельную анимацию по завершению лиги»): неделя
    кончилась (суббота позади, в воскресенье — перерыв), место и переход известны. Момент — полночь по
    Гринвичу после последнего дня недели; ключ lg:<неделя>. */
@@ -26,6 +28,8 @@ export function momentsOf(learn, now = Date.now()) {
   monthItems(learn, now).forEach((it) => { if (it.got) out.push({ key: it.id, kind: 'month', at: it.at, it }); });
   sealItems(learn).forEach((it) => { if (it.got) out.push({ key: `a:${it.id}`, kind: 'seal', at: it.at, it }); });
   leagueMoments(learn, now).forEach((m) => out.push(m));
+  // открылась возможность (лиги, лавка, копилка, сад — src/learn/unlocks.js): сцена-знакомство
+  unlockedAt(learn).forEach((u) => { if (u.at) out.push({ key: `o:${u.id}`, kind: 'unlock', at: u.at, it: u }); });
   return out;
 }
 // ещё не показанные и свежие — по порядку сцен

@@ -70,7 +70,8 @@ import { DsRoot, Button, IconButton, Card, MenuCard, Heading, AnswerBar, Sheet, 
 import { ArtStyle, Guilloche, Rosette, Chest, Engraving, EngravingG, ProgressChart, InflaMeter, CoinShower, CountUp, useReducedMotion, useWide, useMedia } from './ds-art.jsx';
 import { placeOf, unitColor, DIAMOND_COLOR, dsThemeId } from './ds-tokens.js';
 import { countryPath, RIVER, curveTo } from './lib/mapgeo.js';
-import { levelRegions } from './learn/levelmap.js';
+import { levelRegions, mapSlots } from './learn/levelmap.js';
+import { featureOpen, FeatureLocked } from './learn-unlock.jsx';
 import { BrandLoader } from './logo.jsx';
 import { FRIENDS_CSS, FriendsPage, FriendProfile, RaceCard, RaceOffer, racesToShow } from './learn-friends.jsx';
 import { Sketch, SKETCH_CSS, SKETCH_QUERY, SKETCH_BOOK_QUERY } from './learn-sketch.jsx';
@@ -1775,7 +1776,7 @@ function GradeCard({ learn }) {
       <span className="ln-scale" aria-hidden="true">
         <span className="ln-scale-bar"><i style={{ width: `${Math.max(c.points ? 1.5 : 0, fill)}%` }} /></span>
         {LEVELS.map((l, k) => (
-          <span key={l.id} className={`ln-scale-seg${l.id === c.level.id ? ' on' : (c.byLevel[l.id] || 0) >= LEVEL_POINTS[l.id] ? ' past' : ''}`}
+          <span key={l.id} className={`ln-scale-seg${l.id === c.level.id ? ' on' : c.past.includes(l.id) ? ' past' : ''}`}
             style={{ left: `${(LEVEL_FROM[l.id] / SCALE_MAX) * 100}%`, width: `${(LEVEL_POINTS[l.id] / SCALE_MAX) * 100}%` }}>{k + 1}</span>
         ))}
       </span>
@@ -1813,13 +1814,21 @@ function TopStats({ learn, bell = null }) {
 const MAP_BOX = { x: 130, y: 70, w: 780, h: 610 };
 // sel — юниты, которые сейчас на экране Пути (выбранный уровень): их места в сплошном кольце
 const LEVEL_MAP = levelRegions();
+// 25 мест по порядку дороги: юниты и места под будущие юниты уровня (по пять на уровень)
+const MAP_SLOTS = mapSlots();
 function Atlas({ states, sel = [], onPick }) {
   const units = UNITS.map((u, k) => ({ u, no: k + 1, st: states.find((x) => x.course.id === u.id), pl: placeOf(u.id) }));
+  const soon = MAP_SLOTS.filter((x) => x.soon);
   // уровень, юниты которого сейчас на экране Пути: его область чуть ярче
   const selLevel = sel.length ? (UNITS.find((u) => u.id === sel[0]) || {}).level : null;
   const onPath = units.filter((x) => x.st);
-  const route = units.map((x) => x.pl.at);
-  const doneTill = onPath.reduce((k, x, i) => (x.st.complete ? i + 1 : k), 0);
+  const route = MAP_SLOTS.map((x) => x.at);
+  /* пройденная часть дороги — от начала до следующего места на Пути после последнего пройденного:
+     места будущих и строящихся юнитов дорога проходит насквозь */
+  const onIds = new Set(onPath.map((y) => y.u.id));
+  const lastDone = MAP_SLOTS.reduce((k, x, i) => (onPath.some((y) => y.u.id === x.id && y.st.complete) ? i : k), -1);
+  let doneTill = lastDone;
+  if (lastDone >= 0) { doneTill += 1; while (doneTill < MAP_SLOTS.length - 1 && !onIds.has(MAP_SLOTS[doneTill].id)) doneTill += 1; }
   // места ещё без уроков — точки на дороге; их здания появятся, когда юнит выйдет на Путь
   const cur = onPath.find((x) => !x.st.complete) || null;
   const pathD = (pts) => (pts.length > 1 ? `M${pts[0][0]},${pts[0][1]}${curveTo(pts)}` : '');
@@ -1852,7 +1861,11 @@ function Atlas({ states, sel = [], onPick }) {
         {/* дорога через все места: пройденная часть — сплошная тушь, дальше — пунктир */}
         <path d={pathD(route)} fill="none" stroke="var(--ds-card2)" strokeWidth="10" strokeLinecap="round" strokeLinejoin="round" />
         <path d={pathD(route)} fill="none" stroke="var(--ds-ink3)" strokeWidth="2.4" strokeDasharray="8 8" strokeLinecap="round" />
-        {doneTill > 0 && <path d={pathD(route.slice(0, doneTill + 1))} fill="none" stroke="var(--u-ink)" strokeWidth="4" strokeLinecap="round" />}
+        {lastDone >= 0 && <path d={pathD(route.slice(0, doneTill + 1))} fill="none" stroke="var(--u-ink)" strokeWidth="4" strokeLinecap="round" />}
+        {/* места под будущие юниты — пунктирные кружки: юнит появится здесь позже */}
+        {soon.map((x) => (
+          <circle key={x.id} cx={x.at[0]} cy={x.at[1]} r="6.5" fill="var(--ds-card)" stroke="var(--ds-ink3)" strokeWidth="1.8" strokeDasharray="3 2.6" data-testid="atlas-soon" data-level={x.level} />
+        ))}
         {/* номер уровня — в самом свободном месте его области; названия — в легенде под картой */}
         {LEVEL_MAP.regions.filter((r) => r.label).map((r) => (
           <g key={r.id} className="ln-lvl-badge" style={{ '--lv': r.tint }} data-current={String(r.id === selLevel)} aria-hidden="true">
@@ -2339,9 +2352,10 @@ function PathView({ learn, update, onLesson, onStart, onOpenBook, onChest, onTas
   const atlasRef = useRef(null);
   const [scrollTo, setScrollTo] = useState({ n: 0, unit: null });
   const show = (levelId, unit = null) => { setPicker(null); setChosen(levelId); setScrollTo((x) => ({ n: x.n + 1, unit })); };
+  // касание места на карте: юнит на дороге, свёрнутый — раскрыт
   const pick = (unitId) => {
     const x = list.find((y) => y.u.id === unitId);
-    if (x && openLevel(x.u.level)) show(x.u.level, unitId); else if (x) setPicker({ focus: x.u.level });
+    if (x && openLevel(x.u.level)) { setUnfolded((m) => ({ ...m, [unitId]: true })); show(x.u.level, unitId); } else if (x) setPicker({ focus: x.u.level });
   };
   useEffect(() => {
     if (!scrollTo.n) return;
@@ -2765,8 +2779,10 @@ export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReo
         {tab === 'book' && <div className="ln-book" data-testid="book-tab"><TextbookScreen asTab homeTick={bookHome} {...bookHandlers} {...bookReports} />
           {/* черновик на полях учебника — на широком экране с мышью; пока идёт урок, у урока свой */}
           {sketchBook && !over && <><style>{SKETCH_CSS}</style><Sketch mode="book" /></>}</div>}
-        {tab === 'shop' && <ShopView key={shopFocus.n} learn={learn} update={update} focus={shopFocus.to} />}
-        {tab === 'league' && <div className="ln-wrap"><LeagueView learn={learn} update={update} /></div>}
+        {/* лиги и лавка открываются не сразу (src/learn/unlocks.js): до того — что там будет и сколько уроков осталось */}
+        {tab === 'shop' && (featureOpen(learn, 'shop') ? <ShopView key={shopFocus.n} learn={learn} update={update} focus={shopFocus.to} />
+          : <div className="ln-wrap"><FeatureLocked id="shop" learn={learn} onPath={() => onTab('path')} /></div>)}
+        {tab === 'league' && <div className="ln-wrap">{featureOpen(learn, 'league') ? <LeagueView learn={learn} update={update} /> : <FeatureLocked id="league" learn={learn} onPath={() => onTab('path')} />}</div>}
         {tab === 'news' && <Lazy><NewsView learn={learn} friends={friends} onFriend={(l) => setFriendLogin(l)} /></Lazy>}
         {tab === 'profile' && <Lazy><ProfileView learn={learn} update={update} onOpenBook={openBook} onSettings={() => setSettings(true)} onNotify={() => setBell(true)} unread={notify.unread.length}
           friends={friends} guest={guest} onFriends={() => { Audio.play('paper'); setFriendsPage(true); }} /></Lazy>}
@@ -2784,7 +2800,12 @@ export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReo
         onClose={(opened) => { setChest(null); if (opened) setFolded({ n: Date.now(), unit: chest }); }} />}
       {morning && !run && <MorningStreak learn={learn} onClose={() => setMorning(false)} />}
       {celebrate && <React.Suspense fallback={null}><Celebration moment={celebrate} learn={learn} onDone={() => celebrated(celebrate)}
-        onGo={() => { celebrated(celebrate); onTab(celebrate.kind === 'league' ? 'league' : 'profile'); }} /></React.Suspense>}
+        onGo={() => {
+          celebrated(celebrate);
+          // открылась возможность — «Заглянуть» ведёт туда же, куда уведомление: лига, лавка, копилка, сад
+          if (celebrate.kind === 'unlock') { goNotify({ id: `o:${celebrate.it.id}`, go: celebrate.it.id }); return; }
+          onTab(celebrate.kind === 'league' ? 'league' : 'profile');
+        }} /></React.Suspense>}
       {sheet && <LessonSheet l={sheet} learn={learn} weak={weakLessons(learn).some((w) => w.id === sheet.id)} onStart={start} onClose={() => setSheet(null)} onOpenBook={openBook}
         onSkip={(id) => { Audio.play('paper'); update((s) => skipLesson(s, id)); setSheet(null); }} />}
       {reading && <Lazy><ReadingView id={reading} learn={learn} update={update} onClose={() => setReading(null)} /></Lazy>}

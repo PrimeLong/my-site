@@ -3415,6 +3415,12 @@ test('новые глаголы: «Откройте сами», живая мо�
   await expect(page.getByTestId('shop-piggy').getByTestId('piggy-state')).toContainText('срок вышел');
   await page.getByTestId('shop-piggy').getByTestId('piggy-take').click();
   await expect(page.getByTestId('shop-msg')).toContainText(/Забрано 1[0-2]\d монет[аы]? — с процентами за неделю\./);
+  // своя анимация «забрать»: свинка встряхивается, монеты вылетают, всплывает «+N»; потом всё уходит
+  const art = page.getByTestId('shop-piggy').getByTestId('piggy-art');
+  await expect(art).toHaveAttribute('data-taking', 'true');
+  await expect(art.getByTestId('piggy-plus')).toHaveText(/^\+1[0-2]\d$/);
+  await expect(art.locator('.rw-pig-out:not(.lost)')).not.toHaveCount(0);
+  await expect(art.getByTestId('piggy-plus')).toHaveCount(0, { timeout: 5000 });
   expect(errors).toEqual([]);
 });
 
@@ -3528,6 +3534,9 @@ test('Путь: открывается на рекомендованном ур�
   await sc.getByTestId('unit-fold').click();
   await expect(sc).toHaveAttribute('data-folded', 'false');
   await expect(sc.getByTestId('path-lesson')).toHaveCount(14);
+  // и обратно — свернуть (ниже касание места на карте раскроет его само)
+  await sc.getByTestId('unit-fold').click();
+  await expect(sc).toHaveAttribute('data-folded', 'true');
   await expect(path.getByTestId('level-prev')).toBeDisabled();
   // вперёд — снова Базовый
   await path.getByTestId('level-next').click();
@@ -3558,6 +3567,11 @@ test('Путь: открывается на рекомендованном ур�
   await path.locator('[data-testid=atlas-place][data-unit="scarcity"]').evaluate((el) => el.scrollIntoView({ block: 'center' }));
   await path.locator('[data-testid=atlas-place][data-unit="scarcity"]').click({ force: true });
   await expect(path.getByTestId('level-switch')).toHaveAttribute('data-level', 'start');
+  // свёрнутый юнит касанием места на карте раскрывается
+  await expect(path.locator('[data-testid=path-unit][data-unit="scarcity"]')).toHaveAttribute('data-folded', 'false');
+  // на карте 25 мест — по пять на уровень: юниты и места под будущие юниты
+  await expect(path.getByTestId('atlas-soon')).toHaveCount(3);
+  await expect(path.locator('[data-testid=atlas-place], [data-testid=atlas-soon]')).toHaveCount(25);
   // повторное касание вкладки «Путь» — снова текущий уровень и рекомендованный урок
   await page.getByTestId('bottom-nav').locator('[data-tab="path"]').click();
   await expect(rec).toBeInViewport();
@@ -4536,12 +4550,13 @@ test('Путь: наверху — уровень в курсе числом у�
   const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
   const grade = page.getByTestId('course-level');
   await expect(grade).toHaveAttribute('data-done', '4');
-  // 4 урока из 14 юнита «Мастерская» (100 ед.) на 90%: 4 × 100/14 × 0,97 ≈ 28 ед. — числом, без ступеней A1…C2
-  await expect(grade).toHaveAttribute('data-points', '28');
-  await expect(page.getByTestId('course-points')).toHaveText('28');
+  /* 4 урока из 14 юнита «Мастерская» на 90%. Начальный уровень (100 ед.) — «Мастерская» и будущий «Рынок
+     труда», по 50 ед.: 4 × 50/14 × 0,97 ≈ 14 ед. — числом, без ступеней A1…C2 */
+  await expect(grade).toHaveAttribute('data-points', '14');
+  await expect(page.getByTestId('course-points')).toHaveText('14');
   await expect(grade).toContainText('Ваш уровень в курсе экономики');
   await expect(grade).toContainText('4 из 104 уроков');
-  await expect(page.getByTestId('course-next')).toHaveText('Начальный уровень курса: 28 из 100 ед.');
+  await expect(page.getByTestId('course-next')).toHaveText('Начальный уровень курса: 14 из 100 ед.');
   await expect(grade.locator('.ln-scale-seg')).toHaveCount(5);
   await expect(grade.locator('.ln-scale-seg.on')).toHaveText('1');
   await expect(grade).not.toContainText(/\b[ABC][12]\b/);
@@ -4918,5 +4933,51 @@ test('«Работа над ошибками»: много ошибок в юн�
   await expect(fix).toHaveCount(0);
   await expect(pathNode(page, 'sc-i2')).toHaveAttribute('data-state', 'open');
   expect(await page.evaluate(() => !!JSON.parse(localStorage.getItem('ems-textbook-v1')).learn.fixed.scarcity)).toBe(true);
+  expect(errors).toEqual([]);
+});
+
+test('открытия: новичку лиги, лавка, копилка и сад открываются по урокам; открытие — сцена «Открылось»', async ({ page }) => {
+  // замки и церемонии в автотесте включаются явно
+  await page.addInitScript(() => {
+    localStorage.setItem('ems-unlock-test', '1');
+    localStorage.setItem('ems-celebrate-test', '1');
+    localStorage.setItem('ems-celebrated', JSON.stringify({}));
+    if (localStorage.getItem('ems-textbook-v1')) return;
+    // один урок пройден вчера: лиги открыты (сцена — давно позади), лавка — после второго
+    const at = Date.now() - 5 * 86400000;
+    localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons: { 'sc-i1': { at, runs: 1, best: 90 } } } }));
+  });
+  const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
+  const nav = page.getByTestId('bottom-nav');
+  await expect(nav.locator('[data-tab="league"] [data-testid=nav-lock]')).toHaveCount(0);
+  await expect(nav.locator('[data-tab="shop"] [data-testid=nav-lock]')).toHaveCount(1);
+  // закрытая лавка: что там будет и сколько уроков осталось
+  await openTab(page, 'shop');
+  const locked = page.getByTestId('feature-locked');
+  await expect(locked).toHaveAttribute('data-feature', 'shop');
+  await expect(locked).toContainText('Лавка — после 2-го урока');
+  await expect(locked).toContainText('Осталось 1 урок');
+  await locked.getByTestId('feature-locked-go').click();
+  await expect(page.getByTestId('path')).toBeVisible();
+  // второй урок пройден только что — лавка открылась: сцена «Открылось», «Заглянуть» ведёт в лавку
+  await page.evaluate(() => {
+    const p = JSON.parse(localStorage.getItem('ems-textbook-v1'));
+    p.learn.lessons['sc-l1'] = { at: Date.now() - 60000, runs: 1, best: 90 };
+    localStorage.setItem('ems-textbook-v1', JSON.stringify(p));
+  });
+  await page.reload({ waitUntil: 'networkidle' });
+  const scene = page.getByTestId('celebrate');
+  await expect(scene.getByTestId('celebrate-unlock')).toHaveAttribute('data-feature', 'shop');
+  await expect(scene).toContainText('Открылось');
+  await scene.getByTestId('celebrate-go').click();
+  await expect(page.getByTestId('shop')).toBeVisible();
+  await expect(nav.locator('[data-tab="shop"] [data-testid=nav-lock]')).toHaveCount(0);
+  // внутри лавки копилка (после 4-го урока) и сад (после 6-го) пока закрыты
+  await shopTab(page, 'useful');
+  await expect(page.locator('[data-testid=feature-locked][data-feature="piggy"]')).toContainText('Осталось 2 урока');
+  await expect(page.getByTestId('shop-piggy')).toHaveCount(0);
+  await expect(page.getByTestId('shop-switch').getByTestId('garden-lock')).toHaveCount(1);
+  await page.getByTestId('shop-switch').locator('[data-view="garden"]').click();
+  await expect(page.locator('[data-testid=feature-locked][data-feature="garden"]')).toContainText('Сад — после 6-го урока');
   expect(errors).toEqual([]);
 });

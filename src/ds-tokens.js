@@ -38,9 +38,12 @@ export const DS_SIZE = { xs: 12.5, s: 14, m: 16, l: 18, xl: 22, xxl: 28, hero: 3
    по часовой вдоль берега, потом внутренним кольцом к центру — без пересечений. Цвет — как у купюры своего достоинства (белый текст
    на нём читается с контрастом не ниже 4.5:1), здание — гравюра (src/ds.jsx, Engraving),
    region — округ карты, at — точка места на карте (поле 1000×720 из src/lib/mapgeo.js). */
-// места по порядку Пути (юниты по уровням): дорога обходит страну петлёй, не пересекая себя
+/* места по порядку Пути (юниты по уровням): дорога обходит страну спиралью, не пересекая себя — Начальный
+   уровень по западному берегу с юга на север, Базовый по северному, Средний по восточному и южному,
+   Продвинутый внутренним кольцом, Профессиональный в центре. На каждый уровень — пять мест (25 на карте):
+   где юнитов уровня меньше пяти, остальные места ждут будущих юнитов (SOON_PLACES). */
 export const PLACES = {
-  scarcity: { place: 'Мастерская', building: 'workshop', color: '#4D7C0F', region: 'industry', at: [245, 310], note: 'хлеб или станки' },
+  scarcity: { place: 'Мастерская', building: 'workshop', color: '#4D7C0F', region: 'industry', at: [300, 570], note: 'хлеб или станки' },
   'supply-demand': { place: 'Рынок', building: 'market', color: '#C2490B', region: 'capital', at: [320, 220], note: 'кофе, мука и цены' },
   consumer: { place: 'Универмаг', building: 'store', color: '#B0198F', region: 'capital', at: [785, 300], note: 'выбор покупателя' },
   elasticity: { place: 'Кофейня', building: 'cafe', color: '#C21E56', region: 'agri', at: [440, 180], note: 'реакция на цену' },
@@ -48,21 +51,23 @@ export const PLACES = {
   costs: { place: 'Пекарня', building: 'bakery', color: '#9A6300', region: 'agri', at: [700, 515], note: 'издержки и прибыль' },
   'competition-monopoly': { place: 'Биржа', building: 'exchange', color: '#C9372C', region: 'finance', at: [610, 590], note: 'конкуренция и монополия' },
   monopolistic: { place: 'Ярмарка', building: 'market', color: '#9B2C8F', region: 'agri', at: [490, 615], note: 'похожие товары' },
-  oligopoly: { place: 'Картель', building: 'factory', color: '#577A00', region: 'mining', at: [270, 548], note: 'несколько крупных' },
-  labor: { place: 'Биржа труда', building: 'ministry', color: '#A9561A', region: 'industry', at: [370, 600], note: 'зарплаты и занятость' },
+  oligopoly: { place: 'Картель', building: 'factory', color: '#577A00', region: 'mining', at: [425, 530], note: 'несколько крупных' },
+  labor: { place: 'Биржа труда', building: 'ministry', color: '#A9561A', region: 'industry', at: [225, 495], note: 'зарплаты и занятость' },
   'market-failures': { place: 'Порт', building: 'port', color: '#D13B1F', region: 'port', at: [585, 180], note: 'внешние эффекты и налоги' },
-  gdp: { place: 'Статуправление', building: 'tower', color: '#A65A00', region: 'capital', at: [275, 450], note: 'как считают ВВП' },
+  gdp: { place: 'Статуправление', building: 'tower', color: '#A65A00', region: 'capital', at: [330, 445], note: 'как считают ВВП' },
   'money-banks': { place: 'Банк', building: 'bank', color: '#8F6A00', region: 'finance', at: [690, 215], note: 'деньги и кредит' },
   inflation: { place: 'Гастроном', building: 'grocery', color: '#C2304F', region: 'capital', at: [800, 175], note: 'цены и корзина' },
-  'is-lm': { place: 'Казначейство', building: 'bank', color: '#7A7000', region: 'capital', at: [350, 360], note: 'ставка и выпуск' },
-  'ad-as': { place: 'Промзона', building: 'factory', color: '#B83A1C', region: 'industry', at: [465, 300], note: 'спрос и предложение в целом' },
+  'is-lm': { place: 'Казначейство', building: 'bank', color: '#7A7000', region: 'capital', at: [335, 345], note: 'ставка и выпуск' },
+  'ad-as': { place: 'Промзона', building: 'factory', color: '#B83A1C', region: 'industry', at: [450, 290], note: 'спрос и предложение в целом' },
   phillips: { place: 'Профсоюз', building: 'ministry', color: '#5E7E0E', region: 'industry', at: [590, 290], note: 'инфляция и безработица' },
-  policy: { place: 'Центробанк', building: 'bank', color: '#A3305E', region: 'capital', at: [600, 420], note: 'ставка и бюджет' },
-  growth: { place: 'Электростанция', building: 'factory', color: '#BF4E14', region: 'port', at: [485, 480], note: 'модель Солоу' },
-  'open-economy': { place: 'Таможня', building: 'port', color: '#A85A12', region: 'port', at: [360, 500], note: 'курс и торговля' },
-  'public-debt': { place: 'Министерство', building: 'ministry', color: '#B3123F', region: 'capital', at: [400, 410], note: 'долг государства' },
-  inequality: { place: 'Рабочий квартал', building: 'store', color: '#B0453A', region: 'periphery', at: [500, 385], note: 'доходы и бедность' },
+  policy: { place: 'Центробанк', building: 'bank', color: '#A3305E', region: 'capital', at: [620, 410], note: 'ставка и бюджет' },
+  growth: { place: 'Электростанция', building: 'factory', color: '#BF4E14', region: 'port', at: [525, 470], note: 'модель Солоу' },
+  'open-economy': { place: 'Таможня', building: 'port', color: '#A85A12', region: 'port', at: [430, 440], note: 'курс и торговля' },
+  'public-debt': { place: 'Министерство', building: 'ministry', color: '#B3123F', region: 'capital', at: [440, 365], note: 'долг государства' },
+  inequality: { place: 'Рабочий квартал', building: 'store', color: '#B0453A', region: 'periphery', at: [535, 370], note: 'доходы и бедность' },
 };
+// места под будущие юниты уровня — точки на дороге без названия, по порядку после юнитов уровня
+export const SOON_PLACES = { start: [[195, 410], [210, 320], [235, 235]] };
 export const placeOf = (unitId) => PLACES[unitId] || { place: 'Город', building: 'store', color: '#6B4357', region: 'capital', at: [496, 372], note: '' };
 export const unitColor = (unitId) => placeOf(unitId).color;
 /* Тёплая палитра (docs/world.md, «Цвета»): места юнитов, их кнопки и алмазный уровень — яркие

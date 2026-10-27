@@ -9,9 +9,10 @@ export const LEVELS = [
   { id: 'pro', title: 'Профессиональный', text: 'Вы умеете проводить полноценный экономический анализ.' },
 ];
 export const UNIT_LEVEL = {
-  scarcity: 'start',
+  // по пять юнитов на уровень (карта Пути — 25 мест); «Рынок труда» пока в планах и встанет в Начальный
+  scarcity: 'start', labor: 'start',
   'supply-demand': 'basic', elasticity: 'basic', 'market-failures': 'basic', 'money-banks': 'basic', inflation: 'basic',
-  consumer: 'middle', production: 'middle', costs: 'middle', 'competition-monopoly': 'middle', monopolistic: 'middle', labor: 'middle',
+  consumer: 'middle', production: 'middle', costs: 'middle', 'competition-monopoly': 'middle', monopolistic: 'middle',
   oligopoly: 'advanced', gdp: 'advanced', 'is-lm': 'advanced', 'ad-as': 'advanced', phillips: 'advanced',
   policy: 'pro', growth: 'pro', 'open-economy': 'pro', 'public-debt': 'pro', inequality: 'pro',
 };

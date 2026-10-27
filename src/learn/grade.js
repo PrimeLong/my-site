@@ -2,7 +2,8 @@
    ступени — просто число: сколько условных единиц (ед.) курса набрано из 1000. Единицы делятся между
    уровнями курса (Начальный 100, Базовый 200, Средний 250, Продвинутый 250, Профессиональный 200),
    внутри уровня — поровну между его юнитами (и теми, что ещё готовятся: выйдет новый юнит — набранное
-   не уменьшится), внутри юнита — поровну между уроками. Урок даёт свою долю целиком при точности 100%
+   не уменьшится), внутри юнита — поровну между уроками. Текущий уровень курса — первый, где на уже
+   вышедших юнитах ещё есть что набрать: уровень не «застревает», пока ждёт будущий юнит. Урок даёт свою долю целиком при точности 100%
    (и в алмазном уроке) и не меньше 70% доли при любой точности: главное — пройти, точность добавляет
    до трети. Юнит, сданный тестом без уроков, — 85%.
    Модуль чистый: его читают Путь и тесты. */
@@ -36,10 +37,14 @@ export function courseLevel(learn) {
   const all = units.flatMap((s) => s.lessons);
   const done = all.filter((l) => l.done).length;
   const got = Object.fromEntries(Object.entries(byLevel).map(([k, v]) => [k, Math.round(v)]));
-  // уровень курса, где ученик сейчас: первый, где единицы ещё не набраны (весь курс — последний)
-  const lv = LEVELS.find((l) => got[l.id] < LEVEL_POINTS[l.id]) || LEVELS[LEVELS.length - 1];
+  // сколько единиц уровня можно набрать сейчас — у юнитов, уже вышедших на Путь
+  const open = Object.fromEntries(LEVELS.map((l) => [l.id, 0]));
+  units.forEach((st) => { open[st.course.level] += unitPoints(st.course.id); });
+  /* уровень курса, где ученик сейчас: первый, где ещё есть что набрать на вышедших юнитах; всё вышедшее
+     пройдено — первый, где ждут новые юниты; весь курс — последний. Уровни до него — пройдены (past) */
+  const lv = LEVELS.find((l) => got[l.id] < Math.round(open[l.id])) || LEVELS.find((l) => got[l.id] < LEVEL_POINTS[l.id]) || LEVELS[LEVELS.length - 1];
   return {
-    points, done, total: all.length, share: all.length ? done / all.length : 0, byLevel: got,
+    points, done, total: all.length, share: all.length ? done / all.length : 0, byLevel: got, past: LEVELS.slice(0, LEVELS.indexOf(lv)).map((l) => l.id),
     level: { id: lv.id, title: lv.title, got: Math.min(got[lv.id], LEVEL_POINTS[lv.id]), max: LEVEL_POINTS[lv.id] },
   };
 }

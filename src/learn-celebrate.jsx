@@ -13,7 +13,7 @@
    Касание по сцене до конца постановки — сразу к финалу. «Уменьшить движение» — сразу финал.
    Отдельный ленивый чанк: грузится, только когда есть что праздновать. */
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { ArrowRight, ArrowUp, ArrowDown, Award, Gift } from 'lucide-react';
+import { ArrowRight, ArrowUp, ArrowDown, Award, Gift, Trophy, ShoppingBag, PiggyBank, Sprout } from 'lucide-react';
 import { Engraving, Medal, Stamp, CountUp, useReducedMotion } from './ds-art.jsx';
 import { ACH_ICON, MONTH_ART, MONTH_ABBR } from './award-art.js';
 import { albumItems, monthItems } from './learn/collections.js';
@@ -28,6 +28,8 @@ const POST = { fly: 0, draw: 650, fill: 1900, mark: 2450, text: 2850, album: 325
 const SEAL = { paper: 100, tool: 450, slam: 1400, lift: 1750, text: 2500, buttons: 3150 };
 // итоги лиги: места зажигаются с 200 мс по 45 мс, своё — вспышкой, потом стрелка и смена щита
 const LG = { ring: 200, step: 45, me: 1300, arrow: 1750, flip: 2150, text: 2700, buttons: 3350 };
+// открылась возможность: замок влетает, дужка отскакивает, замок падает — и медальон возможности выходит вперёд
+const UL = { lock: 100, open: 900, drop: 1250, medal: 1350, text: 1900, buttons: 2500 };
 
 const CSS = `
   .cb { position: fixed; inset: 0; z-index: 450; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0; overflow: hidden;
@@ -183,7 +185,19 @@ const CSS = `
   .cb-arrow.down { animation-name: cb-arrow-down; }
   @keyframes cb-arrow-up { from { opacity: 0; transform: translateY(70px) scale(.6) } }
   @keyframes cb-arrow-down { from { opacity: 0; transform: translateY(-70px) scale(.6) } }
-  @media (prefers-reduced-motion: reduce) { .cb *, .cb { animation: none !important; transition: none !important; } .cb-confetti, .cb-tool, .cb-tool-shadow { display: none; } .cb-shield-old { display: none; } }
+  /* открылась возможность */
+  .cb-lock { position: absolute; z-index: 3; animation: cb-lock-in .55s cubic-bezier(.2, 1.4, .4, 1) var(--at) backwards, cb-lock-out .5s cubic-bezier(.5, 0, .9, .5) var(--drop) forwards; }
+  @keyframes cb-lock-in { from { opacity: 0; transform: translateY(-60px) scale(.6) rotate(-10deg) } }
+  @keyframes cb-lock-out { to { opacity: 0; transform: translateY(120px) rotate(24deg) scale(.8) } }
+  .cb-lock .shackle { transform-box: fill-box; transform-origin: 100% 100%; animation: cb-shackle .45s cubic-bezier(.2, 1.6, .4, 1) var(--open) both; }
+  @keyframes cb-shackle { from { transform: none } to { transform: translateY(-14px) rotate(28deg) } }
+  .cb-unlock { position: absolute; z-index: 2; width: 172px; height: 172px; border-radius: 50%; display: grid; place-items: center; color: #fff;
+    background: radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--cb) 55%, #fff), var(--cb) 62%, color-mix(in srgb, var(--cb) 70%, #000));
+    box-shadow: 0 0 0 8px rgba(255,255,255,.18), 0 0 0 16px color-mix(in srgb, var(--cb) 30%, transparent), 0 26px 50px -18px rgba(0,0,0,.6);
+    animation: cb-unlock .7s cubic-bezier(.2, 1.5, .4, 1) var(--at) backwards; }
+  @keyframes cb-unlock { from { opacity: 0; transform: scale(.2) rotate(-40deg) } }
+  .cb-unlock svg { filter: drop-shadow(0 4px 8px rgba(0,0,0,.3)); }
+  @media (prefers-reduced-motion: reduce) { .cb *, .cb { animation: none !important; transition: none !important; } .cb-confetti, .cb-tool, .cb-tool-shadow { display: none; } .cb-shield-old { display: none; } .cb-lock { display: none; } }
 `;
 
 // предсказуемый «случай» — у одной и той же награды один и тот же рисунок конфетти
@@ -485,7 +499,38 @@ function LeagueScene({ m, onDone, onGo }) {
   );
 }
 
+/* Открылась возможность (src/learn/unlocks.js): замок с дужкой — дужка отскакивает, замок падает,
+   и вперёд выходит медальон возможности; ниже — что это и где найти. «Заглянуть» — сразу туда. */
+const UNLOCK_ICON = { trophy: Trophy, shop: ShoppingBag, piggy: PiggyBank, sprout: Sprout };
+const Padlock = () => (
+  <svg viewBox="0 0 80 100" width="104" height="130" aria-hidden="true">
+    <path className="shackle" d="M20 46 V30 a20 20 0 0 1 40 0 V46" fill="none" stroke="#C9C2B4" strokeWidth="9" strokeLinecap="round" />
+    <rect x="8" y="44" width="64" height="50" rx="10" fill="#E3B23C" stroke="#8A6416" strokeWidth="3" />
+    <rect x="14" y="50" width="20" height="38" rx="6" fill="#fff" opacity=".22" />
+    <circle cx="40" cy="64" r="6" fill="#5A3E06" /><rect x="37" y="66" width="6" height="14" rx="3" fill="#5A3E06" />
+  </svg>
+);
+function UnlockScene({ m, onDone, onGo }) {
+  const it = m.it;
+  const Icon = UNLOCK_ICON[it.icon] || Gift;
+  useCues([[UL.open, 'tick'], [UL.medal, 'register']]);
+  return (
+    <Scene tone={it.color} label={`Открылось: ${it.title}`} seed={hashOf(m.key)} confettiAt={UL.medal} testid="celebrate" onDone={onDone} onGo={onGo}
+      stage={(
+        <div data-testid="celebrate-unlock" data-feature={it.id} style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center' }}>
+          <div className="cb-unlock" style={{ '--at': `${UL.medal}ms` }}><Icon size={84} strokeWidth={1.8} aria-hidden="true" /></div>
+          <div className="cb-lock" style={{ '--at': `${UL.lock}ms`, '--open': `${UL.open}ms`, '--drop': `${UL.drop}ms` }}><Padlock /></div>
+          {SPARKS.map(([x, y], k) => <span key={k} className="cb-spark" style={{ '--x': `${x}px`, '--y': `${y}px`, '--at': `${UL.medal + 120 + k * 60}ms` }} aria-hidden="true"><Star4 /></span>)}
+        </div>
+      )}
+      eyebrow="Открылось" title={it.title} textAt={UL.text} sub={it.text}
+      extra={it.where ? <div className="cb-hint">{it.where}</div> : null}
+      buttonsAt={UL.buttons} primary="Дальше" secondary="Заглянуть" />
+  );
+}
+
 export default function Celebration({ moment, learn, onDone, onGo }) {
+  if (moment.kind === 'unlock') return <UnlockScene key={moment.key} m={moment} onDone={onDone} onGo={onGo} />;
   if (moment.kind === 'league') return <LeagueScene key={moment.key} m={moment} onDone={onDone} onGo={onGo} />;
   if (moment.kind === 'seal') return <SealScene key={moment.key} m={moment} onDone={onDone} onGo={onGo} />;
   if (moment.kind === 'month') return <MonthScene key={moment.key} m={moment} learn={learn} onDone={onDone} onGo={onGo} />;

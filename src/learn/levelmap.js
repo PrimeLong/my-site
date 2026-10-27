@@ -5,7 +5,7 @@
    уровнями. Новый юнит на карте сам двигает границы — рисовать их руками не нужно.
    Модуль чистый: его читают карта Пути (src/learn.jsx) и тесты. */
 import { UNITS, LEVELS } from './course.js';
-import { placeOf } from '../ds-tokens.js';
+import { placeOf, SOON_PLACES } from '../ds-tokens.js';
 import { countryPoints } from '../lib/mapgeo.js';
 
 // поле карты Пути (src/learn.jsx, MAP_BOX) с запасом: клетки потом обрезаются по контуру страны
@@ -90,10 +90,20 @@ function badgeSpot(polys, sites, road, border) {
   return best;
 }
 
-/* Области уровней: для каждого уровня — путь заливки (все клетки его юнитов), места и точка
+/* Места карты по порядку дороги: юниты уровня, за ними — места под будущие юниты этого уровня
+   (SOON_PLACES, id «soon:уровень:N»). По пять на уровень — 25 мест. */
+export const PER_LEVEL = 5;
+export function mapSlots(units = UNITS) {
+  return LEVELS.flatMap((l) => [
+    ...units.filter((u) => u.level === l.id).map((u) => ({ id: u.id, level: l.id, at: placeOf(u.id).at, soon: false })),
+    ...(SOON_PLACES[l.id] || []).map((at, k) => ({ id: `soon:${l.id}:${k + 1}`, level: l.id, at, soon: true })),
+  ]);
+}
+
+/* Области уровней: для каждого уровня — путь заливки (все клетки его мест), места и точка
    номера; borders — отрезки границ между разными уровнями (каждый один раз). */
-export function levelRegions(units = UNITS) {
-  const sites = units.map((u) => placeOf(u.id).at);
+export function levelRegions(units = mapSlots()) {
+  const sites = units.map((u) => u.at || placeOf(u.id).at);
   const cells = voronoi(sites);
   const levelOfSite = units.map((u) => u.level);
   const regions = LEVELS.map((l, k) => {

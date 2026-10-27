@@ -7,6 +7,8 @@ const NOW = new Date(2026, 9, 18, 12).getTime();
 const HOUR = 3600000;
 const UNIT1 = ['sc-i1', 'sc-l1', 'sc-l2', 'sc-i2', 'sc-l3', 'sc-l4', 'sc-l5', 'sc-l6', 'sc-w', 'sc-s1', 'sc-radio', 'sc-g', 'sc-rev', 'sc-sum'];
 // юнит 1 пройден час назад, печати «Первый шаг» (вчера) и «Место на карте» (час назад), марка октября
+// открытия (лиги, лавка… — src/learn/unlocks.js) здесь ни при чём: у них свои проверки (batch-oct27)
+const own = (ms) => ms.filter((m) => m.kind !== 'unlock');
 const learn = () => ({
   ...emptyLearn(),
   lessons: Object.fromEntries(UNIT1.map((id) => [id, { at: NOW - HOUR, runs: 1, best: 90 }])),
@@ -22,13 +24,13 @@ describe('церемонии', () => {
     expect(ms.every((m) => m.it && m.it.title)).toBe(true);
   });
   it('по порядку: марка юнита, марка месяца, печати по времени; показанное — не повторяется', () => {
-    const p = pendingMoments(learn(), {}, NOW);
+    const p = own(pendingMoments(learn(), {}, NOW));
     expect(p.map((m) => m.key)).toEqual(['u:scarcity', 'm:2026-10', 'a:first', 'a:unit']);
-    expect(pendingMoments(learn(), { 'u:scarcity': NOW, 'a:first': NOW }, NOW).map((m) => m.key)).toEqual(['m:2026-10', 'a:unit']);
+    expect(own(pendingMoments(learn(), { 'u:scarcity': NOW, 'a:first': NOW }, NOW)).map((m) => m.key)).toEqual(['m:2026-10', 'a:unit']);
   });
   it('старше трёх дней — без сцены', () => {
     const later = NOW + CELEBRATE.fresh - 3 * HOUR;
-    expect(pendingMoments(learn(), {}, later).map((m) => m.key)).toEqual(['u:scarcity', 'm:2026-10', 'a:unit']);
+    expect(own(pendingMoments(learn(), {}, later)).map((m) => m.key)).toEqual(['u:scarcity', 'm:2026-10', 'a:unit']);
     expect(pendingMoments(learn(), {}, NOW + CELEBRATE.fresh + HOUR)).toEqual([]);
   });
   it('первое знакомство: всё уже полученное — как показанное, новое потом — со сценой', () => {
@@ -43,7 +45,7 @@ describe('церемонии', () => {
     expect(baselineSeen(emptyLearn(), NOW)).toEqual({});
   });
   it('сцен подряд — не больше трёх, остальное — без сцен', () => {
-    const { show, skip } = nextBatch(pendingMoments(learn(), {}, NOW));
+    const { show, skip } = nextBatch(own(pendingMoments(learn(), {}, NOW)));
     expect(show.map((m) => m.key)).toEqual(['u:scarcity', 'm:2026-10', 'a:first']);
     expect(skip.map((m) => m.key)).toEqual(['a:unit']);
   });

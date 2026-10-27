@@ -14,6 +14,7 @@ import { Button, IconButton, Card, Heading, Row, Sheet } from './ds.jsx';
 import { halloween, seasonLeftText, WEB_FRAME } from './learn/halloween.js';
 import { Rosette, Medal, CoinShower, CountUp, Chest, Guilloche } from './ds-art.jsx';
 import { ShopSwitch, RateWeek } from './learn-rate.jsx';
+import { featureOpen, FeatureLocked } from './learn-unlock.jsx';
 import { DeskDecor } from './learn-decor.jsx';
 import { SkinPreview, SKIN_CSS } from './learn-skins.jsx';
 // сад — отдельный ленивый чанк: грузится, только когда открыли «Сад»
@@ -113,6 +114,23 @@ export const REWARD_CSS = `
   .rw-pig-peek { animation: rw-peek .5s .25s cubic-bezier(.3,1.5,.5,1) both; }
   @keyframes rw-peek { from { transform: translateY(8px) } }
   @keyframes rw-pop { from { transform: scale(0) } }
+  /* забрали вклад: свинка подпрыгивает и встряхивается, из прорези фонтаном вылетают монеты, всплывает «+N»;
+     раньше срока — сгоревший процент падает серыми монетками вниз */
+  .rw-pig-box { position: relative; flex: none; line-height: 0; }
+  .rw-pig-box.taking .rw-pig { animation: rw-pig-shake .95s cubic-bezier(.3,1.2,.5,1) both; transform-origin: 50% 92%; }
+  @keyframes rw-pig-shake { 0% { transform: none } 14% { transform: translateY(3px) scale(1.06, .9) } 30% { transform: translateY(-9px) rotate(-7deg) } 46% { transform: translateY(-2px) rotate(6deg) } 62% { transform: rotate(-4deg) } 78% { transform: rotate(2deg) } 100% { transform: none } }
+  .rw-pig-out { position: absolute; left: 31px; top: 11px; width: 13px; height: 13px; border-radius: 50%; pointer-events: none; opacity: 0;
+    background: radial-gradient(circle at 35% 32%, #FFF3C4, #E3B23C 55%, #A8800F); box-shadow: inset 0 0 0 1.4px #8A6416;
+    animation: rw-out 1s cubic-bezier(.2,.75,.35,1) both; animation-delay: calc(var(--i) * 65ms + .18s); }
+  .rw-pig-out.lost { background: radial-gradient(circle at 35% 32%, #eee, #a7a29b 60%, #6f6a63); box-shadow: inset 0 0 0 1.4px #5f5a54; animation-name: rw-lost; animation-duration: 1.1s; }
+  @keyframes rw-out { 0% { transform: translate(0, 0) scale(.3); opacity: 0 } 12% { opacity: 1 } 40% { transform: translate(calc(var(--dx) * .5), var(--up)) scale(1) rotate(160deg); animation-timing-function: cubic-bezier(.5, 0, .9, .6) } 85% { transform: translate(var(--dx), var(--dy)) scale(.9) rotate(380deg); opacity: 1 } 100% { transform: translate(var(--dx), var(--dy)) scale(.9) rotate(380deg); opacity: 0 } }
+  @keyframes rw-lost { 0% { transform: translate(0, 0) scale(.3); opacity: 0 } 15% { opacity: .9 } 35% { transform: translate(calc(var(--dx) * .4), -14px) scale(.9) } 100% { transform: translate(var(--dx), 46px) scale(.6) rotate(-120deg); opacity: 0 } }
+  .rw-pig-plus { position: absolute; left: 50%; top: -4px; z-index: 1; transform: translateX(-50%); white-space: nowrap; pointer-events: none; line-height: 1.15; text-align: center;
+    padding: 3px 10px; border-radius: 12px; background: var(--ds-card); border: 2px solid #E3B23C; box-shadow: 0 6px 14px -8px rgba(0,0,0,.45);
+    font: 800 16px var(--ds-mono); color: #7A5600; animation: rw-plus 1.7s .4s ease-out both; }
+  .ds-dark .rw-pig-plus { color: #F2C14E; }
+  .rw-pig-plus small { display: block; font: 700 12px var(--ds-sans); color: var(--ds-ink2); }
+  @keyframes rw-plus { 0% { opacity: 0; transform: translate(-50%, 12px) scale(.7) } 22% { opacity: 1; transform: translate(-50%, -6px) scale(1.1) } 75% { opacity: 1; transform: translate(-50%, -10px) scale(1) } 100% { opacity: 0; transform: translate(-50%, -16px) } }
   .rw-book-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; font: 700 14px var(--ds-sans); }
   .rw-book-kind { padding: 3px 10px; border-radius: 999px; background: color-mix(in srgb, var(--u) 12%, var(--ds-card)); color: var(--u-ink); }
   .rw-book-sum { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
@@ -268,7 +286,7 @@ export const REWARD_CSS = `
   .rw-goal { height: 5px; width: 100%; border-radius: 3px; background: var(--ds-rule); overflow: hidden; }
   .rw-goal > i { display: block; height: 100%; background: #8A2F45; }
   @media (prefers-reduced-motion: reduce) { .rw-ticket, .rw-seal svg *, .rw-flame *, .rw-days span, .rw-days-label, .rw-days-sub, .rw-dot i { animation: none !important; stroke-dashoffset: 0 !important; } }
-  @media (prefers-reduced-motion: reduce) { .sh-panel, .sh-more, .rw-flame, .rw-chest-open, .rw-item[data-rare="true"], .rw-bar > i, .rw-quest, .rw-ico.ok, .rw-goalbox, .rw-ring .fg, .rw-book-days i, .rw-pig-coin, .rw-pig-in .spark, .rw-pig-peek, .rw-grow .main, .rw-grow .now circle, .rw-grow .area, .rw-grow .other, .rw-grow .dot, .rw-grow .now, .rw-grow text { animation: none; } .rw-grow .main { stroke-dasharray: none; } .rw-bar > i, .rw-item { transition: none; } }
+  @media (prefers-reduced-motion: reduce) { .sh-panel, .sh-more, .rw-flame, .rw-chest-open, .rw-item[data-rare="true"], .rw-bar > i, .rw-quest, .rw-ico.ok, .rw-goalbox, .rw-ring .fg, .rw-book-days i, .rw-pig-coin, .rw-pig-in .spark, .rw-pig-peek, .rw-pig-box.taking .rw-pig, .rw-pig-plus, .rw-grow .main, .rw-grow .now circle, .rw-grow .area, .rw-grow .other, .rw-grow .dot, .rw-grow .now, .rw-grow text { animation: none; } .rw-grow .main { stroke-dasharray: none; } .rw-bar > i, .rw-item { transition: none; } }
 `;
 
 const Q_ICON = { timer: Timer, map: MapIcon, check: Check, target: Target, coins: Coins, flame: Flame, spark: Zap };
@@ -616,8 +634,11 @@ export function ShopView({ learn, update, now = Date.now(), focus = null }) {
   return (
     <div className="ln-wrap" data-testid="shop" data-view={view} data-tab={view === 'shop' ? tab : undefined}>
       <div>
-        <ShopSwitch view={view} onView={(v) => { Audio.play('paper'); setView(v); setMsg(null); }} learn={learn} />
-        {view === 'garden' ? <React.Suspense fallback={<div className="ds-sub" style={{ padding: 20 }}>Сад загружается…</div>}><GardenView learn={learn} update={update} /></React.Suspense> : <>
+        <ShopSwitch view={view} onView={(v) => { Audio.play('paper'); setView(v); setMsg(null); }} learn={learn} gardenLocked={!featureOpen(learn, 'garden')} />
+        {/* сад и копилка открываются не сразу (src/learn/unlocks.js): до того — карточка «откроется после N-го урока» */}
+        {view === 'garden' ? (featureOpen(learn, 'garden')
+          ? <React.Suspense fallback={<div className="ds-sub" style={{ padding: 20 }}>Сад загружается…</div>}><GardenView learn={learn} update={update} /></React.Suspense>
+          : <FeatureLocked id="garden" learn={learn} />) : <>
         <Card className="sh-head-card" data-testid="rate">
           <div className="sh-head">
             <Mascot mood="joy" size={52} outfit={wear} />
@@ -709,7 +730,7 @@ export function ShopView({ learn, update, now = Date.now(), focus = null }) {
 
           {tab === 'useful' && <>
             <p className="sh-intro">Не вещи, а сделки: вклад под процент, страховка серии и двойной опыт.</p>
-            <PiggyCard learn={learn} update={update} now={now} b={b} onMsg={setMsg} />
+            {featureOpen(learn, 'piggy') ? <PiggyCard learn={learn} update={update} now={now} b={b} onMsg={setMsg} /> : <FeatureLocked id="piggy" learn={learn} compact />}
             <PolicyCard learn={learn} update={update} now={now} b={b} onMsg={setMsg} />
             <Card style={{ margin: '0 0 16px' }} data-testid="shop-boost">
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -816,11 +837,27 @@ const PRESETS = [['¼', 0.25], ['½', 0.5], ['Всё', 1]];
    прорези и рядом искорки. Свинка розовая и улыбается (жалоба: прежняя, зелёная и с хвостом-клином,
    выглядела страшно), цвета свои — не цвет юнита. */
 const PIG = { body: '#F8BACA', far: '#EE9CB0', ear: '#F4A7BA', snout: '#F49AB0', line: '#A84E68', ink: '#5A2434' };
-function PiggyArt({ full = false, drop = 0 }) {
+// монеты, вылетающие при «Забрать»: фонтаном из прорези и рассыпаются у ног свинки; число — от суммы, 3…9
+const outCoins = (payout, lost) => {
+  const n = Math.max(3, Math.min(9, Math.round(payout / 15)));
+  const gold = Array.from({ length: n }, (_, i) => ({ i, dx: (i % 2 ? 1 : -1) * (10 + ((i * 17) % 40)) + 8, up: -14 - ((i * 11) % 16), dy: 30 + ((i * 7) % 12) }));
+  const grey = lost ? Array.from({ length: Math.min(3, Math.max(1, Math.round(lost / 10))) }, (_, i) => ({ i: n + i, dx: -22 + i * 16, lost: true })) : [];
+  return [...gold, ...grey];
+};
+function PiggyArt({ full = false, drop = 0, out = null }) {
   const clip = `pig${React.useId().replace(/:/g, '')}`;
   const leg = (x, fill) => <rect x={x} y="44" width="7.5" height="15" rx="3.4" fill={fill} stroke={PIG.line} strokeWidth="2" />;
   const ear = (d) => <path d={d} fill={PIG.ear} stroke={PIG.line} strokeWidth="2" strokeLinejoin="round" />;
   return (
+    <span className={`rw-pig-box${out ? ' taking' : ''}`} data-testid="piggy-art" data-taking={out ? 'true' : undefined}>
+    {out && (
+      <React.Fragment key={out.k}>
+        {outCoins(out.payout, out.lost).map((c) => (
+          <i key={c.i} className={`rw-pig-out${c.lost ? ' lost' : ''}`} style={{ '--i': c.i, '--dx': `${c.dx}px`, '--up': `${c.up || 0}px`, '--dy': `${c.dy || 0}px` }} aria-hidden="true" />
+        ))}
+        <span className="rw-pig-plus" data-testid="piggy-plus" aria-hidden="true">+{out.payout}{out.lost ? <small>−{out.lost} сгорело</small> : null}</span>
+      </React.Fragment>
+    )}
     <svg className="rw-pig" viewBox="0 0 80 64" width="80" height="64" aria-hidden="true">
       <defs><clipPath id={clip}><rect x="20" y="-20" width="40" height="38.4" /></clipPath></defs>
       {drop > 0 && <g key={drop} className="rw-pig-coin"><circle cx="37.5" cy="6" r="6" fill="#E3B23C" stroke="#8A6416" strokeWidth="1.4" /><circle cx="37.5" cy="6" r="3" fill="none" stroke="#8A6416" strokeWidth="1" /></g>}
@@ -844,6 +881,7 @@ function PiggyArt({ full = false, drop = 0 }) {
         </g>
       )}
     </svg>
+    </span>
   );
 }
 function PiggyCard({ learn, update, now, b, onMsg }) {
@@ -855,6 +893,9 @@ function PiggyCard({ learn, update, now, b, onMsg }) {
   const [topup, setTopup] = useState(false);
   const [addAmt, setAddAmt] = useState(() => Math.max(PIGGY.addMin, Math.min(50, Math.floor(b / 4))));
   const [drop, setDrop] = useState(0);
+  // «Забрать»: сколько вылетело и сколько сгорело — для анимации свинки
+  const [out, setOut] = useState(null);
+  useEffect(() => { if (!out) return undefined; const t = setTimeout(() => setOut(null), 2200); return () => clearTimeout(t); }, [out]);
   const can = b >= PIGGY.min;
   const n = Math.max(PIGGY.min, Math.min(amount, b));
   const rTop = topupRate(rateNow);
@@ -877,12 +918,13 @@ function PiggyCard({ learn, update, now, b, onMsg }) {
     const r = piggyTake(learn, now);
     if (!r.ok) { onMsg({ ok: false, text: r.reason }); return; }
     Audio.play(r.early ? 'paper' : 'register'); update(() => r.s, { settle: true });
+    setOut((o) => ({ k: (o ? o.k : 0) + 1, payout: r.payout, lost: r.lost || 0 }));
     onMsg({ ok: true, text: !r.early ? `Забрано ${r.payout} ${coinsWord(r.payout)} — с процентами за неделю.` : r.lost ? `Забрано ${r.payout} ${coinsWord(r.payout)}: раньше срока процент сгорел (−${r.lost}).` : `Забрано ${r.payout} ${coinsWord(r.payout)}: проценты не успели набежать.` });
   };
   return (
     <Card className="rw-piggy" style={{ margin: '0 0 14px', padding: 0, overflow: 'hidden' }} data-testid="shop-piggy" data-open={String(!!st)}>
       <div className="rw-piggy-head">
-        <PiggyArt full={!!st} drop={drop} />
+        <PiggyArt full={!!st} drop={drop} out={out} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div className="ds-eyebrow">Сберкнижка</div>
           <div className="ds-h3">Копилка Инфли</div>

@@ -31,3 +31,24 @@ describe('карта: области уровней', () => {
     });
   });
 });
+
+describe('карта: 25 мест — по пять на уровень', async () => {
+  const { mapSlots, PER_LEVEL } = await import('../levelmap.js');
+  const slots = mapSlots();
+  it('на каждом уровне пять мест: юниты уровня и места под будущие юниты', () => {
+    expect(slots).toHaveLength(25);
+    LEVELS.forEach((l) => expect(slots.filter((x) => x.level === l.id), l.id).toHaveLength(PER_LEVEL));
+    // юниты — каждый ровно один раз, в порядке Пути (по уровням)
+    expect(slots.filter((x) => !x.soon).map((x) => x.id)).toEqual(UNITS.map((u) => u.id));
+    expect(new Set(slots.map((x) => x.id)).size).toBe(25);
+  });
+  it('места не налезают друг на друга, дорога не пересекает себя', () => {
+    slots.forEach((a, i) => slots.forEach((b, j) => { if (i < j) expect(Math.hypot(a.at[0] - b.at[0], a.at[1] - b.at[1]), `${a.id}–${b.id}`).toBeGreaterThan(70); }));
+    const seg = slots.slice(1).map((b, k) => [slots[k].at, b.at]);
+    const cross = ([p1, p2], [p3, p4]) => {
+      const d = (a, b, c) => (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+      return d(p1, p2, p3) * d(p1, p2, p4) < 0 && d(p3, p4, p1) * d(p3, p4, p2) < 0;
+    };
+    seg.forEach((s1, i) => seg.forEach((s2, j) => { if (j > i + 1) expect(cross(s1, s2), `${i}×${j}`).toBe(false); }));
+  });
+});
