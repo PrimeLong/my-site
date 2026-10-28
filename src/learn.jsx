@@ -38,7 +38,7 @@ import {
   goalToday, missedYesterday, XP, applyFreezes, setPlacement, dayOf, recordSeen, recordBest, DIAMOND_ACCURACY, streakBonus, gameXp, maxLessonXp, syncStreak, streakNow,
   markShown, shownWith, markFixed,
 } from './textbook/learn-state.js';
-import { courseLevel, SCALE_MAX, LEVEL_POINTS, LEVEL_FROM } from './learn/grade.js';
+import { courseLevel } from './learn/grade.js';
 import { runCoins, runKey, earn, settle, chestKey, hasClaim, outfitOf, deskOf, themeOf, boostActive, chargePremiums, fixMonth } from './learn/rewards.js';
 import { DeskDecor, tellAnswer } from './learn-decor.jsx';
 import { LessonSkin, SKINS, SKIN_CSS, skinTheme, skinVars } from './learn-skins.jsx';
@@ -94,45 +94,36 @@ const CSS = `
   .ln-stat { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center; gap: 5px; padding: 7px 4px; border: 1px solid var(--ds-rule2); border-radius: 3px;
     background: var(--ds-card); font: 700 15px var(--ds-mono); white-space: nowrap; box-shadow: inset 0 0 0 2px var(--ds-card), inset 0 0 0 3px var(--ds-rule); }
   .ln-stat small { font: 12px var(--ds-sans); color: var(--ds-ink3); letter-spacing: .04em; }
-  /* оценка в курсе: крупная цифра оценки, слово, точность и полоска пройденного курса с бликом */
-    border: 1px solid var(--ds-rule2); box-shadow: 0 10px 24px -20px rgba(40, 24, 8, .5); }
-    background: linear-gradient(90deg, rgba(0,0,0,.2), transparent 20%, transparent 80%, rgba(0,0,0,.22)), var(--rd); box-shadow: 3px 0 0 -1px color-mix(in srgb, var(--rd) 40%, var(--ds-card)); }
-  .ln-grade { display: block; margin: -4px 0 14px; padding: 12px 14px 10px; border-radius: 18px; border: 2px solid color-mix(in srgb, var(--u) 30%, var(--ds-rule));
-    background: linear-gradient(135deg, color-mix(in srgb, var(--u) 9%, var(--ds-card)), var(--ds-card) 70%); box-shadow: 0 3px 0 color-mix(in srgb, var(--u) 22%, var(--ds-rule)); }
-  .ln-grade-top { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
-  .ln-grade-top .ds-eyebrow { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .ln-grade-level { display: block; margin-top: 2px; font: 13px/1.35 var(--ds-sans); color: var(--ds-ink2); }
-  .ln-grade-row { display: flex; align-items: center; gap: 12px; margin: 6px 0 8px; min-width: 0; }
-  .ln-grade-num { flex: none; min-width: 64px; text-align: center; font: 700 34px/1 var(--ds-mono); font-variant-numeric: tabular-nums; color: var(--u-ink); padding: 6px 8px; border-radius: 14px;
-    background: color-mix(in srgb, var(--u) 12%, var(--ds-card)); box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--u) 22%, transparent); animation: ln-grade-pop .5s cubic-bezier(.3, 1.5, .5, 1) backwards; }
-  .ds-dark .ln-grade-num { color: color-mix(in srgb, var(--u) 45%, #fff); }
-  @keyframes ln-grade-pop { from { transform: scale(.7); opacity: 0 } }
-  .ln-grade-word { display: flex; flex-direction: column; min-width: 0; }
+  /* уровень знаний: медальон с числом и кольцом прогресса уровня курса, справа — уровень курса и точки уровней */
+  .ln-grade { display: flex; align-items: center; gap: 14px; margin: -4px 0 14px; padding: 12px 16px 12px 12px; border-radius: 22px; border: 1px solid color-mix(in srgb, var(--u) 26%, var(--ds-rule));
+    background: radial-gradient(120% 140% at 0% 0%, color-mix(in srgb, var(--u) 14%, var(--ds-card)), var(--ds-card) 62%); box-shadow: 0 14px 30px -24px color-mix(in srgb, var(--u) 70%, #000), 0 2px 0 color-mix(in srgb, var(--u) 18%, var(--ds-rule)); }
+  .ln-know { position: relative; flex: none; width: 76px; height: 76px; display: grid; place-items: center; }
+  .ln-know svg { position: absolute; inset: 0; }
+  .ln-know-ring { transition: stroke-dasharray .9s cubic-bezier(.2, .9, .3, 1); }
+  .ln-know b { position: relative; font: 800 30px/1 var(--ds-head); font-variant-numeric: tabular-nums; color: var(--u-ink); letter-spacing: -.02em; }
+  .ds-dark .ln-know b { color: color-mix(in srgb, var(--u) 45%, #fff); }
+  .ln-know::before { content: ''; position: absolute; inset: 11px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, var(--ds-card), color-mix(in srgb, var(--u) 10%, var(--ds-card)));
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--u) 20%, transparent); }
+  .ln-know.up { animation: ln-know-hop .7s cubic-bezier(.3, 1.6, .5, 1) .25s backwards; }
+  @keyframes ln-know-hop { 0% { transform: scale(.85) } 60% { transform: scale(1.08) } 100% { transform: none } }
+  .ln-know-plus { position: absolute; right: -6px; top: -4px; font: 800 13px/1 var(--ds-sans); font-style: normal; color: #fff; background: var(--ds-ok, #2E7D32); padding: 4px 7px; border-radius: 999px;
+    box-shadow: 0 4px 10px -4px rgba(0,0,0,.4); animation: ln-know-plus 2.6s ease-out .4s both; }
+  @keyframes ln-know-plus { 0% { opacity: 0; transform: translateY(8px) scale(.6) } 15% { opacity: 1; transform: translateY(0) scale(1.1) } 25% { transform: none } 80% { opacity: 1 } 100% { opacity: 0; transform: translateY(-10px) } }
+  .ln-grade-word { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
   .ln-grade-word b { font: 700 17px/1.2 var(--ds-head); }
-  .ln-grade-word small { font: 13px/1.3 var(--ds-sans); color: var(--ds-ink2); }
-  /* шкала курса: полоса с заливкой и под ней номера уровней курса — каждый в своём отрезке */
-  .ln-scale { position: relative; display: block; height: 30px; }
-  .ln-scale-bar { position: absolute; left: 0; right: 0; top: 0; height: 10px; border-radius: 999px; overflow: hidden; background: color-mix(in srgb, var(--u) 12%, var(--ds-card2)); }
-  .ln-scale-bar i { position: absolute; inset: 0 auto 0 0; border-radius: inherit; background: linear-gradient(90deg, color-mix(in srgb, var(--u) 70%, #fff), var(--u)); transition: width .8s cubic-bezier(.2, .9, .3, 1);
-    animation: ln-grade-grow 1s cubic-bezier(.2, .9, .3, 1) backwards; overflow: hidden; }
-  .ln-scale-seg { position: absolute; top: 12px; height: 16px; display: flex; align-items: center; justify-content: center; font: 700 12px var(--ds-mono); color: var(--ds-ink3);
-    border-left: 1px solid var(--ds-rule2); }
-  .ln-scale-seg:first-of-type { border-left: 0; }
-  .ln-scale-seg.past { color: var(--ds-ink2); }
-  .ln-scale-seg.on { color: var(--u-ink); }
-  .ds-dark .ln-scale-seg.on { color: color-mix(in srgb, var(--u) 45%, #fff); }
-  .ln-scale-seg.on::before { content: ''; position: absolute; left: 50%; top: -6px; width: 6px; height: 6px; margin-left: -3px; border-radius: 50%; background: var(--u); }
-  .ln-scale-bar i::after { content: ''; position: absolute; inset: 0; background: linear-gradient(105deg, transparent 30%, rgba(255,255,255,.55) 50%, transparent 70%); background-size: 220% 100%; animation: ln-grade-shine 3.2s ease-in-out 1s 3; }
-  @keyframes ln-grade-grow { from { width: 0 } }
-  @keyframes ln-grade-shine { 0% { background-position: 140% 0 } 60%, 100% { background-position: -60% 0 } }
+  .ln-grade-word small { font: 13.5px/1.35 var(--ds-sans); color: var(--ds-ink2); }
+  .ln-know-steps { display: flex; gap: 5px; margin-top: 5px; }
+  .ln-know-steps i { width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; font: 700 11px/1 var(--ds-mono); font-style: normal; color: var(--ds-ink3);
+    background: var(--ds-card2); box-shadow: inset 0 0 0 1px var(--ds-rule2); }
+  .ln-know-steps i.past { color: #fff; background: color-mix(in srgb, var(--u) 70%, var(--ds-card)); box-shadow: none; }
+  .ln-know-steps i.on { color: var(--u-ink); background: color-mix(in srgb, var(--u) 16%, var(--ds-card)); box-shadow: inset 0 0 0 2px var(--u); }
+  .ds-dark .ln-know-steps i.on { color: color-mix(in srgb, var(--u) 45%, #fff); }
   /* телефон: карточка ниже — карта Пути не уезжает под нижнюю панель */
   @media (max-width: 560px) {
-    .ln-grade { padding: 10px 12px 9px; margin-bottom: 12px; }
-    .ln-grade-row { margin: 4px 0 7px; gap: 10px; }
-    .ln-grade-num { min-width: 54px; font-size: 28px; padding: 4px 6px; }
+    .ln-grade { padding: 10px 12px 10px 10px; gap: 12px; margin-bottom: 12px; }
     .ln-grade-word b { font-size: 16px; }
   }
-  @media (prefers-reduced-motion: reduce) { .ln-grade-num, .ln-scale-bar i, .ln-scale-bar i::after { animation: none; } }
+  @media (prefers-reduced-motion: reduce) { .ln-know.up, .ln-know-plus { animation: none; } .ln-know-plus { display: none; } .ln-know-ring { transition: none; } }
   .ln-streak.on { background: color-mix(in srgb, var(--ds-bad) 12%, var(--ds-card)); border-color: color-mix(in srgb, var(--ds-bad) 55%, var(--ds-rule2)); color: var(--ds-bad); }
   .ln-streak.on small { color: inherit; }
   .ln-streak.wait { border-style: dashed; color: var(--ds-ink3); }
@@ -1783,39 +1774,56 @@ const SEEN_KEY = 'ems-learn-open-seen';
 const readSeen = () => { try { const v = JSON.parse(localStorage.getItem(SEEN_KEY) || 'null'); return Array.isArray(v) ? new Set(v) : null; } catch { return null; } };
 const writeSeen = (set) => { try { localStorage.setItem(SEEN_KEY, JSON.stringify([...set])); } catch { /* приватный режим */ } };
 
-/* Оценка в курсе (src/learn/grade.js): вместо счётчиков опыта и монет — «ваша оценка» от 2 до 5 и
-   полоска пройденного курса. Опыт — в лиге, монеты — в лавке; здесь — главное: как идёт учёба. */
-
-/* Уровень в курсе — шкала A1…C2 в условных единицах (src/learn/grade.js): ступень крупно, сколько
-   набрано и сколько до следующей ступени, под ней — вся шкала курса отрезками ступеней. */
+/* Уровень знаний (src/learn/grade.js): маленькое число, которое растёт от урока к уроку, — в медальоне с
+   кольцом прогресса нынешнего уровня курса. Выросло с прошлого раза — медальон подпрыгивает, число
+   досчитывает, всплывает «+N» (где ученик видел число в прошлый раз — на устройстве, ems-know-seen):
+   рост — событие. Справа — уровень курса и сколько уроков уровня пройдено, точки пяти уровней. */
+const KNOW_SEEN = 'ems-know-seen';
+const readKnowSeen = () => { try { const v = Number(localStorage.getItem(KNOW_SEEN)); return Number.isFinite(v) ? v : null; } catch { return null; } };
 function GradeCard({ learn }) {
   const c = useMemo(() => courseLevel(learn), [learn]);
-  const fill = (c.points / SCALE_MAX) * 100;
+  const reduced = useReducedMotion();
+  // прирост с прошлого показа: запоминаем при первом показе, дальше — каждый раз, когда число выросло
+  const [from] = useState(() => { const v = readKnowSeen(); return v == null || v > c.points ? c.points : v; });
+  const gain = c.points - from;
+  const shownNum = useCountUp(c.points, reduced || gain <= 0 ? c.points : from);
+  useEffect(() => { try { localStorage.setItem(KNOW_SEEN, String(c.points)); } catch { /* приватный режим */ } }, [c.points]);
+  const share = c.level.total ? c.level.done / c.level.total : 0;
+  const R = 31; const L = 2 * Math.PI * R;
   return (
-    <div className="ln-grade" data-testid="course-level" data-points={c.points} data-done={c.done} data-level={c.level.id}>
-      <div className="ln-grade-top">
-        <span className="ds-eyebrow">Ваш уровень в курсе экономики</span>
-      </div>
-      {/* не ступени, а число: условные единицы курса из 1000 */}
-      <div className="ln-grade-row">
-        <span className="ln-grade-num" data-testid="course-points" aria-hidden="true" key={c.points}>{c.points}</span>
-        <span className="ln-grade-word">
-          <b>{c.points ? 'условных единиц' : 'единиц пока нет'}</b>
-          <small>из {SCALE_MAX} за весь курс · <span className="nw">{c.done} из {c.total} уроков</span></small>
-        </span>
-      </div>
-      <span className="ds-sr">{c.points} условных единиц из {SCALE_MAX}. {c.level.title} уровень курса: {c.level.got} из {c.level.max}. Пройдено {c.done} из {c.total} уроков.</span>
-      {/* шкала курса: отрезок на каждый уровень курса, ширина — по его единицам; набранное — заливка, свой уровень ярче */}
-      <span className="ln-scale" aria-hidden="true">
-        <span className="ln-scale-bar"><i style={{ width: `${Math.max(c.points ? 1.5 : 0, fill)}%` }} /></span>
-        {LEVELS.map((l, k) => (
-          <span key={l.id} className={`ln-scale-seg${l.id === c.level.id ? ' on' : c.past.includes(l.id) ? ' past' : ''}`}
-            style={{ left: `${(LEVEL_FROM[l.id] / SCALE_MAX) * 100}%`, width: `${(LEVEL_POINTS[l.id] / SCALE_MAX) * 100}%` }}>{k + 1}</span>
-        ))}
+    <div className="ln-grade" data-testid="course-level" data-points={c.points} data-done={c.done} data-level={c.level.id} data-gain={gain > 0 ? gain : undefined}>
+      <span className={`ln-know${gain > 0 ? ' up' : ''}`} aria-hidden="true">
+        <svg viewBox="0 0 76 76" width="76" height="76">
+          <circle cx="38" cy="38" r={R} fill="none" stroke="color-mix(in srgb, var(--u) 16%, var(--ds-card2))" strokeWidth="6" />
+          <circle className="ln-know-ring" cx="38" cy="38" r={R} fill="none" stroke="var(--u)" strokeWidth="6" strokeLinecap="round"
+            strokeDasharray={`${Math.max(share > 0 ? 3 : 0, share * L)} ${L}`} transform="rotate(-90 38 38)" />
+        </svg>
+        <b data-testid="course-points">{shownNum}</b>
+        {gain > 0 && <i className="ln-know-plus" data-testid="course-gain">+{gain}</i>}
       </span>
-      <small className="ln-grade-level" data-testid="course-next">{c.points ? `${c.level.title} уровень курса: ${c.level.got} из ${c.level.max} ед.` : 'Единицы — за пройденные уроки: чем точнее ответы, тем больше.'}</small>
+      <span className="ln-grade-word">
+        <span className="ds-eyebrow">Уровень знаний</span>
+        <b>{c.level.title} уровень курса</b>
+        <small data-testid="course-next">{c.points ? `Пройдено уроков уровня: ${c.level.done} из ${c.level.total}` : 'Каждый урок добавляет к уровню знаний — начните с первого.'}</small>
+        <span className="ln-know-steps" aria-hidden="true">
+          {LEVELS.map((l, k) => <i key={l.id} className={l.id === c.level.id ? 'on' : c.past.includes(l.id) ? 'past' : ''} title={l.title}>{k + 1}</i>)}
+        </span>
+      </span>
+      <span className="ds-sr">Уровень знаний: {c.points}. {c.level.title} уровень курса: пройдено {c.level.done} из {c.level.total} уроков. Всего пройдено {c.done} из {c.total} уроков.</span>
     </div>
   );
+}
+// число досчитывает до нового значения (рост — событием), без анимации — сразу
+function useCountUp(target, from) {
+  const [v, setV] = useState(from);
+  useEffect(() => {
+    if (from === target) { setV(target); return undefined; }
+    let raf = 0; const t0 = performance.now(); const dur = 900;
+    const tick = (now) => { const t = Math.min(1, (now - t0) / dur); setV(Math.round(from + (target - from) * (1 - Math.pow(1 - t, 3)))); if (t < 1) raf = requestAnimationFrame(tick); };
+    const delay = setTimeout(() => { raf = requestAnimationFrame(tick); }, 350);
+    return () => { clearTimeout(delay); cancelAnimationFrame(raf); };
+  }, [target, from]);
+  return v;
 }
 
 function TopStats({ learn, bell = null }) {

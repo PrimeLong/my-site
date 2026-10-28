@@ -2868,7 +2868,7 @@ test('вход: программа — вступительный тест, су
   await expect(page.getByTestId('wallet-balance')).toHaveCount(0);
   await expect(page.getByTestId('course-level')).toHaveAttribute('data-done', '0');
   await expect(page.getByTestId('course-points')).toHaveText('0');
-  await expect(page.getByTestId('course-level')).toContainText('из 1000 за весь курс');
+  await expect(page.getByTestId('course-level')).toContainText('Уровень знаний');
   await expect(page.getByTestId('course-level')).not.toContainText('A1');
   await expect(page.getByTestId('chest')).toHaveCount(0);
   // задания дня и испытание месяца — экран «Задания» с карточки наверху Пути; испытание считается от цели в минутах
@@ -4600,27 +4600,34 @@ test('лига: до первого урока ученика в лиге нет
   expect(errors).toEqual([]);
 });
 
-test('Путь: наверху — уровень в курсе числом условных единиц и шкала курса по уровням', async ({ page }) => {
+test('Путь: наверху — уровень знаний маленьким числом, уровень курса и точки уровней; рост — «+N»', async ({ page }) => {
   await page.addInitScript(() => {
     if (localStorage.getItem('ems-textbook-v1')) return;
     const at = Date.now() - 86400000;
     const ids = ['sc-i1', 'sc-l1', 'sc-l2', 'sc-i2'];
     localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons: Object.fromEntries(ids.map((id) => [id, { at, runs: 1, best: 90 }])) } }));
+    // в прошлый раз ученик видел 2 — теперь 4: рост показывается «+2»
+    if (!sessionStorage.getItem('seen-once')) { localStorage.setItem('ems-know-seen', '2'); sessionStorage.setItem('seen-once', '1'); }
   });
   const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
   const grade = page.getByTestId('course-level');
   await expect(grade).toHaveAttribute('data-done', '4');
-  /* 4 урока из 14 юнита «Мастерская» на 90%. Начальный уровень (100 ед.) — «Мастерская» и будущий «Рынок
-     труда», по 50 ед.: 4 × 50/14 × 0,97 ≈ 14 ед. — числом, без ступеней A1…C2 */
-  await expect(grade).toHaveAttribute('data-points', '14');
-  await expect(page.getByTestId('course-points')).toHaveText('14');
-  await expect(grade).toContainText('Ваш уровень в курсе экономики');
-  await expect(grade).toContainText('4 из 104 уроков');
-  await expect(page.getByTestId('course-next')).toHaveText('Начальный уровень курса: 14 из 100 ед.');
-  await expect(grade.locator('.ln-scale-seg')).toHaveCount(5);
-  await expect(grade.locator('.ln-scale-seg.on')).toHaveText('1');
-  await expect(grade).not.toContainText(/\b[ABC][12]\b/);
+  // 4 урока на 90%: по 1 за урок, без «условных единиц из 1000» и без ступеней A1…C2
+  await expect(grade).toHaveAttribute('data-points', '4');
+  await expect(page.getByTestId('course-points')).toHaveText('4');
+  await expect(grade).toHaveAttribute('data-gain', '2');
+  await expect(page.getByTestId('course-gain')).toHaveText('+2');
+  await expect(grade).toContainText('Уровень знаний');
+  await expect(grade).toContainText('Начальный уровень курса');
+  await expect(page.getByTestId('course-next')).toHaveText('Пройдено уроков уровня: 4 из 14');
+  await expect(grade.locator('.ln-know-steps i')).toHaveCount(5);
+  await expect(grade.locator('.ln-know-steps i.on')).toHaveText('1');
+  await expect(grade).not.toContainText(/условн|из 1000|\b[ABC][12]\b/);
   await expect(page.getByTestId('wallet-balance')).toHaveCount(0);
+  // число запомнено: при следующем заходе роста нет
+  await page.reload();
+  await expect(page.getByTestId('course-level')).toHaveAttribute('data-points', '4');
+  await expect(page.getByTestId('course-gain')).toHaveCount(0);
   // на узком телефоне подписи не вылезают за рамку
   // текст для чтения с экрана обрезан нарочно — его не считаем
   const over = await grade.evaluate((el) => [...el.querySelectorAll('*')].filter((x) => !x.classList.contains('ds-sr') && x.scrollWidth > x.clientWidth + 1 && getComputedStyle(x).overflow !== 'visible').length);

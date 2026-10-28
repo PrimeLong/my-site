@@ -53,53 +53,36 @@ describe('время по Гринвичу — с местным времене�
   });
 });
 
-describe('уровень в курсе — число условных единиц из 1000, без ступеней', async () => {
+describe('уровень знаний — маленькое число, растёт от урока к уроку (выпуск 28 октября)', async () => {
   const grade = await import('../grade.js');
-  const { courseLevel, LEVEL_POINTS, LEVEL_FROM, SCALE_MAX, lessonQuality, unitPoints } = grade;
+  const { courseLevel, KNOW } = grade;
   const { UNITS } = await import('../course.js');
-  const { LEVELS, UNIT_LEVEL } = await import('../../textbook/levels.js');
-  const doneAll = (ids, best = 100) => Object.fromEntries(ids.map((id) => [id, { at: T('2026-10-20T10:00:00Z'), runs: 1, best }]));
+  const doneAll = (ids, best = 100, extra = {}) => Object.fromEntries(ids.map((id) => [id, { at: T('2026-10-20T10:00:00Z'), runs: 1, best, ...extra }]));
   const ids = (level) => UNITS.filter((u) => u.level === level).flatMap((u) => u.lessons.map((l) => l.id));
-  it('весь курс — 1000 ед.: уровни 100/200/250/250/200 подряд на шкале; ступеней A1…C2 больше нет', () => {
-    expect(Object.values(LEVEL_POINTS).reduce((a, b) => a + b, 0)).toBe(SCALE_MAX);
-    expect(LEVELS.map((l) => l.id)).toEqual(Object.keys(LEVEL_POINTS));
-    expect(LEVEL_FROM).toEqual({ start: 0, basic: 100, middle: 300, advanced: 550, pro: 800 });
-    expect(grade.BANDS).toBeUndefined();
-    expect(grade.bandOf).toBeUndefined();
-    // юниты уровня, и будущие, делят его единицы поровну
-    Object.keys(LEVEL_POINTS).forEach((lv) => {
-      const sum = Object.keys(UNIT_LEVEL).filter((u) => UNIT_LEVEL[u] === lv).reduce((a, u) => a + unitPoints(u), 0);
-      expect(sum).toBeCloseTo(LEVEL_POINTS[lv]);
-    });
-  });
-  // Начальный уровень — «Мастерская» и будущий «Рынок труда»: вышедшая «Мастерская» весит половину уровня
-  const startOpen = unitPoints('scarcity');
-  it('без уроков — 0 ед., уровень курса «Начальный» 0 из 100; всё вышедшее в Начальном пройдено на 100% — дальше Базовый', () => {
+  it('без уроков — 0; урок — +1, без ошибок — ещё +1; никаких «единиц из 1000»', () => {
+    expect(grade.SCALE_MAX).toBeUndefined();
     const none = courseLevel(emptyLearn());
-    expect(none).toMatchObject({ points: 0, past: [], level: { id: 'start', got: 0, max: 100 } });
-    expect(none.band).toBeUndefined();
-    expect(startOpen).toBe(50);
-    const start = { ...emptyLearn(), lessons: doneAll(ids('start')) };
-    // уровень не застревает в ожидании будущего юнита: Начальный — пройден, дальше Базовый
-    expect(courseLevel(start)).toMatchObject({ points: startOpen, past: ['start'], level: { id: 'basic', got: 0, max: 200 } });
-    const sloppy = { ...emptyLearn(), lessons: doneAll(ids('start'), 50) };
-    expect(Math.abs(courseLevel(sloppy).points - startOpen * lessonQuality(50))).toBeLessThanOrEqual(0.5 + 1e-9);
-    expect(courseLevel(sloppy).level.id).toBe('start');
+    expect(none).toMatchObject({ points: 0, past: [], level: { id: 'start', done: 0 } });
+    const one = { ...emptyLearn(), lessons: doneAll([ids('start')[0]], 80) };
+    expect(courseLevel(one).points).toBe(KNOW.lesson);
+    const perfect = { ...emptyLearn(), lessons: doneAll([ids('start')[0]], 100) };
+    expect(courseLevel(perfect).points).toBe(KNOW.lesson + KNOW.perfect);
+    const gem = { ...emptyLearn(), lessons: doneAll([ids('start')[0]], 80, { diamond: T('2026-10-21T10:00:00Z') }) };
+    expect(courseLevel(gem).points).toBe(KNOW.lesson + KNOW.diamond);
   });
-  it('Базовый пройден — Начальный и Базовый позади; доля урока: 70% за прохождение и до 30% за точность; алмаз — полная', () => {
-    const basic = { ...emptyLearn(), lessons: doneAll([...ids('start'), ...ids('basic')]) };
-    const c = courseLevel(basic);
-    expect(c.points).toBe(startOpen + 200);
-    expect(c.byLevel).toMatchObject({ start: startOpen, basic: 200 });
-    expect(c.past).toEqual(['start', 'basic']);
-    expect(c.level.id).toBe('middle');
-    expect(lessonQuality(0)).toBe(0.7);
-    expect(lessonQuality(100)).toBe(1);
-    expect(lessonQuality(50, true)).toBe(1);
+  it('юнит целиком — ещё +3, особый урок — +1; уровень курса — первый с непройденными уроками', () => {
+    const start = ids('start');
+    const s = { ...emptyLearn(), lessons: doneAll(start, 80), met: { 'people-scarcity': T('2026-10-20T10:00:00Z') } };
+    const c = courseLevel(s);
+    expect(c.points).toBe(start.length * KNOW.lesson + KNOW.unit + KNOW.extra);
+    expect(c.past).toEqual(['start']);
+    expect(c.level).toMatchObject({ id: 'basic', done: 0 });
+    expect(c.byLevel.start).toEqual({ done: start.length, total: start.length });
   });
-  it('юнит, сданный тестом без уроков, — 85% его единиц', () => {
-    const tested = { ...emptyLearn(), units: { scarcity: { tested: T('2026-10-20T10:00:00Z') } } };
-    expect(Math.abs(courseLevel(tested).points - unitPoints('scarcity') * 0.85)).toBeLessThanOrEqual(0.5 + 1e-9);
+  it('юнит, сданный проверкой без уроков: его уроки засчитаны, и +3 за юнит', () => {
+    const n = UNITS.find((u) => u.id === 'scarcity').lessons.length;
+    const s = { ...emptyLearn(), units: { scarcity: { tested: T('2026-10-20T10:00:00Z') } } };
+    expect(courseLevel(s).points).toBe(n * KNOW.lesson + KNOW.unit);
   });
 });
 
