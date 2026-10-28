@@ -2036,9 +2036,12 @@ function Route({ st, stops, seen, reduced, visible, resumes, onLesson, onExtra =
         if (x.type !== 'lesson') {
           const Icon = EXTRA_ICON[x.type] || BookOpen;
           const state = x.done ? 'done' : x.open ? 'open' : 'locked';
+          // особый урок, которого ждёт следующий, — текущая остановка: «рекомендуем сейчас»
+          const isRec = !x.done && rec === x.id;
           return (
             <div key={x.id} className="ln-stop" style={{ left: pts[i][0], top: pts[i][1] - 31 }}>
-              <button type="button" className={`ln-token ln-extra ${x.type} ${state === 'open' ? '' : state}`} data-testid="path-extra" data-extra={x.type} data-id={x.id} data-state={state}
+              {isRec && <span className="ln-pin rec" data-testid="path-rec">рекомендуем сейчас</span>}
+              <button type="button" className={`ln-token ln-extra ${x.type} ${state === 'open' ? '' : state} ${isRec ? 'cur' : ''}`} data-testid="path-extra" data-extra={x.type} data-id={x.id} data-state={state} data-rec={isRec ? 'true' : undefined}
                 data-nav-target={`extra:${x.id}`} aria-label={`${EXTRA_KIND[x.type]}: ${x.title}${x.done ? ', пройдено' : x.open ? '' : ', закрыто'}`}
                 onClick={() => { Audio.prime(); Audio.play('click'); onExtra(x); }}>
                 {x.open || x.done ? <Icon size={25} /> : <Lock size={22} />}
@@ -2332,7 +2335,7 @@ function Collapse({ closing, children }) {
 function PathView({ learn, update, onLesson, onStart, onOpenBook, onChest, onTasks, onExtra = () => {}, visible, homeTick = 0, folded: foldReq = null, bell = null, races = null }) {
   const states = pathState(learn);
   const rec = recommend(learn, states);
-  const recTitle = rec ? LESSON_BY_ID[rec.lessonId].title : null;
+  const recTitle = rec ? rec.title || LESSON_BY_ID[rec.lessonId].title : null;
   const askPlacement = !!(learn.profile && learn.profile.knows) && !(learn.placement && learn.placement.at);
   const sleepy = missedYesterday(learn);
   const g = goalToday(learn);

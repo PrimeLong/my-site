@@ -84,8 +84,9 @@ export const PROFILE_CSS = `
   .pf-mstamp[data-state="current"] > span { background: var(--ds-card); border-style: dashed; }
   .pf-mstamp[data-state="current"] > span > * { opacity: 1; filter: none; }
   .pf-mstamp[data-state="missed"] > span { background: var(--ds-card2); }
-  .pf-mstamp[data-state="got"] { animation: pf-shine 4s ease-in-out infinite; }
-  @keyframes pf-shine { 0%, 80%, 100% { filter: drop-shadow(0 1px 1px var(--ds-shade)) } 90% { filter: drop-shadow(0 0 6px color-mix(in srgb, var(--u) 60%, transparent)) } }
+  /* полученная марка месяца больше не вспыхивает свечением раз в 4 секунды: это мигание принимали за
+     сбой («марка странно мигает, будто сайт сам обновляется»). Отклик — только на наведение */
+  .pf-item:hover .pf-mstamp[data-state="got"], .pf-item:focus-visible .pf-mstamp[data-state="got"] { filter: drop-shadow(0 0 6px color-mix(in srgb, var(--u) 55%, transparent)); }
   .pf-year { display: flex; align-items: baseline; gap: 10px; margin: 18px 0 8px; }
   .pf-year b { font: 700 22px var(--ds-head); }
   .pf-year span { color: var(--ds-ink2); font-size: 14px; }

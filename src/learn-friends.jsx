@@ -4,7 +4,8 @@
    предложение забега после урока и лента событий друзей в «Новостях». Данные — src/lib/friends-store.js,
    правила — src/learn/friends.js. */
 import React, { useEffect, useState } from 'react';
-import { ArrowLeft, UserPlus, Check, X, ChevronRight, Copy, Flag, Flame, Sparkles, Trophy, Landmark, Stamp, CalendarDays, Award, Footprints, GraduationCap, ScrollText, ShoppingBag, Shirt, Sunrise, Moon, PiggyBank, Gem, Shapes } from 'lucide-react';
+import { ArrowLeft, UserPlus, Check, X, ChevronRight, Copy, Flag, Flame, Sparkles, Trophy, Landmark, Stamp, CalendarDays, Award } from 'lucide-react';
+import { ACH_ICON } from './award-art.js';
 import { Button, Card, IconButton, TopBar, Sheet } from './ds.jsx';
 import { Medal, CoinShower } from './ds-art.jsx';
 import { Mascot } from './mascot.jsx';
@@ -90,7 +91,6 @@ export const FRIENDS_CSS = `
   @media (prefers-reduced-motion: reduce) { .fr-row, .fr-tile, .fr-seal, .fr-ev, .fr-hero .fr-big, .fr-runner .fr-run, .fr-goal, .fr-race-ico svg, .fr-race-res, .fr-offer, .fr-dash > span { animation: none !important; } .fr-runner, .fr-fill { transition: none; } }
 `;
 
-const SEAL_ICON = { footprints: Footprints, check: Check, flame: Flame, landmark: Landmark, shapes: Shapes, graduation: GraduationCap, scroll: ScrollText, shopping: ShoppingBag, shirt: Shirt, sunrise: Sunrise, moon: Moon, piggy: PiggyBank, calendar: CalendarDays, gem: Gem, flag: Flag };
 const EV_ICON = { landmark: Landmark, fire: Flame, stamp: Stamp, calendar: CalendarDays, trophy: Trophy, flag: Flag };
 const wearOf = (f) => (f && f.card && f.card.wear) || {};
 const leagueName = (id) => (LEAGUE_BY_ID[id] ? `${LEAGUE_BY_ID[id].title} лига` : 'Лига ещё впереди');
@@ -387,7 +387,8 @@ export function FriendProfile({ login, data, learn, update, myWear, onBack }) {
         <div className="fr-group">Печати · {seals.length} из {ACHIEVEMENTS.length}</div>
         {seals.length ? (
           <div className="rw-stamps fr-seals" data-testid="friend-seals">
-            {seals.map((a, i) => { const Icon = SEAL_ICON[a.icon] || Award; return <div key={a.id} className="rw-stamp fr-seal" style={{ '--i': i }}><Medal icon={<Icon size={22} />} size={60} label={a.title} /><b>{a.title}</b></div>; })}
+            {/* значок — 24 из 24 в поле медали: при 22 он сидел не по центру (жалоба: «картинка на печати съехала») */}
+            {seals.map((a, i) => { const Icon = ACH_ICON[a.icon] || Award; return <div key={a.id} className="rw-stamp fr-seal" style={{ '--i': i }}><Medal icon={<Icon size={24} strokeWidth={2.2} />} size={60} label={a.title} /><b>{a.title}</b></div>; })}
           </div>
         ) : <div className="ds-sub" style={{ fontSize: 14 }}>Печатей пока нет — всё впереди.</div>}
         <div className="fr-group">Недавно</div>

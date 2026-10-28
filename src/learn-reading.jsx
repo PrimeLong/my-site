@@ -183,7 +183,7 @@ export default function ReadingView({ id, learn, update, onClose }) {
     const right = answers.filter((a) => a && a.ok).length;
     if (first) {
       const seconds = Math.round((Date.now() - startAt) / 1000);
-      update((s) => markRead(finishLesson(s, null, { xp: READ_XP, accuracy: (right / r.pages.length) * 100, seconds, kind: 'read' }), r.id));
+      update((s) => markRead(finishLesson(s, null, { xp: READ_XP, accuracy: (right / r.pages.length) * 100, seconds, kind: 'read', extra: { fresh: true } }), r.id));
       setGot(READ_XP);
     }
     setDone(true);

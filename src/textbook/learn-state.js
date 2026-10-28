@@ -273,7 +273,10 @@ export function lessonXp({ firstTry, replay, diamond = false, bonus = 0 }) {
    пятнадцати минут за раз), kind — вид урока, mode — урок Пути, практика или проверка;
    diamond — урок пройден на алмазном уровне: от 80% верных он отмечается алмазом. */
 export const DIAMOND_ACCURACY = 80;
-export function finishLesson(s, lessonId, { xp, accuracy, now = Date.now(), count = true, seconds = 0, kind = null, mode = 'lesson', diamond = false }) {
+/* extra — особый урок дороги (Персоналии, Чтение, Разбор графика): у него нет номера урока, но в
+   заданиях дня он считается как урок (l, p), а пройденный впервые (extra.fresh) — и как новый урок
+   на Пути (n). Раньше такие уроки не засчитывались ни как урок, ни как новый (жалоба). */
+export function finishLesson(s, lessonId, { xp, accuracy, now = Date.now(), count = true, seconds = 0, kind = null, mode = 'lesson', diamond = false, extra = null }) {
   const day = dayOf(now);
   const prev = s.lessons[lessonId];
   // урок впервые пройден сейчас: старые записи вступительного теста (runs: 0) не в счёт —
@@ -287,7 +290,7 @@ export function finishLesson(s, lessonId, { xp, accuracy, now = Date.now(), coun
   // в сегодняшние минуты — только время после полуночи (UTC): урок, начатый вчера, не делает новый день наполовину выполненным
   const sinceMidnight = (now - dayStart(now)) / 1000;
   const entry = {
-    ...d, l: d.l + (lessonId ? 1 : 0), n: d.n + (fresh ? 1 : 0), p: d.p + (lessonId && accuracy >= 100 ? 1 : 0), s: d.s + Math.max(0, Math.round(Math.min(900, seconds, sinceMidnight))),
+    ...d, l: d.l + (lessonId || extra ? 1 : 0), n: d.n + (fresh || (extra && extra.fresh) ? 1 : 0), p: d.p + ((lessonId || extra) && accuracy >= 100 ? 1 : 0), s: d.s + Math.max(0, Math.round(Math.min(900, seconds, sinceMidnight))),
     g: d.g + (kind === 'game' ? 1 : 0), pr: d.pr + (mode === 'practice' ? 1 : 0), h: d.h | (hour < 8 ? 1 : 0) | (hour >= 22 ? 2 : 0),
   };
   return upd(s, {

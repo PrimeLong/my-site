@@ -192,7 +192,7 @@ export default function PeopleView({ id, learn, update, onClose }) {
     Audio.play('paper');
     if (k < g.people.length - 1) { setK(k + 1); return; }
     const acc = (Object.values(firstOk.current).filter(Boolean).length / g.people.length) * 100;
-    if (!already) update((s) => markMet(finishLesson(s, null, { xp: MET_XP, accuracy: acc, seconds: Math.min(900, (Date.now() - started.current) / 1000), kind: 'people' }), id));
+    if (!already) update((s) => markMet(finishLesson(s, null, { xp: MET_XP, accuracy: acc, seconds: Math.min(900, (Date.now() - started.current) / 1000), kind: 'people', extra: { fresh: true } }), id));
     setFinished(true);
   };
   const style = { '--pp': g.color, '--pp-ink': `color-mix(in srgb, ${g.color} 82%, #000)` };

@@ -973,7 +973,10 @@ describe('«Слушай» можно пропустить с билета ур�
     const k = unit.lessons.findIndex((l) => l.kind === 'listen');
     const listen = unit.lessons[k]; const next = unit.lessons[k + 1];
     const at = 1e12;
-    let s = emptyLearn();
+    const { PEOPLE_BY_UNIT } = await import('../people.js'); const { READING_BY_UNIT } = await import('../reading.js'); const { GRAPH_BY_UNIT } = await import('../graphs.js');
+    // особые уроки (Персоналии, Чтение, Разбор графика) пройдены — иначе следующий урок ждёт их
+    let s = { ...emptyLearn(), met: Object.fromEntries(Object.values(PEOPLE_BY_UNIT).map((x) => [x.id, at])),
+      read: Object.fromEntries(Object.values(READING_BY_UNIT).map((x) => [x.id, at])), graphs: Object.fromEntries(Object.values(GRAPH_BY_UNIT).map((x) => [x.id, at])) };
     // всё до «Слушай» пройдено
     [...UNIT_BY_ID.scarcity.lessons, ...unit.lessons.slice(0, k)].forEach((l) => { s = finishLesson(s, l.id, { xp: 10, accuracy: 100, now: at }); });
     const before = pathState(s).find((x) => x.course.id === 'supply-demand');

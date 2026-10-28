@@ -15,6 +15,7 @@ import { CAST } from './cast.js';
 import { pathBlocks } from './money.js';
 import { plural } from '../lib/plural.js';
 import { walletYears, WALLET } from './wallet.js';
+import { extraLocks } from './stops.js';
 
 // сколько секунд на упражнение: одно касание — около десяти, расчёт и сборка — дольше
 export const SECONDS = { choice: 12, gap: 12, tf: 10, shift: 12, news: 16, match: 22, sort: 22, calc: 28, tiles: 20, curve: 15, price: 18, point: 15, swipe: 60, rush: 60, wallet: 120, open: 30, domino: 35 };
@@ -916,15 +917,25 @@ export function pathState(learn) {
   // Путь сквозной: первый урок юнита открывается, когда пройден последний урок прошлого юнита
   // или прошлый юнит сдан проверкой
   let prevDone = true; let frontier = false;
+  /* особый урок, которого ждёт следующий: он и есть текущая остановка юнита (waiting, current —
+     { id, title, extra }); если он стоит после последнего урока, его ждёт первый урок следующего юнита */
+  let pending = null;
   const out = [];
   pilotUnits().forEach((u) => {
     const tested = !!(learn.units || {})[u.id];
     const lessons = [];
+    // особые уроки дороги (Персоналии, Чтение, Разбор графика) — такие же уроки: следующий ждёт их
+    const extras = extraLocks(u, learn);
     u.lessons.forEach((l, i) => {
       const entry = learn.lessons[l.id];
       const done = !!(entry && entry.runs > 0);
       let open = done || prevDone || tested;
       let fixLock = false;
+      if (!open && pending) {
+        const w = { id: pending.e.id, title: pending.e.title, extra: pending.e.type };
+        if (pending.st) { pending.st.waiting = w; if (!pending.st.current) pending.st.current = w; } else lessons.waiting = w;
+        pending = null;
+      }
       // первый непройденный урок Пути: не набралось ли ошибок — в этом юните или в только что пройденном прошлом
       if (open && !done && !tested && !frontier) {
         frontier = true;
@@ -939,11 +950,15 @@ export function pathState(learn) {
       }
       // пропущенный «Слушай» открывает следующий урок, но сам остаётся не пройденным
       const skipped = !done && open && !!(learn.skipped || {})[l.id];
-      prevDone = (done || tested || skipped) && !fixLock;
-      lessons.push({ id: l.id, no: l.no, title: l.title, done, open, diamond: !!(done && entry.diamond), ...(skipped ? { skipped: true } : {}), ...(fixLock ? { fixLock: true } : {}) });
+      const waits = (extras[i] || []).filter((e) => !e.done);
+      prevDone = (done || tested || skipped) && !fixLock && (tested || !waits.length);
+      pending = (done || skipped) && !tested && waits.length ? { e: waits[0], st: null } : null;
+      lessons.push({ id: l.id, no: l.no, title: l.title, done, open, diamond: !!(done && entry.diamond), ...(skipped ? { skipped: true } : {}), ...(fixLock ? { fixLock: true } : {}),
+        ...(waits.length && !tested ? { waits: waits.map((e) => e.type) } : {}) });
     });
-    const current = lessons.find((l) => l.open && !l.done && !l.skipped) || lessons.find((l) => l.open && !l.done) || null;
-    out.push({ course: u, lessons: [...lessons], current, complete: lessons.every((l) => l.done), tested, fix: lessons.fix || null });
+    const current = lessons.find((l) => l.open && !l.done && !l.skipped) || lessons.waiting || lessons.find((l) => l.open && !l.done) || null;
+    out.push({ course: u, lessons: [...lessons], current, complete: lessons.every((l) => l.done), tested, fix: lessons.fix || null, waiting: lessons.waiting || null });
+    if (pending) pending.st = out[out.length - 1];
   });
   return out;
 }
