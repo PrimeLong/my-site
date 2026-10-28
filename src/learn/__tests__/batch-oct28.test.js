@@ -96,3 +96,34 @@ describe('учебник по уровням курса: выше нынешне
     expect([...openBookLevels(passed)]).toEqual(['start', 'basic']);
   });
 });
+
+describe('книги полки: больше текста и озвучка одной записью (src/learn/shelf.js)', () => {
+  it('в каждой книге не меньше двух отрывков, всего — втрое больше прежних 15', async () => {
+    const { BOOKS } = await import('../shelf.js');
+    BOOKS.forEach((b) => expect(b.passages.length, b.id).toBeGreaterThanOrEqual(2));
+    expect(BOOKS.reduce((a, b) => a + b.passages.length, 0)).toBeGreaterThanOrEqual(40);
+    // id отрывков внутри книги не повторяются — по ним проигрыватель перематывает
+    BOOKS.forEach((b) => expect(new Set(b.passages.map((p) => p.id)).size, b.id).toBe(b.passages.length));
+  });
+  it('текст для озвучки без «[…]» и без пробела перед знаком препинания', async () => {
+    const { BOOKS, speechScript, speakable } = await import('../shelf.js');
+    BOOKS.forEach((b) => {
+      const t = speechScript(b);
+      expect(t, b.id).not.toMatch(/\[|\]/);
+      expect(t, b.id).not.toMatch(/ [,.;:!?]/);
+      expect(t.startsWith(`${b.author}. «${b.title}». Год издания: ${b.year}.`)).toBe(true);
+    });
+    expect(speakable('делу […], едва')).toBe('делу, едва');
+    expect(speakable('человек. […] Они')).toBe('человек. Они');
+    expect(speakable('операции […].')).toBe('операции.');
+  });
+  it('доли записи идут подряд от 0 до 1; отрывок по доле и начало отрывка согласованы', async () => {
+    const { BOOK_BY_ID, bookSpeech, passageAt, passageStart } = await import('../shelf.js');
+    const parts = bookSpeech(BOOK_BY_ID['smith-wealth']);
+    expect(parts[0].from).toBe(0);
+    expect(parts[parts.length - 1].to).toBeCloseTo(1, 10);
+    parts.slice(1).forEach((p, k) => expect(p.from).toBeCloseTo(parts[k].to, 10));
+    BOOK_BY_ID['smith-wealth'].passages.forEach((p) => expect(passageAt(parts, passageStart(parts, p.id))).toBe(p.id));
+    expect(passageAt(parts, 0)).toBe(null);
+  });
+});

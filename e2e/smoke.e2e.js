@@ -5,6 +5,7 @@ import { parseChapter, collectBlocks } from '../src/textbook/markdown.js';
 import { freshRoom, resolveQuarter, publicView } from '../api/room.js';
 import { makeInitialEconomy, defaultDecisions } from '../src/lib/engine.js';
 import { SCREENS } from '../src/learn/screens.js';
+import { BOOK_BY_ID, bookSpeech, passageAt, passageStart } from '../src/learn/shelf.js';
 
 /* Общая подготовка каждой страницы: серверные функции подменены, внешние
    запросы и ошибки страницы собираются — тест падает, если сайт полез за
@@ -4953,7 +4954,7 @@ test('«Персоналии» — урок на дороге юнита: три
   await shelf.locator('[data-testid=shelf-book][data-book="smith-wealth"]').click();
   const book = page.getByTestId('book-reader');
   await expect(book).toBeVisible();
-  await expect(book.getByTestId('book-passage')).toHaveCount(5);
+  await expect(book.getByTestId('book-passage')).toHaveCount(BOOK_BY_ID['smith-wealth'].passages.length);
   await expect(book).toContainText('Не от благожелательности мясника, пивовара или булочника');
   // дочитали — в конце «Отметить прочитанной»: штамп с датой, на полке — закладка
   await book.getByTestId('book-mark-read').click();
@@ -4968,6 +4969,87 @@ test('«Персоналии» — урок на дороге юнита: три
   // закрытая книга — подсказка, что её откроет
   await shelf.locator('[data-testid=shelf-book][data-book="keynes-tract"]').click();
   await expect(page.getByTestId('shelf-locked')).toContainText('«Гастроном»');
+  expect(errors).toEqual([]);
+});
+
+test('книгу на полке можно слушать: голос браузера без «[…]»; запись — перемотка, скорость, «слушать отсюда», мини-проигрыватель', async ({ page }) => {
+  await page.addInitScript(() => {
+    if (!localStorage.getItem('ems-textbook-v1')) {
+      localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons: { 'sc-i1': { at: Date.now() - 86400000, runs: 1, best: 90 } }, met: { 'people-scarcity': Date.now() - 86400000 } } }));
+    }
+    // голос браузера — подмена: запоминает текст и сразу «дочитывает»; запись — подмена проигрывателя
+    window.__spoken = []; window.__tapes = [];
+    window.SpeechSynthesisUtterance = class { constructor(t) { this.text = t; } };
+    Object.defineProperty(window, 'speechSynthesis', { configurable: true, value: {
+      getVoices: () => [{ lang: 'ru-RU', name: 'Milena' }], addEventListener() {}, removeEventListener() {}, cancel() {},
+      speak(u) { window.__spoken.push(u.text); setTimeout(() => u.onend && u.onend(), 20); },
+    } });
+    window.Audio = class {
+      constructor() { this.src = ''; this.currentTime = 0; this.duration = 0; this.playbackRate = 1; this.paused = true; window.__tape = this; }
+      pause() { this.paused = true; }
+      play() { window.__tapes.push(this.src); this.duration = 600; this.paused = false; return Promise.resolve(); }
+    };
+    window.__tapeAt = (f) => { const a = window.__tape; a.currentTime = f * a.duration; a.ontimeupdate(); };
+  });
+  const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
+  const openSmith = async () => {
+    await openTab(page, 'profile');
+    await page.getByTestId('prof-shelf').scrollIntoViewIfNeeded();
+    await page.locator('[data-testid=shelf-book][data-book="smith-wealth"]').click();
+    await expect(page.getByTestId('book-reader')).toBeVisible();
+  };
+  await openSmith();
+  const book = page.getByTestId('book-reader');
+  const listen = book.getByTestId('book-listen');
+  // записи нет — читает голос браузера, часть за частью, без «[…]»; дочитал — снова «Слушать книгу»
+  await expect(listen).toHaveAttribute('data-mode', 'speech');
+  await expect(listen.getByTestId('book-voice-caption')).toContainText('голос браузера');
+  await listen.getByTestId('book-play').click();
+  await expect(listen).toHaveAttribute('data-state', 'paused', { timeout: 10_000 });
+  const spoken = await page.evaluate(() => window.__spoken);
+  expect(spoken.length).toBe(bookSpeech(BOOK_BY_ID['smith-wealth']).length);
+  expect(spoken[0]).toContain('Адам Смит');
+  expect(spoken.filter((t) => /\[|\]/.test(t))).toEqual([]);
+  expect(spoken.join(' ')).toContain('Рабочий, не обученный этому делу, едва ли');
+  await page.getByTestId('book-close').click();
+  // запись есть (флаг автотеста): играет /books/smith-wealth.mp3
+  await page.evaluate(() => localStorage.setItem('ems-book-audio-test', '1'));
+  await page.reload({ waitUntil: 'networkidle' });
+  await openSmith();
+  await expect(listen).toHaveAttribute('data-mode', 'file');
+  await expect(listen.getByTestId('book-voice-caption')).toHaveText('голос синтезирован');
+  await listen.getByTestId('book-play').click();
+  await expect(listen).toHaveAttribute('data-state', 'playing');
+  expect(await page.evaluate(() => window.__tapes[0])).toMatch(/\/books\/smith-wealth\.mp3$/);
+  // прослушана половина — отмечен отрывок, который звучит
+  const parts = bookSpeech(BOOK_BY_ID['smith-wealth']);
+  await page.evaluate(() => window.__tapeAt(0.5));
+  await expect(book.locator('[data-testid=book-passage][data-now="true"]')).toHaveAttribute('data-passage', passageAt(parts, 0.5));
+  await expect(listen.getByTestId('book-now')).toHaveText(BOOK_BY_ID['smith-wealth'].passages.find((x) => x.id === passageAt(parts, 0.5)).title);
+  // скорость: 1× → 1,25×
+  await listen.getByTestId('book-speed').click();
+  await expect(listen.getByTestId('book-speed')).toHaveText('1,25×');
+  expect(await page.evaluate(() => window.__tape.playbackRate)).toBe(1.25);
+  // «слушать» у отрывка — запись перематывается к его началу
+  const taxes = book.locator('[data-testid=book-passage][data-passage="taxes"]');
+  await taxes.getByTestId('book-passage-play').click();
+  expect(await page.evaluate(() => window.__tape.currentTime)).toBeCloseTo(passageStart(parts, 'taxes') * 600, 0);
+  await page.evaluate((f) => window.__tapeAt(f + 0.001), passageStart(parts, 'taxes'));
+  await expect(taxes).toHaveAttribute('data-now', 'true');
+  await expect(taxes.getByTestId('book-passage-play')).toContainText('звучит');
+  // проигрыватель ушёл с экрана — внизу мини-проигрыватель; пауза из него
+  const mini = book.getByTestId('book-mini');
+  await expect(mini).toBeVisible();
+  await expect(mini).toContainText('Четыре правила налогов');
+  await mini.getByTestId('book-mini-play').click();
+  await expect(listen).toHaveAttribute('data-state', 'paused');
+  expect(await page.evaluate(() => window.__tape.paused)).toBe(true);
+  // закрыли и открыли снова — место запомнилось
+  await page.getByTestId('book-close').click();
+  await page.locator('[data-testid=shelf-book][data-book="smith-wealth"]').click();
+  await expect(listen).toContainText('Вы остановились здесь');
+  await expect(listen.getByTestId('book-now')).toHaveText('Четыре правила налогов');
+  await expect(listen.getByTestId('book-speed')).toHaveText('1,25×');
   expect(errors).toEqual([]);
 });
 

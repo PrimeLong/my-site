@@ -16,6 +16,7 @@
     "e2e": "playwright test",
     "balance:replay": "node scripts/replay-balance.mjs",
     "voice:export": "node scripts/voice-export.mjs",
+    "books:export": "node scripts/books-export.mjs",
     "portraits": "node scripts/fetch-portraits.mjs"
   },
   "dependencies": {
