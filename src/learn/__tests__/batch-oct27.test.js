@@ -62,8 +62,8 @@ describe('открытия: возможности — постепенно', as
   const { UNLOCKS, isUnlocked, lessonsLeft, progressOf, unlockedAt, TESTED_WEIGHT } = await import('../unlocks.js');
   const { momentsOf, pendingMoments } = await import('../celebrate.js');
   const done = (n, from = T('2026-10-27T08:00:00Z')) => ({ ...emptyLearn(), lessons: Object.fromEntries(['sc-i1', 'sc-l1', 'sc-l2', 'sc-i2', 'sc-l3', 'sc-l4', 'sc-l5'].slice(0, n).map((id, k) => [id, { at: from + k * 600000, runs: 1, best: 90 }])) });
-  it('лиги — после 1-го урока, лавка — после 2-го, копилка — после 4-го, сад — после 6-го', () => {
-    expect(UNLOCKS.map((u) => [u.id, u.lessons])).toEqual([['league', 1], ['shop', 2], ['piggy', 4], ['garden', 6]]);
+  it('лиги — после 1-го урока, лавка — после 2-го, копилка — после 4-го, сад — после 6-го, Мир — после 10-го', () => {
+    expect(UNLOCKS.map((u) => [u.id, u.lessons])).toEqual([['league', 1], ['shop', 2], ['piggy', 4], ['garden', 6], ['world', 10]]);
     expect(UNLOCKS.every((u) => !isUnlocked(emptyLearn(), u.id))).toBe(true);
     expect(isUnlocked(done(1), 'league')).toBe(true);
     expect(isUnlocked(done(1), 'shop')).toBe(false);

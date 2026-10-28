@@ -4,7 +4,7 @@
    Автотест (Playwright, navigator.webdriver) видит всё открытым, если сам не включил замки
    (ems-unlock-test) — как с церемониями: иначе каждая проверка лавки начиналась бы с уроков. */
 import React from 'react';
-import { Lock, Trophy, ShoppingBag, PiggyBank, Sprout, ArrowRight } from 'lucide-react';
+import { Lock, Trophy, ShoppingBag, PiggyBank, Sprout, Globe, ArrowRight } from 'lucide-react';
 import { Card, Button } from './ds.jsx';
 import { UNLOCK_BY_ID, isUnlocked, lessonsLeft, progressOf } from './learn/unlocks.js';
 import { plural } from './lib/plural.js';
@@ -12,8 +12,12 @@ import { plural } from './lib/plural.js';
 export const unlockBypass = () => {
   try { return typeof navigator !== 'undefined' && !!navigator.webdriver && localStorage.getItem('ems-unlock-test') !== '1'; } catch { return false; }
 };
-export const featureOpen = (learn, id) => unlockBypass() || isUnlocked(learn, id);
-const ICON = { trophy: Trophy, shop: ShoppingBag, piggy: PiggyBank, sprout: Sprout };
+/* «Мир» уже открывали до замка (есть сохранённая партия или выбрана тема «Мира») — он и остаётся
+   открытым: у игравших игру не отнимаем */
+const WORLD_TRACES = ['ems-autosave-v1', 'ems-tycoon-v1', 'ems-world-theme', 'ems-world-music'];
+export const worldPlayed = () => { try { return WORLD_TRACES.some((k) => localStorage.getItem(k) != null); } catch { return false; } };
+export const featureOpen = (learn, id) => unlockBypass() || isUnlocked(learn, id) || (id === 'world' && worldPlayed());
+export const ICON = { trophy: Trophy, shop: ShoppingBag, piggy: PiggyBank, sprout: Sprout, globe: Globe };
 
 const CSS = `
   .fl { text-align: center; padding: 22px 18px 18px; }

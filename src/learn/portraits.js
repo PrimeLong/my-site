@@ -4,40 +4,18 @@
    только со свободной лицензией — общественное достояние, CC0, CC BY, CC BY-SA; несвободное («fair use»)
    не показываем — остаётся гравированный медальон. Автор и лицензия — подписью под портретом.
    Ответ помнит устройство (ems-portraits-v1) на месяц: Википедию не спрашиваем при каждом открытии.
-   Автотест (Playwright) в Википедию не ходит, если сам не попросил (ems-portraits-test). */
+   Автотест (Playwright) в Википедию не ходит, если сам не попросил (ems-portraits-test).
+   Первыми — фото, положенные руками в public/people/<id>.jpg (список считается при сборке,
+   scripts/voice-files-plugin.js; подписи — people/credits.csv; инструкция — people/README.md): они
+   приходят со своего адреса и не зависят от того, пускает ли сеть ученика в Википедию. */
 import { PHOTOS } from './people-photos.js';
+import PEOPLE_FILES from 'virtual:people-files';
+import { commonsFile, photoFromCommons, isFreeLicense, FREE_LICENSE, NONFREE_LICENSE } from './commons.js';
+
+export { commonsFile, photoFromCommons, isFreeLicense, FREE_LICENSE, NONFREE_LICENSE };
 
 const KEY = 'ems-portraits-v1';
 const TTL = 30 * 24 * 3600 * 1000;
-export const FREE_LICENSE = /public domain|^pd\b|^pd-|cc0|cc[- ]by/i;
-export const NONFREE_LICENSE = /fair use|non-free|copyrighted|all rights reserved/i;
-export const isFreeLicense = (s) => !!s && FREE_LICENSE.test(s) && !NONFREE_LICENSE.test(s);
-// разметка Commons → текст: без тегов, сущности (&amp;, &#39;, &nbsp;…) — символами
-const ENT = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' };
-const strip = (html = '') => String(html).replace(/<[^>]+>/g, '')
-  .replace(/&(#x?[0-9a-f]+|[a-z]+);/gi, (m, e) => (e[0] === '#' ? String.fromCodePoint(e[1].toLowerCase() === 'x' ? parseInt(e.slice(2), 16) : Number(e.slice(1))) : ENT[e.toLowerCase()] ?? m))
-  .replace(/\s+/g, ' ').trim();
-// имя файла Commons из ссылки на картинку (в том числе на уменьшенную копию …/thumb/a/ab/Имя.jpg/320px-Имя.jpg)
-export function commonsFile(url) {
-  try {
-    const u = new URL(url);
-    if (u.hostname !== 'upload.wikimedia.org' || !u.pathname.includes('/wikipedia/commons/')) return null;
-    const parts = decodeURIComponent(u.pathname).split('/');
-    const i = parts.indexOf('thumb');
-    return i >= 0 ? parts[i + 3] : parts[parts.length - 1];
-  } catch { return null; }
-}
-// ответ Commons (imageinfo с extmetadata) → портрет или null, если лицензия не свободная
-export function photoFromCommons(info) {
-  if (!info) return null;
-  const meta = info.extmetadata || {};
-  const license = strip((meta.LicenseShortName || {}).value);
-  if (!isFreeLicense(license)) return null;
-  const src = info.thumburl || info.url;
-  if (!src || !String(src).startsWith('https://upload.wikimedia.org/')) return null;
-  return { file: src, author: strip((meta.Artist || {}).value) || 'автор неизвестен', license, source: info.descriptionurl || '' };
-}
-
 const offline = () => {
   try { return typeof navigator !== 'undefined' && !!navigator.webdriver && localStorage.getItem('ems-portraits-test') !== '1'; } catch { return true; }
 };
@@ -45,8 +23,17 @@ const readCache = () => { try { return JSON.parse(localStorage.getItem(KEY) || '
 const writeCache = (id, v) => { try { const c = readCache(); c[id] = { ...v, at: Date.now() }; localStorage.setItem(KEY, JSON.stringify(c)); } catch { /* приватный режим */ } };
 const inflight = {};
 
-// сразу, без сети: скачанный заранее или запомненный устройством; undefined — ещё не знаем
+// фото из public/people: подпись — из скачанных при сборке или из people/credits.csv (может и не быть)
+export function localPhoto(id) {
+  const file = (PEOPLE_FILES.files || {})[id];
+  if (!file) return null;
+  const c = PHOTOS[id] || (PEOPLE_FILES.credits || {})[id] || {};
+  return { file: `/people/${file}`, author: c.author || '', license: c.license || '', source: c.source || '' };
+}
+// сразу, без сети: положенный руками, скачанный заранее или запомненный устройством; undefined — ещё не знаем
 export function cachedPhoto(p) {
+  const local = localPhoto(p.id);
+  if (local) return local;
   if (PHOTOS[p.id]) return PHOTOS[p.id];
   const c = readCache()[p.id];
   if (c && Date.now() - c.at < TTL) return c.none ? null : c;

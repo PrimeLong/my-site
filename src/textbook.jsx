@@ -5,7 +5,7 @@
 import React, { useMemo, useState } from 'react';
 import katex from 'katex';
 import 'katex/dist/katex.min.css';
-import { ArrowLeft, BookOpenText, BookOpen, Calculator, Gamepad2, Play, Check, RotateCcw, ChevronLeft, ChevronRight, Info, Target, ListChecks, TriangleAlert, Brain, ChevronDown, ChevronUp, ArrowDown, ArrowUp, Lightbulb, X } from 'lucide-react';
+import { ArrowLeft, BookOpenText, BookOpen, Calculator, Gamepad2, Play, Check, RotateCcw, ChevronLeft, ChevronRight, Info, Target, ListChecks, TriangleAlert, Brain, ChevronDown, ChevronUp, ArrowDown, ArrowUp, Lightbulb, X, Lock } from 'lucide-react';
 import { COLOR, Audio, AudioControls, getPlayerId, syncProfile } from './MacroSimulator.jsx';
 import { TrainerPage } from './trainer.jsx';
 import { TopBar, IconButton } from './ds.jsx';
@@ -33,6 +33,8 @@ import { formulaSymbols } from './textbook/symbols.js';
 import { plural } from './lib/plural.js';
 import { markTerms } from './learn/terms.js';
 import { StatTile, Meter, DayBars, STATS_CSS } from './learn-stats.jsx';
+import { openBookLevels } from './learn/grade.js';
+import { unlockBypass } from './learn-unlock.jsx';
 
 const LEVER_BY_ID = Object.fromEntries(LEVERS.map((l) => [l.id, l]));
 const DRILL_BY_ID = Object.fromEntries(DRILLS.map((d) => [d.id, d]));
@@ -252,6 +254,15 @@ export const TEXTBOOK_CSS = `
   .tbl-ch-title { font: 600 15px/1.3 var(--ds-sans); }
   .tbl-ch-title small { font-weight: 500; color: var(--ds-ink3); }
   .tbl-level-text { font: 13px/1.4 var(--ds-sans); color: var(--ds-ink2); padding: 0 14px 6px; margin-top: -4px; }
+  /* уровень выше нынешнего на Пути — под замком: главы видны, но приглушены, открывают объяснение */
+  .tbl-part.locked .tbl-part-title { display: flex; align-items: center; gap: 6px; color: var(--ds-ink3); }
+  .tbl-ch.locked { opacity: .62; }
+  .tbl-ch.locked .tbl-no { color: var(--ds-ink3); }
+  .tb-locked { text-align: center; padding: 34px 18px; max-width: 460px; margin: 0 auto; }
+  .tb-locked-ico { width: 72px; height: 72px; margin: 0 auto 12px; border-radius: 50%; display: grid; place-items: center; color: var(--ds-ink2);
+    background: var(--ds-card2, rgba(127,127,127,.12)); border: 2px dashed var(--ds-rule2, rgba(127,127,127,.4)); }
+  .tb-locked h2 { margin: 0 0 8px; font: 700 21px/1.25 var(--ds-head, serif); }
+  .tb-locked p { margin: 0 0 16px; font: 15px/1.5 var(--ds-sans, sans-serif); color: var(--ds-ink2, inherit); }
   .tbl-planned { padding: 0; }
   .tbl-planned-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; padding: 12px 14px; background: none; border: none; cursor: pointer; font: 600 14px var(--ds-sans); color: var(--ds-ink2); }
   .tbl-planned-list { list-style: none; margin: 0; padding: 0 14px 12px; display: grid; gap: 8px; }
@@ -1503,7 +1514,24 @@ function ChapterCover({ id, ctx, lvl, read }) {
   );
 }
 
+/* Глава уровня, до которого ученик ещё не дошёл на Пути, — под замком: вместо текста — что это за
+   уровень и как его открыть (src/learn/grade.js, openBookLevels) */
+function LockedChapter({ id, ctx }) {
+  const lvl = chapterLevel(id);
+  return (
+    <div className="tb-locked" data-testid="tb-chapter-locked" data-chapter={id}>
+      <span className="tb-locked-ico" aria-hidden="true"><Lock size={30} /></span>
+      <h2>{(CHAPTER_BY_ID[id] || {}).title}</h2>
+      <p>Глава уровня «{lvl ? lvl.title : ''}». Она откроется, когда вы дойдёте до этого уровня на Пути: учебник читают вместе с уроками, по порядку.</p>
+      <button type="button" className="ems-btn" onClick={() => ctx.go({ kind: 'toc' }, { push: false })}>К оглавлению</button>
+    </div>
+  );
+}
 function ChapterPage({ id, ctx }) {
+  if (ctx.chapterOpen && !ctx.chapterOpen(id)) return <LockedChapter id={id} ctx={ctx} />;
+  return <ChapterBody id={id} ctx={ctx} />;
+}
+function ChapterBody({ id, ctx }) {
   const wide = useWide();
   const ch = CHAPTER_BY_ID[id];
   const blocks = CHAPTER_BLOCKS[id];
@@ -2105,11 +2133,21 @@ function LearnToc({ ctx }) {
       {/* главы — по уровням курса и в его порядке: глава учебника и юнит Пути — одно место */}
       <div className="tbl-parts">
         {TOC_LEVELS.map((lv) => (
-          <section key={lv.id} className="tbl-part" data-testid="tb-level-group" data-level={lv.id}>
-            <h2 className="tbl-part-title">Уровень {lv.no} · {lv.title}</h2>
-            <div className="tbl-level-text">{lv.text}</div>
+          <section key={lv.id} className={`tbl-part${ctx.levelOpen(lv.id) ? '' : ' locked'}`} data-testid="tb-level-group" data-level={lv.id} data-locked={ctx.levelOpen(lv.id) ? undefined : 'true'}>
+            <h2 className="tbl-part-title">{!ctx.levelOpen(lv.id) && <Lock size={13} aria-hidden="true" />}Уровень {lv.no} · {lv.title}</h2>
+            <div className="tbl-level-text">{ctx.levelOpen(lv.id) ? lv.text : 'Откроется, когда вы дойдёте до этого уровня на Пути.'}</div>
             {lv.chapters.map((c) => {
               n += 1;
+              if (!ctx.levelOpen(lv.id)) {
+                return (
+                  <button key={c.id} type="button" className="tbl-ch tb-toc-row locked" data-status={c.status} data-chapter={c.id} data-locked="true" aria-label={`${c.title} — откроется на уровне «${lv.title}»`}
+                    onClick={() => { Audio.play('tick'); ctx.go({ kind: 'chapter', id: c.id }); }}>
+                    <span className="tbl-no"><Lock size={13} aria-hidden="true" /></span>
+                    <span className="tbl-ch-title" style={{ minWidth: 0 }}>{c.title}</span>
+                    <span />
+                  </button>
+                );
+              }
               const readMark = chapterRead(ctx.progress, c.id);
               const sp = sectionProgress(ctx.progress, c.id);
               // процент — путь по главе: пройденные разделы (прочитанная глава — 100%); задачи — отдельной строкой
@@ -2183,7 +2221,7 @@ function TocPage({ ctx }) {
       <CheckPanel ctx={ctx} />
       {TOC_LEVELS.map((p) => (
         <div key={p.id} className="ems-panel" style={{ padding: '12px 0 4px', marginBottom: 14 }} data-testid="tb-level-group" data-level={p.id}>
-          <div className="ems-serif" style={{ fontSize: 17, color: COLOR.goldSoft, padding: '0 12px 2px' }}>Уровень {p.no} · {p.title}</div>
+          <div className="ems-serif" style={{ fontSize: 17, color: COLOR.goldSoft, padding: '0 12px 2px' }}>{!ctx.levelOpen(p.id) && <Lock size={14} aria-hidden="true" style={{ marginRight: 6 }} />}Уровень {p.no} · {p.title}{!ctx.levelOpen(p.id) && <span style={{ fontSize: 12.5, color: COLOR.muted }}> — откроется на Пути</span>}</div>
           <div style={{ fontSize: 12.5, color: COLOR.muted, padding: '0 12px 8px' }}>{p.text}</div>
           {p.chapters.map((c) => {
             n += 1;
@@ -2388,7 +2426,11 @@ export function TextbookScreen({ onBack, onExit = null, resume = false, startPag
   };
   // в обучении (вкладка «Учебник» или справочник поверх урока) — дизайн-система и один «назад»
   const embedded = !!onExit || asTab;
+  // уровни учебника выше нынешнего уровня Пути — под замком (автотест видит всё, если сам не попросил замков)
+  const openLv = useMemo(() => (unlockBypass() ? null : openBookLevels(progress.learn)), [progress.learn]);
+  const levelOpen = (levelId) => !openLv || openLv.has(levelId);
   const ctx = {
+    levelOpen, chapterOpen: (cid) => { const lv = chapterLevel(cid); return !lv || levelOpen(lv.id); },
     progress, go, back, embedded, prev: stack[stack.length - 1] || null, onOpenLab, onStartDrill, onOpenTycoon, onOpenScenario,
     // ответ в учебнике; засчитанный — снимает ту же задачу и с повторения Пути (review-sync.js)
     onAnswer: (id, ok, opts) => update((p) => {

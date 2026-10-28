@@ -705,20 +705,49 @@ function DominoScene({ inst, sc }) {
             {sc.dC !== 0 && !demandOnly && <path d={linePts((p) => mqs(m0, p), qMax, pMax, x, y)} stroke="#C0602A" strokeOpacity=".4" strokeWidth="2.2" strokeDasharray="5 5" fill="none" />}
             <path d={linePts((p) => mqd(m, p), qMax, pMax, x, y)} stroke="#3E6FA8" strokeWidth="3.5" fill="none" strokeLinecap="round" />
             {!demandOnly && <path d={linePts((p) => mqs(m, p), qMax, pMax, x, y)} stroke="#C0602A" strokeWidth="3.5" fill="none" strokeLinecap="round" />}
-            {sc.dA !== 0 && <text x={x(mqd(m, 30)) + (sc.dA > 0 ? 4 : -16)} y={y(30) - 4} style={{ fill: '#3E6FA8', fontSize: 15 }} data-testid="domino-arrow-d">{sc.dA > 0 ? '→' : '←'}</text>}
-            {sc.dC !== 0 && !demandOnly && <text x={x(mqs(m, 30)) + (sc.dC > 0 ? 4 : -16)} y={y(30) + 14} style={{ fill: '#C0602A', fontSize: 15 }} data-testid="domino-arrow-s">{sc.dC > 0 ? '→' : '←'}</text>}
+            {/* сдвиг кривой — стрелка от прежней кривой к новой на уровне прежней цены: раньше знак «←» стоял
+                у новой кривой и при сдвиге влево уезжал за край графика (отчёт mvrcwopb) */}
+            {sc.dA !== 0 && (() => { const p = Math.max(4, e0.p); const q0 = mqd(m0, p); const q1 = Math.max(0, mqd(m, p)); return Math.abs(q1 - q0) > 2
+              ? <path d={`M${x(q0)},${y(p) - 9} L${x(q1)},${y(p) - 9}`} stroke="#3E6FA8" strokeWidth="2.2" markerEnd="url(#lm-arr-d)" data-testid="domino-arrow-d" /> : null; })()}
+            {sc.dC !== 0 && !demandOnly && (() => { const p = Math.max(4, e0.p); const q0 = mqs(m0, p); const q1 = Math.max(0, mqs(m, p)); return Math.abs(q1 - q0) > 2
+              ? <path d={`M${x(q0)},${y(p) + 10} L${x(q1)},${y(p) + 10}`} stroke="#C0602A" strokeWidth="2.2" markerEnd="url(#lm-arr-s)" data-testid="domino-arrow-s" /> : null; })()}
             {(demandOnly || sc.ceil) && <line x1={L} x2={L + PWc} y1={y(price)} y2={y(price)} stroke={sc.ceil ? 'var(--ds-bad)' : 'var(--u)'} strokeWidth="1.8" strokeDasharray="4 4" />}
             {sc.ceil && <line x1={x(qs)} x2={x(qd)} y1={y(price)} y2={y(price)} stroke="var(--ds-bad)" strokeWidth="6" opacity=".55" strokeLinecap="round" />}
+            {/* прежнее равновесие — пустым кружком, пока на него есть на что смотреть: видно, откуда ушли */}
+            {!demandOnly && (sc.dA !== 0 || sc.dC !== 0) && <circle cx={x(e0.q)} cy={y(e0.p)} r="4.5" fill="var(--ds-card)" stroke="var(--ds-ink3)" strokeWidth="1.6" data-testid="domino-old-eq" />}
             {demandOnly ? <circle cx={x(qd)} cy={y(price)} r="5.5" fill="#3E6FA8" /> : <circle cx={x(e1.q)} cy={y(e1.p)} r="5.5" fill="var(--ds-ink)" opacity={sc.ceil ? 0.35 : 1} />}
-            {sc.P && Math.abs(e1.p - e0.p) > 0.5 && <path d={`M${L + 7},${y(e0.p)} L${L + 7},${y(e1.p) + (e1.p > e0.p ? 6 : -6)}`} stroke="var(--u-ink)" strokeWidth="2.5" markerEnd="url(#lm-arr)" data-testid="domino-arrow-p" />}
+            {/* цена и количество — пунктир от точки к оси и стрелка по самой оси от прежнего значения к новому;
+                короткий сдвиг — всё равно видимая стрелка, а не одинокий наконечник */}
+            {sc.P && !demandOnly && Math.abs(e1.p - e0.p) > 0.5 && (() => {
+              const y0 = y(e0.p); const y1 = y(e1.p); const dir = y1 > y0 ? 1 : -1; const tip = Math.abs(y1 - y0) < 14 ? y0 + dir * 14 : y1;
+              return (
+                <g data-testid="domino-arrow-p">
+                  <line x1={L} x2={x(e1.q)} y1={y1} y2={y1} stroke="var(--u-ink)" strokeWidth="1.2" strokeDasharray="3 3" opacity=".7" />
+                  <path d={`M${L + 6},${y0} L${L + 6},${tip}`} stroke="var(--u-ink)" strokeWidth="2.5" markerEnd="url(#lm-arr)" />
+                </g>
+              );
+            })()}
             {sc.Q && (() => {
               // количество: на рынке — от старого равновесия к новому, на сцене спроса — при той же цене
               const q0 = demandOnly ? mqd(m0, price) : e0.q; const q1 = demandOnly ? mqd(m, price) : e1.q;
-              return Math.abs(q1 - q0) > 0.5 ? <path d={`M${x(q0)},${base - 7} L${x(q1) + (q1 > q0 ? -6 : 6)},${base - 7}`} stroke="var(--u-ink)" strokeWidth="2.5" markerEnd="url(#lm-arr)" data-testid="domino-arrow-q" /> : null;
+              if (Math.abs(q1 - q0) <= 0.5) return null;
+              const x0 = x(q0); const x1 = x(q1); const dir = x1 > x0 ? 1 : -1; const tip = Math.abs(x1 - x0) < 14 ? x0 + dir * 14 : x1;
+              return (
+                <g data-testid="domino-arrow-q">
+                  <line x1={x1} x2={x1} y1={demandOnly ? y(price) : y(e1.p)} y2={base} stroke="var(--u-ink)" strokeWidth="1.2" strokeDasharray="3 3" opacity=".7" />
+                  <path d={`M${x0},${base - 6} L${tip},${base - 6}`} stroke="var(--u-ink)" strokeWidth="2.5" markerEnd="url(#lm-arr)" />
+                </g>
+              );
             })()}
             <text x={x(Math.min(qMax - 8, Math.max(4, mqd(m, 6)))) + 4} y={y(6) - 5} style={{ fill: '#3E6FA8' }}>D</text>
             {!demandOnly && <text x={x(Math.min(qMax - 10, Math.max(4, mqs(m, 34)))) + 6} y={y(34) + 4} style={{ fill: '#C0602A' }}>S</text>}
-            <defs><marker id="lm-arr" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 Z" fill="var(--u-ink)" /></marker></defs>
+            {/* наконечники — в пикселях, а не в толщинах линии: при толщине 2,5 наконечник «в пять толщин»
+                был больше самой короткой стрелки */}
+            <defs>
+              <marker id="lm-arr" viewBox="0 0 10 10" refX="8" refY="5" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 Z" fill="var(--u-ink)" /></marker>
+              <marker id="lm-arr-d" viewBox="0 0 10 10" refX="8" refY="5" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 Z" fill="#3E6FA8" /></marker>
+              <marker id="lm-arr-s" viewBox="0 0 10 10" refX="8" refY="5" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 Z" fill="#C0602A" /></marker>
+            </defs>
           </>
         )}
       </Frame>

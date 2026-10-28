@@ -66,7 +66,7 @@ describe('записанные голоса', () => {
     expect(listVoiceFiles(path.join(dir, 'нет'))).toEqual([]);
   });
 
-  it('service worker не трогает записи: их кусками отдаёт сеть', () => {
-    expect(renderServiceWorker([])).toContain("url.pathname.startsWith('/voice/')) return;");
+  it('service worker не трогает записи голосов и книг: их кусками отдаёт сеть', () => {
+    expect(renderServiceWorker([])).toContain("if (url.pathname.startsWith('/voice/') || url.pathname.startsWith('/books/')) return;");
   });
 });

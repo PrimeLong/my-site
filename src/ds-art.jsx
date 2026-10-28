@@ -49,7 +49,9 @@ export const ART_CSS = `
     box-shadow: inset 0 0 0 2px rgba(120,80,10,.55), inset 0 0 0 4px rgba(255,236,170,.6); animation: ds-fall var(--t) cubic-bezier(.3,.6,.45,1) var(--d) 1 forwards; }
   .ds-level { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; }
   .ds-level-track { flex: 1; display: flex; gap: 3px; height: 12px; }
-  .ds-level-track i { flex: 1; border-radius: 3px; background: var(--ds-rule); transition: background .25s; }
+  .ds-level-track i { flex: 1; min-width: 0; border-radius: 3px; background: var(--ds-rule); transition: background .25s; }
+  /* полоса — окном: пройденное раньше уходит за левый край, затухая */
+  .ds-level-track.cut { -webkit-mask-image: linear-gradient(90deg, transparent, #000 22px); mask-image: linear-gradient(90deg, transparent, #000 22px); }
   .ds-level-track i.ok { background: linear-gradient(180deg, color-mix(in srgb, var(--u) 75%, #fff) 0 35%, var(--u) 35%); }
   .ds-level-track i.bad { background: repeating-linear-gradient(135deg, var(--ds-bad) 0 3px, color-mix(in srgb, var(--ds-bad) 45%, var(--ds-card)) 3px 6px); }
   .ds-level-track i.cur { background: var(--ds-card); box-shadow: inset 0 0 0 1.5px var(--u-ink); }
@@ -80,6 +82,10 @@ export const ART_CSS = `
   .ds-postage { display: inline-block; padding: 7px; background-color: var(--ds-card);
     background-image: radial-gradient(circle, var(--ds-paper) 3.2px, transparent 3.6px); background-size: 12px 12px; background-position: -6px -6px; filter: drop-shadow(0 1px 1px var(--ds-shade)); }
   .ds-postage-in { border: 1.5px solid var(--u); background: var(--ds-card); padding: 6px; text-align: center; position: relative; }
+  /* тёмная тема: поля марки светлее страницы — иначе дырки перфорации того же цвета, что и поля, и
+     зубцов не видно (жалоба «огранку марки почти не видно»); тонкая светлая кромка по зубцам */
+  .ds-dark .ds-postage, .ds-dark .pf-stamp { background-color: color-mix(in srgb, #EDE6D3 30%, var(--ds-card));
+    filter: drop-shadow(0 0 .6px rgba(237, 230, 211, .55)) drop-shadow(0 2px 3px rgba(0, 0, 0, .45)); }
   @media (prefers-reduced-motion: reduce) { .ds-smoke, .ds-pulse, .ds-unlock, .ds-appear, .ds-coins i { animation: none !important; } .ds-coins { display: none; } .ds-infla { transition: none !important; } .ds-infla-out { display: none; } .ds-infla-in { animation: none; } }
 `;
 export const ArtStyle = () => <style>{ART_CSS}</style>;
@@ -427,15 +433,36 @@ export function Clipping({ issue, rubric, children, testid }) {
    верным ответом серии: последний отрезок коротко вспыхивает (около 0,5 с). Справа — счёт. */
 /* onBack — «назад на одну карточку»: отрезок перед текущим (если ответов ещё нет — сам текущий)
    становится кнопкой со стрелкой «‹»; касание открывает предыдущую карточку. */
+/* сколько отрезков влезает в полосу шириной w: не уже SEG_MIN; не влезают все — показываем «окно»
+   вокруг текущего (два будущих впереди), прошлые уходят за левый край с затуханием. Раньше в уроке
+   на 15–20 заданий отрезки на телефоне сжимались до 5 px (жалоба) */
+export const SEG_MIN = 9;
+export function segWindow(n, done, w, gap = 3) {
+  const cap = Math.max(4, Math.floor((w + gap) / (SEG_MIN + gap)));
+  if (!w || n <= cap) return { from: 0, to: n, cut: false };
+  const from = Math.max(0, Math.min(n - cap, done + 3 - cap));
+  return { from, to: from + cap, cut: from > 0 };
+}
 export function ProgressChart({ answers = [], total, pulse = 0, testid = 'lesson-progress', onBack = null }) {
   const n = Math.max(1, total);
   const done = Math.min(answers.length, n);
   const pct = Math.round((done / n) * 100);
   const backAt = onBack ? Math.max(0, done - 1) : -1;
+  const track = useRef(null);
+  const [w, setW] = useState(0);
+  useEffect(() => {
+    const el = track.current;
+    if (!el || typeof ResizeObserver === 'undefined') return undefined;
+    const ro = new ResizeObserver(() => setW(el.clientWidth));
+    ro.observe(el); setW(el.clientWidth);
+    return () => ro.disconnect();
+  }, []);
+  const win = segWindow(n, done, w);
   return (
     <div className="ds-level" data-testid={testid} data-glow={pulse ? 'pulse' : 'off'}>
-      <div className="ds-level-track">
+      <div className={`ds-level-track${win.cut ? ' cut' : ''}`} ref={track} data-from={win.from}>
         {Array.from({ length: n }, (_, i) => {
+          if (i < win.from || i >= win.to) return null;
           const st = i < done ? (answers[i] ? 'ok' : 'bad') : i === done ? 'cur' : '';
           const cls = `${st} ${i === done - 1 && answers[i] && pulse ? 'ds-pulse' : ''}`;
           if (i === backAt) {

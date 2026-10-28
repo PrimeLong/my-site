@@ -1,5 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "node scripts/fetch-portraits.mjs --soft && npm run build",
   "headers": [
     {
       "source": "/(.*)",

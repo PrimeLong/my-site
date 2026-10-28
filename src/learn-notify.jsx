@@ -15,7 +15,7 @@ import {
   Package, Repeat, CalendarDays, ShieldCheck, ShieldAlert, Newspaper, Sparkles, Croissant, Stamp, Scale, Moon, Palette, MonitorSmartphone, Headphones, BookOpen, Landmark, BarChart3,
   Gauge, Store, Anchor, Shirt, WandSparkles, Settings,
   Ghost, Users, Flag, UserPlus, Gem,
-  Wallet, MessageCircle, Lamp, Coins, TrendingUp, Gamepad2,
+  Wallet, MessageCircle, Lamp, Coins, TrendingUp, Gamepad2, Lock, Globe,
 } from 'lucide-react';
 import { IconButton, TopBar } from './ds.jsx';
 import { useReducedMotion } from './ds-art.jsx';
@@ -164,7 +164,7 @@ const ICON = {
   sparkles: Sparkles, croissant: Croissant, stamp: Stamp, scale: Scale, moon: Moon, palette: Palette, devices: MonitorSmartphone, headphones: Headphones, book: BookOpen,
   landmark: Landmark, chart: BarChart3, gauge: Gauge, store: Store, anchor: Anchor, shirt: Shirt, wand: WandSparkles, bell: Bell, settings: Settings,
   pumpkin: Ghost, ghost: Ghost, fire: Flame, users: Users, flag: Flag, 'user-plus': UserPlus, gem: Gem, wallet: Wallet, message: MessageCircle,
-  lamp: Lamp, coins: Coins, 'trending-up': TrendingUp, game: Gamepad2,
+  lamp: Lamp, coins: Coins, 'trending-up': TrendingUp, game: Gamepad2, lock: Lock, globe: Globe,
 };
 export const NIcon = ({ name, size = 20, ...rest }) => { const I = ICON[name] || Bell; return <I size={size} aria-hidden="true" {...rest} />; };
 
@@ -302,8 +302,9 @@ export function NotifyCenter({ notify, onClose, onGo }) {
   const shown = notify.list.filter((n) => !(notify.dismissed || {})[n.id]);
   const news = shown.filter((n) => fresh.has(n.id));
   const old = shown.filter((n) => !fresh.has(n.id));
-  // смахнули — прочитано: из «Новых» уходит в «Ранее», счётчик на колокольчике уменьшается сразу
-  const read = (n) => { notify.markOne(n.id); setFresh((s) => { const t = new Set(s); t.delete(n.id); return t; }); };
+  /* смахнули — уведомление убрано совсем: не переезжает в «Ранее» (жалоба), и на других устройствах
+     тоже (x:); счётчик на колокольчике уменьшается сразу. Касание — открыть, «Прочитано» — всё в «Ранее» */
+  const read = (n) => { if (notify.dismiss) notify.dismiss(n.id); else notify.markOne(n.id); setFresh((s) => { const t = new Set(s); t.delete(n.id); return t; }); };
   return (
     <div className="nt-page" data-testid="notifications" role="dialog" aria-label="Уведомления">
       <div className="nt-page-in">
@@ -319,7 +320,7 @@ export function NotifyCenter({ notify, onClose, onGo }) {
           <>
             {news.length > 0 && <div className="nt-group">Новые · {news.length}</div>}
             {news.map((n, i) => <NoteRow key={n.id} n={n} unread i={i} now={notify.now} onGo={onGo} onRead={read} />)}
-            {news.length > 0 && <div className="ds-faint nt-hint" data-testid="notify-swipe-hint">Смахните уведомление вбок — оно станет прочитанным.</div>}
+            {news.length > 0 && <div className="ds-faint nt-hint" data-testid="notify-swipe-hint">Смахните уведомление вбок — оно уйдёт из списка.</div>}
             {old.length > 0 && <div className="nt-group">Ранее</div>}
             {/* смахнули прочитанное — оно уходит из списка, а не оставляет пустое место */}
             {old.map((n, i) => <NoteRow key={`old:${n.id}`} n={n} unread={false} i={i + news.length} now={notify.now} onGo={onGo} onRead={() => notify.dismiss && notify.dismiss(n.id)} />)}

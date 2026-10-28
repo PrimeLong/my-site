@@ -23,7 +23,7 @@ import { checkReturn } from './lib/retention.js';
 import { DS_THEMES, appColors, learnThemeId, dsThemeId, learnMusic, learnSfx, worldMusic, setWorldMusic, worldSfx, setWorldSfx, worldVolume, setWorldVolume, worldThemeId, setWorldTheme } from './ds-tokens.js';
 import { DsRoot, Tabs, Button } from './ds.jsx';
 import { loadProgress as loadTextbookProgress, saveProgress as saveTextbookProgress, mergeTextbook, TEXTBOOK_PROGRESS_KEY, PROGRESS_EVENT } from './textbook/progress.js';
-import { featureOpen } from './learn-unlock.jsx';
+import { featureOpen, FeatureLocked } from './learn-unlock.jsx';
 import { BookLinkContext } from './booklink-context.js';
 import { LATEST_NEWS, readNewsSeen, newsForLearner, learnerSince, readFeedSeenAt, friendNewsSince } from './learn/news.js';
 import { friendsState } from './lib/friends-store.js';
@@ -1169,13 +1169,14 @@ function BottomNav({ tab, onTab, onReselect = null }) {
   // свежий выпуск «Что нового» ещё не открывали — точка на «⋯» и плашка «новое» у «Новостей»;
   // выпуск, вышедший до первого дня ученика, — не новость: новичку новое всё
   // и новое от друзей (печать, юнит, забег) после прошлого открытия ленты — тоже точка
-  const newsNew = React.useMemo(() => (!readNewsSeen()[LATEST_NEWS.id] && newsForLearner(LATEST_NEWS, learnerSince(loadTextbookProgress().learn)))
-    || friendNewsSince(((friendsState() || {}).friends) || [], readFeedSeenAt()), // eslint-disable-next-line react-hooks/exhaustive-deps
-  [tab, menu]);
-  // лиги и лавка открываются после первых уроков (src/learn/unlocks.js) — до того у вкладки замок
+  // лиги и лавка открываются после первых уроков (src/learn/unlocks.js) — до того у вкладки замок;
+  // прогресс пришёл с другого устройства — пересчитать замки и точку новостей
   const [progTick, setProgTick] = useState(0);
   useEffect(() => { const f = () => setProgTick((x) => x + 1); window.addEventListener(PROGRESS_EVENT, f); return () => window.removeEventListener(PROGRESS_EVENT, f); }, []);
-  const locks = React.useMemo(() => { const l = loadTextbookProgress().learn; return { league: !featureOpen(l, 'league'), shop: !featureOpen(l, 'shop') }; }, [tab, menu, progTick]); // eslint-disable-line react-hooks/exhaustive-deps
+  const newsNew = React.useMemo(() => { const l = loadTextbookProgress().learn; return (!readNewsSeen(l)[LATEST_NEWS.id] && newsForLearner(LATEST_NEWS, learnerSince(l)))
+    || friendNewsSince(((friendsState() || {}).friends) || [], readFeedSeenAt()); }, // eslint-disable-next-line react-hooks/exhaustive-deps
+  [tab, menu, progTick]);
+  const locks = React.useMemo(() => { const l = loadTextbookProgress().learn; return { league: !featureOpen(l, 'league'), shop: !featureOpen(l, 'shop'), world: !featureOpen(l, 'world') }; }, [tab, menu, progTick]); // eslint-disable-line react-hooks/exhaustive-deps
   const tabs = [
     { id: 'path', icon: Route, label: 'Путь' },
     { id: 'book', icon: BookOpenText, label: 'Учебник' },
@@ -1207,7 +1208,7 @@ function BottomNav({ tab, onTab, onReselect = null }) {
               return (
                 <button key={t.id} type="button" role="menuitem" data-tab={t.id} aria-current={on ? 'page' : undefined} data-nav-target={on ? undefined : `tab:${t.id}`}
                   onClick={() => { setMenu(false); if (on) { if (onReselect) onReselect(t.id); return; } Audio.play('tab'); onTab(t.id); }}>
-                  <Icon size={22} aria-hidden="true" /><span>{t.label}{t.id === 'news' && newsNew && <span className="ds-new">новое</span>}<small>{t.text}</small></span>
+                  <Icon size={22} aria-hidden="true" /><span>{t.label}{t.id === 'news' && newsNew && <span className="ds-new">новое</span>}{t.id === 'world' && locks.world && <Lock size={13} aria-label="откроется позже" data-testid="world-lock" style={{ marginLeft: 6, verticalAlign: '-1px' }} />}<small>{t.id === 'world' && locks.world ? 'Откроется после 10-го урока' : t.text}</small></span>
                 </button>
               );
             })}
@@ -2095,7 +2096,10 @@ export default function MacroSimulator() {
     try { if (tycoon) localStorage.setItem(LAST_SCREEN_KEY, 'tycoon'); else localStorage.removeItem(LAST_SCREEN_KEY); } catch { /* приватный режим */ }
   }, [tycoon]);
   const showGate = gate || (!account && !guest);
-  const learning = showGate || (view === 'menu' && !setup && !network && !tycoon && tab !== 'world');
+  // «Мир» открывается после десятого урока (src/learn/unlocks.js): до того на вкладке — что там будет
+  // и сколько уроков осталось, в оформлении обучения
+  const worldLocked = tab === 'world' && !featureOpen(loadTextbookProgress().learn, 'world');
+  const learning = showGate || (view === 'menu' && !setup && !network && !tycoon && (tab !== 'world' || worldLocked));
   // обучение — в своей светлой (или тёмной по выбору) теме; «канцелярия» — только в «Мире»
   applyTheme(learning ? learnThemeId() : theme);
   /* Звук: в обучении музыка по умолчанию выключена (своя настройка в профиле), звуки
@@ -2191,7 +2195,13 @@ export default function MacroSimulator() {
       const startDrill = (x) => { setFromBook(false); setGameFromBook(true); clearAutosave(); setLoaded(null); setSetup(x); };
       return (
         <div data-testid="shell" data-tab={tab}>
-          {tab === 'world' ? (
+          {tab === 'world' && worldLocked ? (
+            <DsRoot theme={dsThemeId()} style={{ minHeight: '100vh' }}>
+              <div style={{ maxWidth: 560, margin: '0 auto', padding: '24px 16px 120px' }} data-testid="world-locked">
+                <FeatureLocked id="world" learn={loadTextbookProgress().learn} onPath={() => setTab('path')} />
+              </div>
+            </DsRoot>
+          ) : tab === 'world' ? (
             <MainMenu key={theme} theme={theme} setTheme={setTheme} inShell
               onNewGame={() => { setFromBook(false); setGameFromBook(false); setSetupPreset(null); setView('setup'); }}
               onNetwork={() => setView('network')}

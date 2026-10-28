@@ -10,8 +10,8 @@ import { Card } from './ds.jsx';
 import { Mascot } from './mascot.jsx';
 import { Audio } from './MacroSimulator.jsx';
 import { NIcon } from './learn-notify.jsx';
-import { NEWS, newsDate, readNewsSeen, markNewsSeen, learnerSince, newsForLearner, feedDays, readFeedSeenAt, markFeedSeen } from './learn/news.js';
-import { dayOf, addDays } from './textbook/learn-state.js';
+import { NEWS, newsDate, readNewsSeen, markNewsSeen, newsShownKeys, learnerSince, newsForLearner, feedDays, readFeedSeenAt, markFeedSeen } from './learn/news.js';
+import { dayOf, addDays, markShown } from './textbook/learn-state.js';
 import { friendFeed, eventText, EVENT_ICON } from './learn/friends.js';
 import { markSeen, agoText } from './learn/notify.js';
 import { useMedia, useReducedMotion } from './ds-art.jsx';
@@ -85,16 +85,20 @@ function FriendPost({ p, i, now, onOpen, fresh = false }) {
 const whenText = (ts, now) => { if (dayOf(ts) === dayOf(now)) return agoText(ts, now); const t = new Date(ts); return `в ${t.getHours()}:${String(t.getMinutes()).padStart(2, '0')}`; };
 const dayLabel = (d, today) => (d === today ? 'Сегодня' : d === addDays(today, -1) ? 'Вчера' : newsDate(d, today));
 
-export default function NewsView({ learn = null, friends = null, onFriend = () => {} }) {
+export default function NewsView({ learn = null, update = null, friends = null, onFriend = () => {} }) {
   const now = Date.now();
   const today = dayOf(now);
   // «новое» — то, что не открывали до этого захода и что вышло после первого дня ученика;
   // открытая лента отмечает выпуски прочитанными
-  const [seen] = useState(readNewsSeen);
+  const [seen] = useState(() => readNewsSeen(learn));
   const [since] = useState(() => (learn ? learnerSince(learn) : null));
   // события друзей «новые» — после прошлого открытия ленты на этом устройстве
   const [feedSeenAt] = useState(() => readFeedSeenAt(now));
-  useEffect(() => { markNewsSeen(NEWS.map((n) => n.id)); markSeen(NEWS.map((n) => `news:${n.id}`)); markFeedSeen(); }, []);
+  // прочитано — и на этом устройстве, и в прогрессе: на других устройствах выпуск тоже не «новый»
+  useEffect(() => {
+    markNewsSeen(NEWS.map((n) => n.id)); markSeen(NEWS.map((n) => `news:${n.id}`)); markFeedSeen();
+    if (update) update((s) => markShown(s, newsShownKeys(NEWS.filter((n) => !(s.shown || {})[`w:${n.id}`]).map((n) => n.id))));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   // все выпуски — свёрнутыми: только главное, подробности — по кнопке
   const [open, setOpen] = useState({});
   const sketch = useMedia(SKETCH_QUERY);

@@ -15,6 +15,7 @@ import { CAST } from './cast.js';
 import { pathBlocks } from './money.js';
 import { plural } from '../lib/plural.js';
 import { walletYears, WALLET } from './wallet.js';
+import { extraLocks } from './stops.js';
 
 // сколько секунд на упражнение: одно касание — около десяти, расчёт и сборка — дольше
 export const SECONDS = { choice: 12, gap: 12, tf: 10, shift: 12, news: 16, match: 22, sort: 22, calc: 28, tiles: 20, curve: 15, price: 18, point: 15, swipe: 60, rush: 60, wallet: 120, open: 30, domino: 35 };
@@ -395,10 +396,13 @@ export function check(inst, resp) {
     // открытый вопрос: любой продуманный ответ засчитан, дальше — разбор
     // пропуск — не ошибка: у открытого вопроса неверного ответа нет, разбор откроется и так
     case 'open': return resp && resp.skip ? { ok: true, why: null, skipped: true } : { ok: String(resp || '').trim().length >= OPEN_MIN, why: null };
+    /* домино собрано — задание выполнено; падения — честно в разборе, а с первого раза оно не засчитано
+       (partial). Красная плашка «Правильно: …» с той же цепочкой, что ученик уже собрал, путала
+       (жалоба mvrcxjt8: «всё серое, как будто снова ошибся») */
     case 'domino': {
       const falls = resp && resp.falls ? resp.falls.length : 0;
-      const ok = !!(resp && resp.done) && falls === 0;
-      return { ok, why: ok ? null : text(`Цепочка собрана, но домино падало ${falls} ${falls % 10 === 1 && falls % 100 !== 11 ? 'раз' : 'раза'}: каждое звено должно прямо следовать из предыдущего.`) };
+      const ok = !!(resp && resp.done);
+      return { ok, partial: ok && falls > 0, why: ok && falls ? text(`Домино падало ${falls} ${falls % 10 === 1 && falls % 100 !== 11 ? 'раз' : 'раза'} — поэтому с первого раза не засчитано. Каждое звено должно прямо следовать из предыдущего.`) : null };
     }
     default: return { ok: false, why: null };
   }
@@ -632,6 +636,11 @@ function hardPool(unitId, upto = Infinity) {
 // задача учебника с шаблоном приходит с новыми числами — это и есть шаблон: дважды в урок не берём
 const noTwins = (autos, variants) => autos.filter((e) => !(e.source && variants.some((v) => v.variant === TEMPLATE_BY_SOURCE[e.source])));
 export const HARD_IN_PRACTICE = 2;
+/* Задача посложнее не приходит снова и снова (жалоба mvrd8goi: «в сотый раз вижу» — у раннего урока
+   список hard короткий, и одни и те же две задачи стояли в каждом уроке сильного ученика): реже
+   виденные — первыми, а задачу с неизменными числами, виденную HARD_SEEN_MAX раз, больше не берём. */
+export const HARD_SEEN_MAX = 3;
+const freshHard = (list, seen, rand) => bySeen(list.filter((e) => timesSeen(e, seen) < HARD_SEEN_MAX), seen, rand);
 // задача семинарского уровня: у задачи учебника с шаблоном и у расчёта с параметрами — сразу новые
 // числа (жалоба mv4j2khb: в алмазном «Повторении» она приходила с числами из учебника), иначе — как есть
 function hardInstance(e, rand) {
@@ -714,7 +723,7 @@ function buildLessonBase(lessonId, rand, { mistakes = [], hinted = [], level = '
     const { variants, autos } = hardPool(unit.id, lesson.no);
     // задача учебника, которая уже есть в уроке обычным шагом, второй раз «семинаром» не приходит (жалоба mvde42co)
     const taken = new Set(items.map((it) => it.id));
-    const hard = shuffle([...variants, ...autos].filter((e) => !taken.has(e.id)), rand).slice(0, HARD_IN_PRACTICE);
+    const hard = freshHard([...variants, ...autos].filter((e) => !taken.has(e.id)), seen, rand).slice(0, HARD_IN_PRACTICE);
     hard.forEach((e) => {
       const k = items.map((it, i) => i).reverse().find((i) => i > 0 && !items[i].review && !items[i].hard && !SELF_CHECK.includes(items[i].kind));
       const it = hardInstance(e, rand);
@@ -762,9 +771,9 @@ export function buildLevelCheck(levelId, rand = Math.random, { seen = {} } = {})
    Всё в таком уроке помечено diamond: true. Награды — в src/learn/rewards.js. */
 export const DIAMOND_HARD = 4;
 export const DIAMOND_PAIRS_SECONDS = 25;
-const hardItems = (unitId, n, rand, avoid = new Set(), upto = Infinity) => {
+const hardItems = (unitId, n, rand, avoid = new Set(), upto = Infinity, seen = {}) => {
   const { variants, autos } = hardPool(unitId, upto);
-  return shuffle([...variants, ...autos].filter((e) => !avoid.has(e.id)), rand).slice(0, n).map((e) => hardInstance(e, rand));
+  return freshHard([...variants, ...autos].filter((e) => !avoid.has(e.id)), seen, rand).slice(0, n).map((e) => hardInstance(e, rand));
 };
 function buildDiamond(lessonId, rand, opts) {
   const lesson = LESSON_BY_ID[lessonId];
@@ -774,7 +783,7 @@ function buildDiamond(lessonId, rand, opts) {
     // алмазный повтор — расчёты с параметрами приходят с новыми числами
     const items = lesson.exercises.map((e) => instantiate(EXERCISES[e.id], rand, { renumber: true }));
     const deep = lesson.inner.some((c) => c.diamond);
-    if (!deep) hardItems(unitId, 2, rand, new Set(items.map((it) => it.id)), lesson.no).forEach((it) => items.push(it));
+    if (!deep) hardItems(unitId, 2, rand, new Set(items.map((it) => it.id)), lesson.no, opts.seen).forEach((it) => items.push(it));
     // «Откройте сами» на повторе не нужен: кривую ученик уже нашёл
     const inner = lesson.inner.filter((c) => !c.discover);
     // карточки собираются до того, как mark скопирует упражнения: uid у копий тот же
@@ -790,7 +799,7 @@ function buildDiamond(lessonId, rand, opts) {
   }
   if (lesson.kind === 'review' || lesson.kind === 'summary') {
     const p = buildLessonBase(lessonId, rand, opts);
-    const hard = hardItems(unitId, 3, rand, new Set(p.items.map((it) => it.id)));
+    const hard = hardItems(unitId, 3, rand, new Set(p.items.map((it) => it.id)), Infinity, opts.seen);
     const keep = Math.max(1, p.items.length - hard.length);
     const items = p.items.slice(0, keep).concat(hard);
     // задачи посложнее бывают и короткими («верно или неверно»): урок не короче трёх минут
@@ -805,7 +814,7 @@ function buildDiamond(lessonId, rand, opts) {
   if (easy > 0) own.unshift(own.splice(easy, 1)[0]);
   // задача учебника с новыми числами — это её шаблон: если шаблон уже есть в уроке, второй копии не будет
   const items = own.map((e) => freshCopy(e, rand, {}, { sibling: false })).filter((it, k, list) => list.findIndex((x) => x.id === it.id) === k);
-  const hard = hardItems(unitId, DIAMOND_HARD, rand, new Set([...all.map((e) => e.id), ...items.map((it) => it.id)]), lesson.no);
+  const hard = hardItems(unitId, DIAMOND_HARD, rand, new Set([...all.map((e) => e.id), ...items.map((it) => it.id)]), lesson.no, opts.seen);
   hard.forEach((it, k) => { const at = items.length - 1 - k; if (at > 0 && items.length >= 8) items.splice(at, 1, it); else items.push(it); });
   // короткий урок добираем до трёх минут повторением прошлых уроков юнита (реже виденное — первым)
   const prev = bySeen(UNIT_BY_ID[unitId].lessons.filter((l) => l.no < lesson.no).flatMap((l) => l.exercises.map((e) => EXERCISES[e.id])).filter(basic)
@@ -908,15 +917,25 @@ export function pathState(learn) {
   // Путь сквозной: первый урок юнита открывается, когда пройден последний урок прошлого юнита
   // или прошлый юнит сдан проверкой
   let prevDone = true; let frontier = false;
+  /* особый урок, которого ждёт следующий: он и есть текущая остановка юнита (waiting, current —
+     { id, title, extra }); если он стоит после последнего урока, его ждёт первый урок следующего юнита */
+  let pending = null;
   const out = [];
   pilotUnits().forEach((u) => {
     const tested = !!(learn.units || {})[u.id];
     const lessons = [];
+    // особые уроки дороги (Персоналии, Чтение, Разбор графика) — такие же уроки: следующий ждёт их
+    const extras = extraLocks(u, learn);
     u.lessons.forEach((l, i) => {
       const entry = learn.lessons[l.id];
       const done = !!(entry && entry.runs > 0);
       let open = done || prevDone || tested;
       let fixLock = false;
+      if (!open && pending) {
+        const w = { id: pending.e.id, title: pending.e.title, extra: pending.e.type };
+        if (pending.st) { pending.st.waiting = w; if (!pending.st.current) pending.st.current = w; } else lessons.waiting = w;
+        pending = null;
+      }
       // первый непройденный урок Пути: не набралось ли ошибок — в этом юните или в только что пройденном прошлом
       if (open && !done && !tested && !frontier) {
         frontier = true;
@@ -931,11 +950,15 @@ export function pathState(learn) {
       }
       // пропущенный «Слушай» открывает следующий урок, но сам остаётся не пройденным
       const skipped = !done && open && !!(learn.skipped || {})[l.id];
-      prevDone = (done || tested || skipped) && !fixLock;
-      lessons.push({ id: l.id, no: l.no, title: l.title, done, open, diamond: !!(done && entry.diamond), ...(skipped ? { skipped: true } : {}), ...(fixLock ? { fixLock: true } : {}) });
+      const waits = (extras[i] || []).filter((e) => !e.done);
+      prevDone = (done || tested || skipped) && !fixLock && (tested || !waits.length);
+      pending = (done || skipped) && !tested && waits.length ? { e: waits[0], st: null } : null;
+      lessons.push({ id: l.id, no: l.no, title: l.title, done, open, diamond: !!(done && entry.diamond), ...(skipped ? { skipped: true } : {}), ...(fixLock ? { fixLock: true } : {}),
+        ...(waits.length && !tested ? { waits: waits.map((e) => e.type) } : {}) });
     });
-    const current = lessons.find((l) => l.open && !l.done && !l.skipped) || lessons.find((l) => l.open && !l.done) || null;
-    out.push({ course: u, lessons: [...lessons], current, complete: lessons.every((l) => l.done), tested, fix: lessons.fix || null });
+    const current = lessons.find((l) => l.open && !l.done && !l.skipped) || lessons.waiting || lessons.find((l) => l.open && !l.done) || null;
+    out.push({ course: u, lessons: [...lessons], current, complete: lessons.every((l) => l.done), tested, fix: lessons.fix || null, waiting: lessons.waiting || null });
+    if (pending) pending.st = out[out.length - 1];
   });
   return out;
 }

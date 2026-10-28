@@ -33,7 +33,7 @@ export const PEOPLE_CSS = `
     background: linear-gradient(145deg, color-mix(in srgb, var(--pp) 40%, #F3E3B5), color-mix(in srgb, var(--pp) 70%, #3A2A12));
     box-shadow: 0 22px 40px -22px rgba(30, 20, 8, .7), inset 0 0 0 1px rgba(255,255,255,.35); }
   .pp-frame > .pp-pic { width: 100%; height: 100%; border-radius: 78px 78px 13px 13px; overflow: hidden; background: var(--ds-card2); position: relative; }
-  .pp-pic img { width: 100%; height: 100%; object-fit: cover; filter: sepia(.25) contrast(1.04); animation: pp-ken 14s ease-in-out infinite alternate; }
+  .pp-pic img { width: 100%; height: 100%; object-fit: cover; object-position: 50% 30%; filter: sepia(.25) contrast(1.04); animation: pp-ken 14s ease-in-out infinite alternate; }
   @keyframes pp-ken { from { transform: scale(1.02) } to { transform: scale(1.1) translate(-2%, -2%) } }
   .pp-pic::after { content: ''; position: absolute; inset: 0; background: linear-gradient(115deg, transparent 35%, rgba(255,255,255,.28) 50%, transparent 65%); background-size: 260% 100%;
     animation: pp-sheen 5s ease-in-out 1s infinite; pointer-events: none; }
@@ -141,13 +141,15 @@ export function Portrait({ p, color, hidden = false }) {
     </div>
   );
 }
-// подпись под портретом: автор и лицензия, ссылка — на страницу файла на Commons
+// подпись под портретом: автор и лицензия, ссылка — на страницу файла (Commons или другой источник);
+// у фото, положенного руками без строки в people/credits.csv, подписи нет
 export function PhotoCredit({ p }) {
   const ph = usePhoto(p);
-  if (!ph) return null;
+  if (!ph || (!ph.author && !ph.license)) return null;
+  const where = /wikimedia\.org|wikipedia\.org/.test(ph.source || '') || /^https:\/\/upload\.wikimedia/.test(ph.file || '') ? 'Wikimedia Commons' : 'источник';
   return (
     <div className="pp-credit" data-testid="people-credit">
-      Фото: {ph.author} · {ph.license} · {ph.source ? <a href={ph.source} target="_blank" rel="noopener noreferrer">Wikimedia Commons</a> : 'Wikimedia Commons'}
+      Фото: {[ph.author, ph.license].filter(Boolean).join(' · ')}{ph.source ? <> · <a href={ph.source} target="_blank" rel="noopener noreferrer">{where}</a></> : where === 'Wikimedia Commons' ? ' · Wikimedia Commons' : ''}
     </div>
   );
 }
@@ -192,7 +194,7 @@ export default function PeopleView({ id, learn, update, onClose }) {
     Audio.play('paper');
     if (k < g.people.length - 1) { setK(k + 1); return; }
     const acc = (Object.values(firstOk.current).filter(Boolean).length / g.people.length) * 100;
-    if (!already) update((s) => markMet(finishLesson(s, null, { xp: MET_XP, accuracy: acc, seconds: Math.min(900, (Date.now() - started.current) / 1000), kind: 'people' }), id));
+    if (!already) update((s) => markMet(finishLesson(s, null, { xp: MET_XP, accuracy: acc, seconds: Math.min(900, (Date.now() - started.current) / 1000), kind: 'people', extra: { fresh: true } }), id));
     setFinished(true);
   };
   const style = { '--pp': g.color, '--pp-ink': `color-mix(in srgb, ${g.color} 82%, #000)` };

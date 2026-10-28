@@ -42,7 +42,8 @@ export function recommend(s, states = pathState(s)) {
   if (!cur) return null;
   const open = new Set(states.flatMap((st) => st.lessons.filter((l) => l.open).map((l) => l.id)));
   const weak = weakLessons(s, 0.6).find((w) => open.has(w.id));
-  return { lessonId: cur.id, why: 'next', ...(weak ? { weak: { lessonId: weak.id, acc: weak.acc } } : {}) };
+  // следующая остановка — особый урок (Персоналии, Чтение, Разбор графика): отметка на нём
+  return { lessonId: cur.id, why: 'next', ...(cur.extra ? { extra: cur.extra, title: cur.title } : {}), ...(weak ? { weak: { lessonId: weak.id, acc: weak.acc } } : {}) };
 }
 
 // то, что наградам нужно знать о курсе: пройдено уроков и юнитов, сколько видов уроков

@@ -13,17 +13,23 @@ import { CHARTS } from './textbook/charts.js';
 import { sceneInCrowns } from './learn/money.js';
 import { GRAPH_BY_ID, GRAPH_XP, isGraphDone, stepView } from './learn/graphs.js';
 import { finishLesson, markGraph } from './textbook/learn-state.js';
+import { ReportFlag } from './learn-report.jsx';
+import { textBox, dotBox, aroundPoint, placeLabels, freeTicks } from './learn/label-place.js';
 
 const CSS = `
+  /* слой 310: над уроком (300), но под шторками (320) — «Сообщить об ошибке» открывается поверх */
   .gl { --g-blue: #2459A6; --g-rust: #B4441A; --g-teal: #0E7A72; --g-gold: #9A6A00; --g-grid: color-mix(in srgb, var(--ds-ink) 9%, transparent);
-    position: fixed; inset: 0; z-index: 320; overflow-y: auto; overscroll-behavior: contain; color: var(--ds-ink);
+    position: fixed; inset: 0; z-index: 310; overflow-y: auto; overscroll-behavior: contain; color: var(--ds-ink);
     background: radial-gradient(120% 60% at 50% -10%, color-mix(in srgb, var(--g-blue) 12%, var(--ds-paper)), var(--ds-paper) 60%), var(--ds-paper); }
   .ds-dark .gl, .gl.dark { --g-blue: #8DB6F2; --g-rust: #F29A6E; --g-teal: #5ED3C4; --g-gold: #E9C25A; }
-  .gl-top { position: sticky; top: 0; z-index: 3; display: flex; align-items: center; gap: 10px; padding: 10px 14px;
-    background: color-mix(in srgb, var(--ds-paper) 86%, transparent); backdrop-filter: blur(10px); border-bottom: 1px solid var(--ds-rule2); }
+  /* шапка с полоской шагов — одним липким блоком: полоска не прилипает к кромке шапки и не уезжает
+     под неё при прокрутке (на телефоне она стояла вплотную к «потолку») */
+  .gl-head { position: sticky; top: 0; z-index: 3; padding-top: env(safe-area-inset-top);
+    background: color-mix(in srgb, var(--ds-paper) 88%, transparent); backdrop-filter: blur(10px); border-bottom: 1px solid var(--ds-rule2); }
+  .gl-top { display: flex; align-items: center; gap: 10px; padding: 10px 14px 8px; max-width: 760px; margin: 0 auto; }
   .gl-title { flex: 1; min-width: 0; font: 700 15px var(--ds-head); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .gl-title small { display: block; font: 700 10.5px var(--ds-sans); letter-spacing: .12em; text-transform: uppercase; color: var(--ds-ink2); }
-  .gl-bar { display: flex; gap: 4px; padding: 0 14px 10px; max-width: 720px; margin: 0 auto; }
+  .gl-bar { display: flex; gap: 4px; padding: 2px 16px 12px; max-width: 720px; margin: 0 auto; }
   .gl-bar i { flex: 1; height: 5px; border-radius: 3px; background: var(--ds-rule2); overflow: hidden; position: relative; }
   .gl-bar i::after { content: ''; position: absolute; inset: 0; background: var(--g-blue); transform: scaleX(0); transform-origin: 0 50%; transition: transform .45s cubic-bezier(.3, .8, .4, 1); }
   .gl-bar i.on::after { transform: none; }
@@ -132,6 +138,43 @@ export function GraphStage({ g, k }) {
   const ptId = (p, i) => (view.shown.has(`pt#${i}`) ? `pt#${i}` : `pt:${p.label}`);
   const guideId = (p, i) => (view.shown.has(`guide#${i}`) ? `guide#${i}` : `guide:${p.label}`);
   const clip = `glc${g.id}`;
+  /* подписи без наложений (src/learn/label-place.js): названия осей, значения у пунктиров и метки шага
+     стоят на месте; деления, которые на них налезают, прячутся; подписи кривых и точек выбирают место
+     вокруг — где не закрывают другие подписи, точки и линии */
+  const shownPts = scene.points.map((p, i) => ({ p, i, id: ptId(p, i) })).filter(({ p, id }) => view.shown.has(id) && p.x >= x0 && p.x <= x1 && p.y >= y0 && p.y <= y1);
+  const guides = scene.points.map((p, i) => ({ p, i, id: guideId(p, i) })).filter(({ p, id }) => p.guide && view.shown.has(id));
+  // значение у пунктира — как в тексте шага: на крупной шкале целым (44, а не 43,6)
+  const gv = (v, lo, hi) => (hi - lo >= 20 ? String(Math.round(v)) : fmt(v));
+  const fixedText = [
+    textBox(scene.xLabel, W - M.r, H - 4, 13, 'end'), textBox(scene.yLabel, M.l - 34, M.t + 2, 13, 'start'),
+    ...guides.flatMap(({ p }) => [textBox(gv(p.x, x0, x1), sx(p.x), H - M.b + 28, 12, 'middle'), textBox(gv(p.y, y0, y1), M.l + 4, sy(p.y) - 5, 12, 'start')]),
+    ...view.marks.flatMap((m) => (m.t === 'x' ? [{ x0: sx(m.x) - 30, x1: sx(m.x) + 30, y0: H - M.b + 18, y1: H - M.b + 35 }]
+      : m.t === 'y' ? [textBox(m.label, M.l + 4, sy(m.y) - 5, 12, 'start')]
+        : m.t === 'seg' ? [textBox(m.label, (sx(m.x0) + sx(m.x1)) / 2, sy(m.y) - 9, 12.5, 'middle')] : [])),
+  ];
+  const xTicks = freeTicks(ticks(x0, x1).map((t) => ({ t, box: textBox(fmt(t), sx(t), H - M.b + 15, 12, 'middle') })), fixedText);
+  const yTicks = freeTicks(ticks(y0, y1).filter((t) => sy(t) - M.t > 10).map((t) => ({ t, box: textBox(fmt(t), M.l - 6, sy(t) + 4, 12, 'end') })), fixedText);
+  const curveLabels = scene.curves.filter((c) => c.label && !c.ghost && view.shown.has(c.id));
+  const inField = (q) => q.x >= x0 && q.x <= x1 && q.y >= y0 && q.y <= y1;
+  const lines = scene.curves.filter((c) => view.shown.has(c.id)).flatMap((c) => c.points.filter(inField).map((q) => dotBox(sx(q.x), sy(q.y), 2.5)));
+  const dots = [...shownPts.map(({ p }) => dotBox(sx(p.x), sy(p.y), 7)), ...view.marks.filter((m) => m.t === 'pt').map((m) => dotBox(sx(m.x), sy(m.y), 6))];
+  const along = (c) => {
+    const vis = c.points.filter(inField);
+    if (!vis.length) return [];
+    const first = typeof c.labelPos === 'number' ? c.labelPos : 0.94;
+    return [first, 0.8, 0.65, 0.5, 0.35, 0.2].map((f) => vis[Math.round(f * (vis.length - 1))]).flatMap((q) => {
+      const x = sx(q.x); const y = sy(q.y);
+      return [{ x: x + 6, y: y - 8, anchor: 'start' }, { x: x - 6, y: y - 8, anchor: 'end' }, { x: x + 6, y: y + 16, anchor: 'start' }];
+    });
+  };
+  const spots = placeLabels([
+    ...view.marks.map((m, i) => ({ m, i })).filter(({ m }) => m.t === 'pt').map(({ m, i }) => {
+      const c = aroundPoint(sx(m.x), sy(m.y));
+      return { id: `m${i}`, text: m.label, size: 12.5, cands: m.below ? [c[2], c[3], ...c] : c };
+    }),
+    ...shownPts.filter(({ p }) => p.label).map(({ p, id }) => ({ id, text: p.label, size: p.small ? 12 : 14, cands: aroundPoint(sx(p.x), sy(p.y)) })),
+    ...curveLabels.map((c) => ({ id: `c:${c.id}`, text: c.label, size: 14, cands: along(c) })),
+  ], { fixed: [...fixedText, ...xTicks.map((t) => t.box), ...yTicks.map((t) => t.box), ...dots], lines, bounds: { x0: M.l + 2, x1: W - 2, y0: 2, y1: H - M.b - 2 } });
   return (
     <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`График: ${g.title}`} data-testid="graph-stage" data-step={k}>
       <defs><clipPath id={clip}><rect x={M.l} y={M.t - 6} width={W - M.l - M.r + 6} height={H - M.t - M.b + 6} /></clipPath></defs>
@@ -140,8 +183,8 @@ export function GraphStage({ g, k }) {
       <g className={`g-axes${view.focus.has('axes') ? ' on' : ''}`} data-testid="graph-el" data-el="axes" data-on={String(view.focus.has('axes'))}>
         <line x1={M.l} x2={W - M.r} y1={H - M.b} y2={H - M.b} stroke="var(--ds-ink2)" strokeWidth="1.6" />
         <line x1={M.l} x2={M.l} y1={M.t} y2={H - M.b} stroke="var(--ds-ink2)" strokeWidth="1.6" />
-        {ticks(x0, x1).map((t) => <text key={`tx${t}`} x={sx(t)} y={H - M.b + 15} fontSize="12" fill="var(--ds-ink3)" textAnchor="middle">{fmt(t)}</text>)}
-        {ticks(y0, y1).map((t) => (sy(t) - M.t > 10 ? <text key={`ty${t}`} x={M.l - 6} y={sy(t) + 4} fontSize="12" fill="var(--ds-ink3)" textAnchor="end">{fmt(t)}</text> : null))}
+        {xTicks.map(({ t }) => <text key={`tx${t}`} x={sx(t)} y={H - M.b + 15} fontSize="12" fill="var(--ds-ink3)" textAnchor="middle">{fmt(t)}</text>)}
+        {yTicks.map(({ t }) => <text key={`ty${t}`} x={M.l - 6} y={sy(t) + 4} fontSize="12" fill="var(--ds-ink3)" textAnchor="end">{fmt(t)}</text>)}
         <text x={W - M.r} y={H - 4} fontSize="13" fill="var(--ds-ink2)" textAnchor="end" fontStyle="italic">{scene.xLabel}</text>
         <text x={M.l - 34} y={M.t + 2} fontSize="13" fill="var(--ds-ink2)" fontStyle="italic">{scene.yLabel}</text>
       </g>
@@ -186,26 +229,23 @@ export function GraphStage({ g, k }) {
           <g key={`${id}-${isIn(id) ? k : 0}`} className={`${cls(id)}${isIn(id) ? ' g-in' : ''}`} data-testid="graph-el" data-el={id} data-on={String(view.focus.has(id))}>
             <line className="draw" pathLength="1" x1={sx(p.x)} x2={sx(p.x)} y1={sy(p.y)} y2={H - M.b} stroke="var(--ds-ink3)" strokeWidth="1.4" strokeDasharray="4 4" />
             <line className="draw" pathLength="1" x1={sx(p.x)} x2={M.l} y1={sy(p.y)} y2={sy(p.y)} stroke="var(--ds-ink3)" strokeWidth="1.4" strokeDasharray="4 4" />
-            <text className="fade" x={sx(p.x)} y={H - M.b + 28} fontSize="12" fontWeight="700" fill="var(--ds-ink)" textAnchor="middle" stroke="var(--ds-card)" strokeWidth="4" paintOrder="stroke">{fmt(p.x)}</text>
-            <text className="fade" x={M.l + 4} y={sy(p.y) - 5} fontSize="12" fontWeight="700" fill="var(--ds-ink)" stroke="var(--ds-card)" strokeWidth="4" paintOrder="stroke">{fmt(p.y)}</text>
+            <text className="fade" x={sx(p.x)} y={H - M.b + 28} fontSize="12" fontWeight="700" fill="var(--ds-ink)" textAnchor="middle" stroke="var(--ds-card)" strokeWidth="4" paintOrder="stroke">{gv(p.x, x0, x1)}</text>
+            <text className="fade" x={M.l + 4} y={sy(p.y) - 5} fontSize="12" fontWeight="700" fill="var(--ds-ink)" stroke="var(--ds-card)" strokeWidth="4" paintOrder="stroke">{gv(p.y, y0, y1)}</text>
           </g>
         );
       })}
-      {scene.curves.filter((c) => c.label && !c.ghost && view.shown.has(c.id)).map((c) => {
-        const vis = c.points.filter((p) => p.x >= x0 && p.x <= x1 && p.y >= y0 && p.y <= y1);
-        const p = typeof c.labelPos === 'number' ? c.points[Math.round(c.labelPos * (c.points.length - 1))] : (vis[vis.length - 1] || c.points[c.points.length - 1]);
-        const x = Math.min(W - M.r - 4, sx(p.x) + 6); const y = Math.min(H - M.b - 8, Math.max(M.t + 12, sy(p.y) - 8));
-        return <text key={`l${c.id}-${isIn(c.id) ? k : 0}`} className={`${cls(c.id)}${isIn(c.id) ? ' g-in' : ''}`} x={x} y={y} fontSize="14" fontWeight="800" fill={KCOLOR[c.color] || 'var(--g-gold)'} textAnchor={x > W - 70 ? 'end' : 'start'} stroke="var(--ds-card)" strokeWidth="4" paintOrder="stroke">
+      {curveLabels.map((c) => {
+        const at = spots[`c:${c.id}`]; if (!at) return null;
+        return <text key={`l${c.id}-${isIn(c.id) ? k : 0}`} className={`${cls(c.id)}${isIn(c.id) ? ' g-in' : ''}`} x={at.x} y={at.y} fontSize="14" fontWeight="800" fill={KCOLOR[c.color] || 'var(--g-gold)'} textAnchor={at.anchor} stroke="var(--ds-card)" strokeWidth="4" paintOrder="stroke">
           <tspan className={isIn(c.id) ? 'fade' : undefined}>{c.label}</tspan></text>;
       })}
-      {scene.points.map((p, i) => {
-        const id = ptId(p, i); if (!view.shown.has(id) || p.x < x0 || p.x > x1 || p.y < y0 || p.y > y1) return null;
+      {shownPts.map(({ p, id }) => {
         const col = p.color ? KCOLOR[p.color] : p.small ? 'var(--ds-ink2)' : 'var(--g-gold)';
-        const right = sx(p.x) > W - 90;
+        const at = spots[id];
         return (
           <g key={`${id}-${isIn(id) ? k : 0}`} className={`${cls(id)}${isIn(id) ? ' g-in' : ''}`} style={{ '--k': col }} data-testid="graph-el" data-el={id} data-on={String(view.focus.has(id))}>
             <circle className="pop" cx={sx(p.x)} cy={sy(p.y)} r={p.small ? 4.5 : 6.5} fill={col} stroke="var(--ds-card)" strokeWidth="2" />
-            <text className="pop" x={right ? sx(p.x) - 9 : sx(p.x) + 9} y={sy(p.y) - 9} fontSize={p.small ? 12 : 14} fontWeight="800" fill={col} textAnchor={right ? 'end' : 'start'} stroke="var(--ds-card)" strokeWidth="4" paintOrder="stroke">{p.label}</text>
+            {at && <text className="pop" x={at.x} y={at.y} fontSize={p.small ? 12 : 14} fontWeight="800" fill={col} textAnchor={at.anchor} stroke="var(--ds-card)" strokeWidth="4" paintOrder="stroke">{p.label}</text>}
           </g>
         );
       })}
@@ -213,11 +253,11 @@ export function GraphStage({ g, k }) {
         const col = KCOLOR[m.tone] || 'var(--ds-ink)';
         const key = `m${k}-${i}`;
         if (m.t === 'pt') {
-          const right = sx(m.x) > W - 100;
+          const at = spots[`m${i}`];
           return (
             <g key={key} className="g-mark g-in" data-testid="graph-mark">
               <circle className="pop" cx={sx(m.x)} cy={sy(m.y)} r="5" fill="var(--ds-card)" stroke={m.tone ? col : 'var(--g-blue)'} strokeWidth="2.6" />
-              <text x={right ? sx(m.x) - 9 : sx(m.x) + 9} y={m.below ? sy(m.y) + 19 : Math.max(M.t + 10, sy(m.y) - 9)} fontSize="12.5" fontWeight="700" fill={m.tone ? col : 'var(--ds-ink)'} textAnchor={right ? 'end' : 'start'} stroke="var(--ds-card)" strokeWidth="4" paintOrder="stroke">{m.label}</text>
+              {at && <text x={at.x} y={at.y} fontSize="12.5" fontWeight="700" fill={m.tone ? col : 'var(--ds-ink)'} textAnchor={at.anchor} stroke="var(--ds-card)" strokeWidth="4" paintOrder="stroke">{m.label}</text>}
             </g>
           );
         }
@@ -279,7 +319,7 @@ export default function GraphLesson({ id, learn, update, onClose, peek = false }
   };
   const finish = () => {
     Audio.play('register');
-    if (!peek && !already && update) update((s) => markGraph(finishLesson(s, null, { xp: GRAPH_XP, accuracy: firstOk.current ? 100 : 60, seconds: Math.min(900, (Date.now() - started.current) / 1000), kind: 'graph' }), id));
+    if (!peek && !already && update) update((s) => markGraph(finishLesson(s, null, { xp: GRAPH_XP, accuracy: firstOk.current ? 100 : 60, seconds: Math.min(900, (Date.now() - started.current) / 1000), kind: 'graph', extra: { fresh: true } }), id));
     setPhase('done');
   };
   const next = () => {
@@ -291,11 +331,20 @@ export default function GraphLesson({ id, learn, update, onClose, peek = false }
   const body = (
     <div className="gl" ref={root} role="dialog" aria-label={`Разбор графика: ${g.title}`} data-testid="graph-lesson" data-id={id} data-phase={phase}>
       <style>{CSS}</style>
+      <div className="gl-head">
       <div className="gl-top">
         <IconButton label="Закрыть" icon={X} data-testid="graph-close" onClick={() => { Audio.play('paper'); onClose(); }} />
         <div className="gl-title"><small>Разбор графика</small>{g.title}</div>
+        {/* «Сообщить об ошибке» — как в любом уроке: шаг (или вопрос) и его текст уходят в жалобу */}
+        <ReportFlag context={() => ({
+          screen: 'graph', lesson: id, unit: g.unitId, kind: 'graph',
+          step: phase === 'tour' ? `шаг ${k + 1} из ${n}` : phase === 'quiz' ? 'вопрос' : 'итог',
+          prompt: (phase === 'tour' ? g.steps[k].text : `${g.quiz.q} — ${g.quiz.options.map((o) => o.text).join(' / ')}`).replace(/\*\*/g, '').slice(0, 1500),
+          answer: phase === 'quiz' && picked != null ? order[picked].text : '',
+        })} />
       </div>
       <div className="gl-bar" aria-hidden="true">{[...g.steps, null].map((_, i) => <i key={i} className={phase !== 'tour' || i <= k ? 'on' : ''} />)}</div>
+      </div>
       {phase === 'tour' && (
         <div className="gl-page">
           <div className="gl-stage">

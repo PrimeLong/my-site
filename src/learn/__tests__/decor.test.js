@@ -63,18 +63,20 @@ describe('физика вещиц', () => {
   [[560, 48], [320, 48], [260, 64]].forEach(([W, H]) => DECOR_IDS.forEach((id) => {
     it(`${id} ${W}×${H}: в полосе, засыпает, ответ будит, снова засыпает`, () => {
       const m = decorModel(id, W, H);
+      // колыбель качается дольше остальных — как настоящая
+      const calmBy = id === 'desk-cradle' ? 45 : 25;
       const first = settle(m, H);
-      expect(first, 'успокаивается сама').toBeLessThan(25);
+      expect(first, 'успокаивается сама').toBeLessThan(calmBy);
       expect(bounds(m, H)).toBe(true);
       kick(m, true);
       expect(decorStep(m, 1 / 60, H), 'верный ответ будит').toBeGreaterThan(0.05);
       let inside = true;
       for (let k = 0; k < 120; k += 1) { decorStep(m, 1 / 60, H); inside = inside && bounds(m, H); }
       expect(inside, 'не вылетает из полосы').toBe(true);
-      expect(settle(m, H), 'после верного ответа').toBeLessThan(25);
+      expect(settle(m, H), 'после верного ответа').toBeLessThan(calmBy);
       kick(m, false);
       expect(decorStep(m, 1 / 60, H), 'ошибка — тоже').toBeGreaterThan(0.05);
-      expect(settle(m, H), 'после ошибки').toBeLessThan(25);
+      expect(settle(m, H), 'после ошибки').toBeLessThan(calmBy);
     });
   }));
   it('гирлянда в покое провисает посередине, а не лежит на дне полосы', () => {
@@ -91,6 +93,15 @@ describe('физика вещиц', () => {
     for (let k = 0; k < 40; k += 1) { decorStep(m, 1 / 60, H); far = Math.max(far, m.balls[4].a); }
     expect(far).toBeGreaterThan(0.3);
     expect(m.clicks).toBeGreaterThan(0);
+  });
+  it('колыбель затихает медленно: через 8 секунд ещё качается, через минуту — в покое', () => {
+    const H = 48; const m = decorModel('desk-cradle', 400, H);
+    kick(m, true);
+    const swing = (sec) => { let top = 0; for (let k = 0; k < sec * 60; k += 1) { decorStep(m, 1 / 60, H); top = Math.max(top, ...m.balls.map((b) => Math.abs(b.a))); } return top; };
+    swing(7);
+    expect(swing(1)).toBeGreaterThan(0.1);
+    swing(51);
+    expect(swing(1)).toBeLessThan(0.02);
   });
   it('мобиле: закрученная монета раскручивается и в покое смотрит лицом', () => {
     const H = 48; const m = decorModel('desk-mobile', 400, H);

@@ -19,12 +19,14 @@ import { DeskDecor } from './learn-decor.jsx';
 import { SkinPreview, SKIN_CSS } from './learn-skins.jsx';
 // сад — отдельный ленивый чанк: грузится, только когда открыли «Сад»
 const GardenView = React.lazy(() => import('./learn-garden.jsx').then((m) => ({ default: m.GardenView })));
+const DustGame = React.lazy(() => import('./learn-dust.jsx'));
 import {
   balance, rateOn, rateHistory, priceOf, buy, setWear, outfitOf, deskOf, themeOf, FREEZE, BOOST, WARDROBE, OUTFIT_BY_ID, SLOT_LABEL, shopDay, boostActive, DEAL_OFF, questsFor, QUEST_ICON, monthChallenge, monthStamps, policyInfo, takePolicy, cancelPolicy, PREMIUM,
   chestCoins, chestKey, hasClaim, openChest, achievementsOf, coinsWord, plural, greetingAt, COIN, PIGGY, piggyState, piggyPut, piggyTake, piggyAdd, topupRate, piggyValue, forgone, REAL_RATE, realCurve, weekRate,
   goalCoins,
 } from './learn/rewards.js';
 import { skillLevel, LEVEL_NAME, LEVEL_TEXT } from './learn/program.js';
+import { DUST, dustDone, dustItem } from './learn/dust.js';
 import {
   dayOf, addDays, dayStart, streak, ownedFreezes, weekDots, rolloverLocal, setProfile, PROFILE_GOALS, PROFILE_MINUTES, PROFILE_GOAL_LABEL, goalMinutes, goalToday, pendingGoal,
 } from './textbook/learn-state.js';
@@ -580,6 +582,49 @@ function Wardrobe({ learn, wear, onWear }) {
     </Card>
   );
 }
+
+/* «Пыльная витрина» — карточка мини-игры на «Витрине» (src/learn-dust.jsx): окошко в пыли с протёртой
+   полосой, сколько витрин оплачено сегодня и кнопка «Протереть» */
+const DUST_CSS = `
+  .sh-dust { display: flex; align-items: center; gap: 14px; margin: 4px 0 18px; padding: 14px; border-radius: 20px; color: #F6EEE2; position: relative; overflow: hidden;
+    background: radial-gradient(120% 120% at 0% 0%, #4A3628, #21180F 70%); box-shadow: 0 16px 30px -22px rgba(0,0,0,.8); }
+  .sh-dust-win { position: relative; flex: none; width: 74px; height: 92px; border-radius: 12px; padding: 5px; background: linear-gradient(145deg, #E2C084, #8A6532 40%, #D9B97D 60%, #6E4B22); }
+  .sh-dust-win > div { position: relative; width: 100%; height: 100%; border-radius: 8px; overflow: hidden; display: grid; place-items: end center; padding-bottom: 6px;
+    background: radial-gradient(80% 60% at 50% 30%, #FFF8E8, #C6A472); }
+  .sh-dust-win > div::after { content: ''; position: absolute; inset: 0; background:
+      radial-gradient(circle at 20% 30%, rgba(120,108,90,.35) 0 2px, transparent 3px) 0 0 / 9px 11px,
+      linear-gradient(rgba(176,164,144,.88), rgba(150,138,118,.92));
+    -webkit-mask: linear-gradient(118deg, #000 30%, transparent 36%, transparent 52%, #000 60%); mask: linear-gradient(118deg, #000 30%, transparent 36%, transparent 52%, #000 60%);
+    animation: sh-dust-wipe 3.6s ease-in-out infinite; }
+  @keyframes sh-dust-wipe { 0%, 100% { -webkit-mask-position: 0 0; mask-position: 0 0; } 50% { -webkit-mask-position: 12px 0; mask-position: 12px 0; } }
+  .sh-dust-t { flex: 1; min-width: 0; }
+  .sh-dust-t b { display: block; font: 700 17px var(--ds-head); }
+  .sh-dust-t span { display: block; margin-top: 3px; font: 500 13.5px/1.4 var(--ds-sans); color: rgba(246,238,226,.78); }
+  .sh-dust-dots { display: flex; gap: 5px; margin-top: 8px; }
+  .sh-dust-dots i { width: 22px; height: 6px; border-radius: 3px; background: rgba(246,238,226,.18); }
+  .sh-dust-dots i.on { background: #F3D98E; }
+  .sh-dust .ds-btn { flex: none; }
+  @media (max-width: 420px) { .sh-dust { flex-wrap: wrap; } .sh-dust .ds-btn { width: 100%; } }
+  @media (prefers-reduced-motion: reduce) { .sh-dust-win > div::after { animation: none; } }
+`;
+function DustCard({ learn, onOpen }) {
+  const done = dustDone(learn);
+  const item = dustItem(learn, dayOf(Date.now()), done);
+  return (
+    <div className="sh-dust" data-testid="shop-dust" data-done={done}>
+      <style>{DUST_CSS}</style>
+      <div className="sh-dust-win" aria-hidden="true"><div><Mascot mood="hello" size={44} outfit={item ? { [OUTFIT_BY_ID[item].slot]: item } : outfitOf(learn)} /></div></div>
+      <div className="sh-dust-t">
+        <b>Пыльная витрина</b>
+        <span>{done < DUST.perDay ? `Протрите стекло — под пылью новинка дня. За витрину — ${DUST.coins} ${coinsWord(DUST.coins)}.` : 'Монеты за сегодня собраны. Протирать можно и просто так.'}</span>
+        <div className="sh-dust-dots" aria-label={`Сегодня протёрто ${Math.min(done, DUST.perDay)} из ${DUST.perDay}`} role="img">
+          {Array.from({ length: DUST.perDay }, (_, k) => <i key={k} className={k < done ? 'on' : ''} />)}
+        </div>
+      </div>
+      <Button small variant="warm" onClick={() => { Audio.play('paper'); onOpen(); }} data-testid="dust-open">Протереть</Button>
+    </div>
+  );
+}
 /* ЛАВКА — вкладки вместо одной длинной ленты (docs/mechanics.md, «Лавка»): сверху кошелёк и курс
    дня (касание — график и что такое кроны), ниже пять вкладок: «Витрина» (вещи дня, на Хеллоуин —
    и сезонные), «Для урока» (темы и украшения урока), «Ювелир» (редкое, на что копят), «Гардероб»
@@ -601,6 +646,7 @@ export function ShopView({ learn, update, now = Date.now(), focus = null }) {
   const [view, setView] = useState(focus === 'garden' ? 'garden' : 'shop');
   const [tab, setTabState] = useState(focus === 'piggy' ? 'useful' : lastShopTab);
   const [rateOpen, setRateOpen] = useState(false);
+  const [dust, setDust] = useState(false);
   const setTab = (t) => { lastShopTab = t; setTabState(t); setMsg(null); };
   // из уведомления «вклад созрел» — сразу к копилке
   useEffect(() => {
@@ -701,6 +747,7 @@ export function ShopView({ learn, update, now = Date.now(), focus = null }) {
               {today.showcase.map((id) => <ShopItem key={id} o={OUTFIT_BY_ID[id]} deal={id === today.deal} {...itemProps} />)}
               {!today.showcase.length && <div className="ds-sub" style={{ gridColumn: '1 / -1', fontSize: 14.5 }}>Всё обычное уже ваше — дальше вкладки «Ювелир» и «Для урока».</div>}
             </div>
+            <DustCard learn={learn} onOpen={() => setDust(true)} />
           </>}
 
           {tab === 'lesson' && <>
@@ -747,6 +794,11 @@ export function ShopView({ learn, update, now = Date.now(), focus = null }) {
         </div>
         </>}
       </div>
+      {dust && (
+        <React.Suspense fallback={null}>
+          <DustGame learn={learn} update={update} onClose={() => setDust(false)} onShowcase={() => { setDust(false); setView('shop'); setTab('showcase'); }} />
+        </React.Suspense>
+      )}
     </div>
   );
 }
