@@ -113,7 +113,7 @@ const CSS = `
   .ln-grade-word b { font: 700 17px/1.2 var(--ds-head); }
   .ln-grade-word small { font: 13.5px/1.35 var(--ds-sans); color: var(--ds-ink2); }
   .ln-know-steps { display: flex; gap: 5px; margin-top: 5px; }
-  .ln-know-steps i { width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; font: 700 11px/1 var(--ds-mono); font-style: normal; color: var(--ds-ink3);
+  .ln-know-steps i { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font: 700 12px/1 var(--ds-mono); font-style: normal; color: var(--ds-ink3);
     background: var(--ds-card2); box-shadow: inset 0 0 0 1px var(--ds-rule2); }
   .ln-know-steps i.past { color: #fff; background: color-mix(in srgb, var(--u) 70%, var(--ds-card)); box-shadow: none; }
   .ln-know-steps i.on { color: var(--u-ink); background: color-mix(in srgb, var(--u) 16%, var(--ds-card)); box-shadow: inset 0 0 0 2px var(--u); }

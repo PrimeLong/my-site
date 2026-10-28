@@ -108,8 +108,8 @@ const CSS = `
   .lb-ctl button, .lb-rate { height: 38px; min-width: 56px; padding: 0 14px; border: 0; border-radius: 999px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 4px;
     background: color-mix(in srgb, var(--b) 11%, transparent); color: var(--ds-ink); font: 700 13.5px var(--ds-sans); font-variant-numeric: tabular-nums; transition: background .15s; }
   .lb-ctl button:hover, .lb-rate:hover { background: color-mix(in srgb, var(--b) 20%, transparent); }
-  .lb-ctl small { font: 800 11px var(--ds-sans); }
-  .lb-cap { grid-column: 1 / -1; text-align: center; font: 500 11.5px var(--ds-sans); color: var(--ds-ink3); }
+  .lb-ctl small { font: 800 12px var(--ds-sans); }
+  .lb-cap { grid-column: 1 / -1; text-align: center; font: 500 12px var(--ds-sans); color: var(--ds-ink3); }
   .lb-bars { display: inline-flex; align-items: flex-end; gap: 2px; height: 13px; }
   .lb-bars i { width: 3px; height: 4px; border-radius: 1.5px; background: currentColor; animation: lb-eq .8s ease-in-out infinite alternate; }
   .lb-bars i:nth-child(2) { animation-delay: -.35s; } .lb-bars i:nth-child(3) { animation-delay: -.6s; }
@@ -123,7 +123,7 @@ const CSS = `
   .lb-mini-bar { position: absolute; left: 0; right: 0; top: 0; height: 3px; background: var(--b); transform-origin: left; transition: transform .35s linear; }
   .lb-mini-play { flex: none; width: 42px; height: 42px; border-radius: 50%; border: 0; cursor: pointer; display: grid; place-items: center; color: #fff; background: var(--b); }
   .lb-mini-t { flex: 1; min-width: 0; border: 0; background: none; padding: 0; text-align: left; cursor: pointer; color: inherit; }
-  .lb-mini-t small { display: flex; align-items: center; gap: 6px; font: 700 10.5px var(--ds-sans); letter-spacing: .1em; text-transform: uppercase; color: var(--ds-ink3); }
+  .lb-mini-t small { display: flex; align-items: center; gap: 6px; font: 700 12px var(--ds-sans); letter-spacing: .08em; text-transform: uppercase; color: var(--ds-ink3); }
   .lb-mini-t small .lb-bars { height: 9px; color: var(--b); } .lb-mini-t small .lb-bars i { width: 2px; }
   .lb-mini-t b { display: block; font: 700 14.5px/1.3 var(--ds-head); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .lb-mini .lb-rate { height: 34px; min-width: 50px; padding: 0 10px; }
