@@ -2782,7 +2782,7 @@ export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReo
     if (n.go === 'book-chapter' && n.chapter) { openBook({ kind: 'chapter', id: n.chapter }); return; }
     // ник под запретом — окно смены ника (src/account.jsx, NameGate)
     if (n.go === 'rename') { window.dispatchEvent(new Event('ems-rename')); return; }
-    const want = { path: 'path', tasks: 'path', league: 'league', shop: 'shop', garden: 'shop', piggy: 'shop', news: 'news', friends: 'profile' }[n.go] || 'path';
+    const want = { path: 'path', tasks: 'path', league: 'league', shop: 'shop', garden: 'shop', piggy: 'shop', news: 'news', friends: 'profile', world: 'world' }[n.go] || 'path';
     const extra = n.go === 'tasks' ? { tasks: true } : n.go === 'friends' ? { friends: true } : n.id.startsWith('chest:') ? { chest: n.id.slice(6) } : null;
     if (n.go === 'garden' || n.go === 'piggy') setShopFocus((f) => ({ n: f.n + 1, to: n.go }));
     if (want === tab) {

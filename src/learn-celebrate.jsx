@@ -13,7 +13,7 @@
    Касание по сцене до конца постановки — сразу к финалу. «Уменьшить движение» — сразу финал.
    Отдельный ленивый чанк: грузится, только когда есть что праздновать. */
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { ArrowRight, ArrowUp, ArrowDown, Award, Gift, Trophy, ShoppingBag, PiggyBank, Sprout } from 'lucide-react';
+import { ArrowRight, ArrowUp, ArrowDown, Award, Gift, Trophy, ShoppingBag, PiggyBank, Sprout, Globe } from 'lucide-react';
 import { Engraving, Medal, Stamp, CountUp, useReducedMotion } from './ds-art.jsx';
 import { ACH_ICON, MONTH_ART, MONTH_ABBR } from './award-art.js';
 import { albumItems, monthItems } from './learn/collections.js';
@@ -501,7 +501,7 @@ function LeagueScene({ m, onDone, onGo }) {
 
 /* Открылась возможность (src/learn/unlocks.js): замок с дужкой — дужка отскакивает, замок падает,
    и вперёд выходит медальон возможности; ниже — что это и где найти. «Заглянуть» — сразу туда. */
-const UNLOCK_ICON = { trophy: Trophy, shop: ShoppingBag, piggy: PiggyBank, sprout: Sprout };
+const UNLOCK_ICON = { trophy: Trophy, shop: ShoppingBag, piggy: PiggyBank, sprout: Sprout, globe: Globe };
 const Padlock = () => (
   <svg viewBox="0 0 80 100" width="104" height="130" aria-hidden="true">
     <path className="shackle" d="M20 46 V30 a20 20 0 0 1 40 0 V46" fill="none" stroke="#C9C2B4" strokeWidth="9" strokeLinecap="round" />

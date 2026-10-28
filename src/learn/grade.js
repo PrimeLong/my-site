@@ -14,6 +14,7 @@ import { LEVELS } from '../textbook/levels.js';
 import { PEOPLE_BY_UNIT } from './people.js';
 import { READING_BY_UNIT } from './reading.js';
 import { GRAPH_BY_UNIT } from './graphs.js';
+import { emptyLearn } from '../textbook/learn-state.js';
 
 export const KNOW = { lesson: 1, perfect: 1, diamond: 1, extra: 1, unit: 3 };
 const EXTRA_IDS = { met: Object.values(PEOPLE_BY_UNIT).map((x) => x.id), read: Object.values(READING_BY_UNIT).map((x) => x.id), graphs: Object.values(GRAPH_BY_UNIT).map((x) => x.id) };
@@ -49,3 +50,9 @@ export function courseLevel(learn) {
   };
 }
 
+/* Учебник по уровням курса (жалоба: «из Среднего можно читать Продвинутый и Профессиональный»): открыты
+   уровни до нынешнего уровня курса включительно, выше — под замком, пока ученик не дойдёт до них на Пути. */
+export function openBookLevels(learn) {
+  const cur = courseLevel(learn && learn.lessons ? learn : emptyLearn()).level.id;
+  return new Set(LEVELS.slice(0, LEVELS.findIndex((l) => l.id === cur) + 1).map((l) => l.id));
+}

@@ -85,3 +85,14 @@ describe('новости: прочитанный выпуск — не «нов�
     expect(readNewsSeen(emptyLearn())[id]).toBeUndefined();
   });
 });
+
+describe('учебник по уровням курса: выше нынешнего — под замком (src/learn/grade.js)', () => {
+  it('новичку открыт только Начальный; пройденный проверкой Начальный открывает Базовый', async () => {
+    const { openBookLevels } = await import('../grade.js');
+    const { emptyLearn } = await import('../../textbook/learn-state.js');
+    expect([...openBookLevels(emptyLearn())]).toEqual(['start']);
+    expect([...openBookLevels(null)]).toEqual(['start']);
+    const passed = { ...emptyLearn(), units: { scarcity: { tested: 1 } } };
+    expect([...openBookLevels(passed)]).toEqual(['start', 'basic']);
+  });
+});

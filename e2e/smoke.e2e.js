@@ -5026,6 +5026,16 @@ test('открытия: новичку лиги, лавка, копилка и �
   await expect(locked).toContainText('Осталось 1 урок');
   await locked.getByTestId('feature-locked-go').click();
   await expect(page.getByTestId('path')).toBeVisible();
+  // «Мир» — после 10-го урока: в меню «⋯» замок, на вкладке — что там будет и сколько осталось
+  await nav.locator('[data-tab="more"]').click();
+  await expect(nav.getByTestId('more-menu').getByTestId('world-lock')).toHaveCount(1);
+  await expect(nav.getByTestId('more-menu').locator('[data-tab="world"]')).toContainText('Откроется после 10-го урока');
+  await nav.getByTestId('more-menu').locator('[data-tab="world"]').click();
+  await expect(page.getByTestId('world-locked').getByTestId('feature-locked')).toContainText('Мир — после 10-го урока');
+  await expect(page.getByTestId('world-locked')).toContainText('Осталось 9 уроков');
+  await expect(page.getByTestId('world')).toHaveCount(0);
+  await page.getByTestId('world-locked').getByTestId('feature-locked-go').click();
+  await expect(page.getByTestId('path')).toBeVisible();
   // второй урок пройден только что — лавка открылась: сцена «Открылось», «Заглянуть» ведёт в лавку
   await page.evaluate(() => {
     const p = JSON.parse(localStorage.getItem('ems-textbook-v1'));
@@ -5046,6 +5056,55 @@ test('открытия: новичку лиги, лавка, копилка и �
   await expect(page.getByTestId('shop-switch').getByTestId('garden-lock')).toHaveCount(1);
   await page.getByTestId('shop-switch').locator('[data-view="garden"]').click();
   await expect(page.locator('[data-testid=feature-locked][data-feature="garden"]')).toContainText('Сад — после 6-го урока');
+  expect(errors).toEqual([]);
+});
+
+test('открытия: учебник — уровни выше нынешнего на Пути под замком', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('ems-unlock-test', '1');
+    if (localStorage.getItem('ems-textbook-v1')) return;
+    localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons: { 'sc-i1': { at: Date.now() - 86400000, runs: 1, best: 90 } } } }));
+  });
+  const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
+  await openBook(page);
+  const groups = page.getByTestId('tb-level-group');
+  await expect(groups.and(page.locator('[data-level="start"]'))).not.toHaveAttribute('data-locked', 'true');
+  const basic = groups.and(page.locator('[data-level="basic"]'));
+  await expect(basic).toHaveAttribute('data-locked', 'true');
+  await expect(basic).toContainText('Откроется, когда вы дойдёте до этого уровня на Пути');
+  // глава закрытого уровня открывает не текст, а объяснение
+  await basic.locator('[data-chapter="supply-demand"]').click();
+  const lock = page.getByTestId('tb-chapter-locked');
+  await expect(lock).toContainText('Глава уровня «Базовый»');
+  await expect(page.getByTestId('textbook').locator('.katex')).toHaveCount(0);
+  await lock.getByRole('button', { name: 'К оглавлению' }).click();
+  await expect(basic).toBeVisible();
+  // глава своего уровня читается как раньше
+  await groups.and(page.locator('[data-level="start"]')).locator('[data-chapter="scarcity"]').click();
+  await expect(page.getByTestId('tb-chapter-locked')).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+test('особые уроки не пропустить: после урока с «Разбором графика» следующий урок ждёт его', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('ems-extra-test', '1');
+    if (localStorage.getItem('ems-textbook-v1')) return;
+    const at = Date.now() - 86400000;
+    const ids = ['sc-i1', 'sc-l1', 'sc-l2', 'sc-i2'];
+    localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons: Object.fromEntries(ids.map((id) => [id, { at, runs: 1, best: 90 }])) } }));
+  });
+  const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
+  const stop = page.locator('[data-testid=path-extra][data-extra="graph"]');
+  await expect(stop).toHaveAttribute('data-state', 'open');
+  await expect(pathNode(page, 'sc-l3')).toHaveAttribute('data-state', 'locked');
+  // разбор пройден — следующий урок открылся
+  await page.evaluate(() => {
+    const p = JSON.parse(localStorage.getItem('ems-textbook-v1'));
+    p.learn.graphs = { 'graph-ppf': Date.now() - 60000 };
+    localStorage.setItem('ems-textbook-v1', JSON.stringify(p));
+  });
+  await page.reload({ waitUntil: 'networkidle' });
+  await expect(pathNode(page, 'sc-l3')).not.toHaveAttribute('data-state', 'locked');
   expect(errors).toEqual([]);
 });
 
