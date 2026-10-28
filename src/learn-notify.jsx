@@ -302,8 +302,9 @@ export function NotifyCenter({ notify, onClose, onGo }) {
   const shown = notify.list.filter((n) => !(notify.dismissed || {})[n.id]);
   const news = shown.filter((n) => fresh.has(n.id));
   const old = shown.filter((n) => !fresh.has(n.id));
-  // смахнули — прочитано: из «Новых» уходит в «Ранее», счётчик на колокольчике уменьшается сразу
-  const read = (n) => { notify.markOne(n.id); setFresh((s) => { const t = new Set(s); t.delete(n.id); return t; }); };
+  /* смахнули — уведомление убрано совсем: не переезжает в «Ранее» (жалоба), и на других устройствах
+     тоже (x:); счётчик на колокольчике уменьшается сразу. Касание — открыть, «Прочитано» — всё в «Ранее» */
+  const read = (n) => { if (notify.dismiss) notify.dismiss(n.id); else notify.markOne(n.id); setFresh((s) => { const t = new Set(s); t.delete(n.id); return t; }); };
   return (
     <div className="nt-page" data-testid="notifications" role="dialog" aria-label="Уведомления">
       <div className="nt-page-in">
@@ -319,7 +320,7 @@ export function NotifyCenter({ notify, onClose, onGo }) {
           <>
             {news.length > 0 && <div className="nt-group">Новые · {news.length}</div>}
             {news.map((n, i) => <NoteRow key={n.id} n={n} unread i={i} now={notify.now} onGo={onGo} onRead={read} />)}
-            {news.length > 0 && <div className="ds-faint nt-hint" data-testid="notify-swipe-hint">Смахните уведомление вбок — оно станет прочитанным.</div>}
+            {news.length > 0 && <div className="ds-faint nt-hint" data-testid="notify-swipe-hint">Смахните уведомление вбок — оно уйдёт из списка.</div>}
             {old.length > 0 && <div className="nt-group">Ранее</div>}
             {/* смахнули прочитанное — оно уходит из списка, а не оставляет пустое место */}
             {old.map((n, i) => <NoteRow key={`old:${n.id}`} n={n} unread={false} i={i + news.length} now={notify.now} onGo={onGo} onRead={() => notify.dismiss && notify.dismiss(n.id)} />)}

@@ -4,45 +4,52 @@
    достояние, CC0, CC BY, CC BY-SA). Несвободные («fair use») пропускаются — у таких людей останется
    медальон с инициалами. Скачивает уменьшенную копию (480 px) в public/people/<id>.jpg и пишет
    src/learn/people-photos.js: автор, лицензия, ссылка на страницу файла — подпись под портретом.
+   Проверки лицензии и имени файла — те же, что у браузера (src/learn/portraits.js).
 
-   Запуск: node scripts/fetch-portraits.mjs   (нужен доступ к en.wikipedia.org, commons.wikimedia.org
+   Портреты, скачанные при сборке, приложение отдаёт со своего адреса: браузеру ученика не нужно ходить
+   в Википедию (её могут не пустить сеть, школа или CSP — жалоба «у Персоналий всё так же нет фото»).
+   Сборка на Vercel запускает скрипт сама (vercel.json, buildCommand) с ключом --soft: нет сети —
+   прежний список остаётся, сборка идёт дальше.
+
+   Запуск: npm run portraits   (нужен доступ к en.wikipedia.org, commons.wikimedia.org
    и upload.wikimedia.org). */
 import { writeFile, mkdir } from 'node:fs/promises';
 import { PEOPLE } from '../src/learn/people.js';
+import { commonsFile, photoFromCommons } from '../src/learn/portraits.js';
 
+const soft = process.argv.includes('--soft');
 const UA = { 'User-Agent': 'InflatiaPortraits/1.0 (educational app; portraits with attribution)' };
-const FREE = /public domain|^pd|cc0|cc[- ]by/i;
-const NONFREE = /fair use|non-free|copyrighted/i;
-// разметка Commons → текст: без тегов, сущности (&amp;, &#39;, &nbsp;…) — символами
-const ENT = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' };
-const strip = (html = '') => String(html).replace(/<[^>]+>/g, '')
-  .replace(/&(#x?[0-9a-f]+|[a-z]+);/gi, (m, e) => (e[0] === '#' ? String.fromCodePoint(e[1].toLowerCase() === 'x' ? parseInt(e.slice(2), 16) : Number(e.slice(1))) : ENT[e.toLowerCase()] ?? m))
-  .replace(/\s+/g, ' ').trim();
-const fileOf = (url) => {
-  const parts = decodeURIComponent(new URL(url).pathname).split('/');
-  const i = parts.indexOf('thumb');
-  return i >= 0 ? parts[i + 3] : parts[parts.length - 1];
-};
+const get = (url) => fetch(url, { headers: UA, signal: AbortSignal.timeout(10000) });
 
 const out = {};
+let reached = false;
 await mkdir(new URL('../public/people/', import.meta.url), { recursive: true });
 for (const p of PEOPLE.flatMap((g) => g.people)) {
+  if (!p.wiki) continue;
   try {
-    const sum = await (await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(p.wiki)}`, { headers: UA })).json();
-    const src = (sum.originalimage || sum.thumbnail || {}).source;
-    if (!src || !src.includes('/wikipedia/commons/')) { console.log(`— ${p.id}: нет свободного фото на Commons`); continue; }
-    const name = fileOf(src);
+    const res = await get(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(p.wiki)}`);
+    reached = true;
+    const sum = await res.json();
+    const name = commonsFile((sum.originalimage || sum.thumbnail || {}).source || '');
+    if (!name) { console.log(`— ${p.id}: нет фото на Commons`); continue; }
     const api = `https://commons.wikimedia.org/w/api.php?action=query&format=json&prop=imageinfo&iiprop=url|extmetadata&iiurlwidth=480&titles=${encodeURIComponent(`File:${name}`)}`;
-    const info = Object.values((await (await fetch(api, { headers: UA })).json()).query.pages)[0].imageinfo[0];
-    const meta = info.extmetadata || {};
-    const license = strip((meta.LicenseShortName || {}).value);
-    if (!FREE.test(license) || NONFREE.test(license)) { console.log(`— ${p.id}: лицензия «${license}» — пропускаю`); continue; }
-    const img = await fetch(info.thumburl || info.url, { headers: UA });
+    const page = Object.values(((await (await get(api)).json()).query || {}).pages || {})[0] || {};
+    const ph = photoFromCommons((page.imageinfo || [])[0]);
+    if (!ph) { console.log(`— ${p.id}: несвободная лицензия — пропускаю`); continue; }
+    const img = await get(ph.file);
     if (!img.ok) throw new Error(`HTTP ${img.status}`);
     await writeFile(new URL(`../public/people/${p.id}.jpg`, import.meta.url), Buffer.from(await img.arrayBuffer()));
-    out[p.id] = { file: `/people/${p.id}.jpg`, author: strip((meta.Artist || {}).value) || 'неизвестен', license, source: info.descriptionurl };
-    console.log(`✓ ${p.id}: ${license}`);
-  } catch (e) { console.log(`× ${p.id}: ${e.message}`); }
+    out[p.id] = { ...ph, file: `/people/${p.id}.jpg` };
+    console.log(`✓ ${p.id}: ${ph.license}`);
+  } catch (e) {
+    console.log(`× ${p.id}: ${e.message}`);
+    // Википедия не ответила вовсе — дальше не ждём: остальные запросы упадут так же
+    if (!reached) break;
+  }
+}
+if (!Object.keys(out).length) {
+  console.log(soft ? 'Портреты не обновлены (нет доступа к Википедии) — остаётся прежний список.' : 'Ни одного портрета не скачано.');
+  process.exit(soft ? 0 : 1);
 }
 const body = `/* Портреты «Персоналий»: id человека → файл в public/people, автор и лицензия. Файл пишет
    scripts/fetch-portraits.mjs — только с Wikimedia Commons и только общественное достояние или

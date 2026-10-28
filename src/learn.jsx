@@ -2828,7 +2828,7 @@ export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReo
         {tab === 'shop' && (featureOpen(learn, 'shop') ? <ShopView key={shopFocus.n} learn={learn} update={update} focus={shopFocus.to} />
           : <div className="ln-wrap"><FeatureLocked id="shop" learn={learn} onPath={() => onTab('path')} /></div>)}
         {tab === 'league' && <div className="ln-wrap">{featureOpen(learn, 'league') ? <LeagueView learn={learn} update={update} /> : <FeatureLocked id="league" learn={learn} onPath={() => onTab('path')} />}</div>}
-        {tab === 'news' && <Lazy><NewsView learn={learn} friends={friends} onFriend={(l) => setFriendLogin(l)} /></Lazy>}
+        {tab === 'news' && <Lazy><NewsView learn={learn} update={update} friends={friends} onFriend={(l) => setFriendLogin(l)} /></Lazy>}
         {tab === 'profile' && <Lazy><ProfileView learn={learn} update={update} onOpenBook={openBook} onSettings={() => setSettings(true)} onNotify={() => setBell(true)} unread={notify.unread.length}
           friends={friends} guest={guest} onFriends={() => { Audio.play('paper'); setFriendsPage(true); }} /></Lazy>}
       </div>

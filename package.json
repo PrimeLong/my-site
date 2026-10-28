@@ -15,7 +15,8 @@
     "icons": "node scripts/icons.mjs",
     "e2e": "playwright test",
     "balance:replay": "node scripts/replay-balance.mjs",
-    "voice:export": "node scripts/voice-export.mjs"
+    "voice:export": "node scripts/voice-export.mjs",
+    "portraits": "node scripts/fetch-portraits.mjs"
   },
   "dependencies": {
     "@fontsource/fragment-mono": "^5.3.0",

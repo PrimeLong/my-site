@@ -4535,7 +4535,7 @@ test('урок: назад ровно на одну карточку — про�
   expect(errors).toEqual([]);
 });
 
-test('уведомления: смахнуть в сторону — прочитано, ещё раз из «Ранее» — убрано; текст не выделяется', async ({ page, isMobile }) => {
+test('уведомления: смахнуть в сторону — убрано совсем, не в «Ранее»; из «Ранее» — тоже; текст не выделяется', async ({ page, isMobile }) => {
   await page.clock.setFixedTime(new Date('2026-10-21T16:00:00'));
   await withTestFlag(page);
   await page.addInitScript(() => {
@@ -4569,18 +4569,23 @@ test('уведомления: смахнуть в сторону — прочи�
     }
   };
   await swipeLeft(note);
-  // смахнутое — в «Ранее», непрочитанных больше нет; вкладка не сменилась
-  await expect(page.locator('[data-testid=notifications] [data-id^="book-review:"][data-unread="true"]')).toHaveCount(0);
-  const read = page.locator('[data-testid=notifications] [data-id^="book-review:"][data-unread="false"]');
-  await expect(read).toHaveCount(1);
-  await expect(page.getByTestId('review')).toHaveCount(0);
-  // смахнули прочитанное в «Ранее» — оно уходит из списка, без пустого места; и не возвращается
-  await swipeLeft(read);
+  // смахнутое из «Новых» уходит совсем — в «Ранее» его нет; вкладка не сменилась
   await expect(page.locator('[data-testid=notifications] [data-id^="book-review:"]')).toHaveCount(0);
+  await expect(page.getByTestId('review')).toHaveCount(0);
   await page.getByTestId('notifications').locator('[data-nav="back"]').click();
   await page.getByTestId('bell').first().click();
   await expect(page.getByTestId('notifications')).toBeVisible();
   await expect(page.locator('[data-testid=notifications] [data-id^="book-review:"]')).toHaveCount(0);
+  // «Прочитано» — всё остальное в «Ранее»; смахнутое оттуда уходит из списка, без пустого места
+  const rest = page.locator('[data-testid=notifications] [data-unread="true"]');
+  if (await rest.count()) {
+    await page.getByTestId('notify-read-all').click();
+    await page.getByTestId('bell').first().click();
+    const old = page.locator('[data-testid=notifications] [data-unread="false"]').first();
+    const id = await old.getAttribute('data-id');
+    await swipeLeft(old);
+    await expect(page.locator(`[data-testid=notifications] [data-id="${id}"]`)).toHaveCount(0);
+  }
   expect(errors).toEqual([]);
 });
 

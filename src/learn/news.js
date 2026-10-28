@@ -240,12 +240,20 @@ export function learnerSince(learn, now = Date.now()) {
 }
 export const newsForLearner = (n, since) => !since || n.date > since;
 
-/* Прочитанные выпуски — на устройстве (ems-news-seen: id → когда открыли). Новый ученик не видит
-   прошлых выпусков как «новых»: всё, что вышло до его первого дня включительно, — не новость. */
+/* Прочитанные выпуски — на устройстве (ems-news-seen: id → когда открыли) и в прогрессе ученика
+   (learn.shown, ключ w:<id>), общем для всех его устройств: открыл ленту на ПК — на телефоне выпуск уже
+   не «новый» (жалоба). Новый ученик не видит прошлых выпусков как «новых»: всё, что вышло до его первого
+   дня включительно, — не новость. */
 const SEEN_KEY = 'ems-news-seen';
-export function readNewsSeen() {
-  try { const v = JSON.parse(localStorage.getItem(SEEN_KEY) || '{}'); return v && typeof v === 'object' ? v : {}; } catch { return {}; }
+export const NEWS_SEEN_PREFIX = 'w:';
+export function readNewsSeen(learn = null) {
+  let local = {};
+  try { const v = JSON.parse(localStorage.getItem(SEEN_KEY) || '{}'); local = v && typeof v === 'object' ? v : {}; } catch { /* приватный режим */ }
+  const synced = Object.fromEntries(Object.entries((learn && learn.shown) || {}).filter(([k]) => k.startsWith(NEWS_SEEN_PREFIX)).map(([k, v]) => [k.slice(NEWS_SEEN_PREFIX.length), v]));
+  return { ...synced, ...local };
 }
+// ключи прогресса для прочитанных выпусков: сам выпуск и его уведомление (центр уведомлений — n:news:<id>)
+export const newsShownKeys = (ids) => ids.flatMap((id) => [`${NEWS_SEEN_PREFIX}${id}`, `n:news:${id}`]);
 export function markNewsSeen(ids, now = Date.now()) {
   const seen = readNewsSeen();
   ids.forEach((id) => { if (!seen[id]) seen[id] = now; });

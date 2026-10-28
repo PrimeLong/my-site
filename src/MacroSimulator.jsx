@@ -1169,12 +1169,13 @@ function BottomNav({ tab, onTab, onReselect = null }) {
   // свежий выпуск «Что нового» ещё не открывали — точка на «⋯» и плашка «новое» у «Новостей»;
   // выпуск, вышедший до первого дня ученика, — не новость: новичку новое всё
   // и новое от друзей (печать, юнит, забег) после прошлого открытия ленты — тоже точка
-  const newsNew = React.useMemo(() => (!readNewsSeen()[LATEST_NEWS.id] && newsForLearner(LATEST_NEWS, learnerSince(loadTextbookProgress().learn)))
-    || friendNewsSince(((friendsState() || {}).friends) || [], readFeedSeenAt()), // eslint-disable-next-line react-hooks/exhaustive-deps
-  [tab, menu]);
-  // лиги и лавка открываются после первых уроков (src/learn/unlocks.js) — до того у вкладки замок
+  // лиги и лавка открываются после первых уроков (src/learn/unlocks.js) — до того у вкладки замок;
+  // прогресс пришёл с другого устройства — пересчитать замки и точку новостей
   const [progTick, setProgTick] = useState(0);
   useEffect(() => { const f = () => setProgTick((x) => x + 1); window.addEventListener(PROGRESS_EVENT, f); return () => window.removeEventListener(PROGRESS_EVENT, f); }, []);
+  const newsNew = React.useMemo(() => { const l = loadTextbookProgress().learn; return (!readNewsSeen(l)[LATEST_NEWS.id] && newsForLearner(LATEST_NEWS, learnerSince(l)))
+    || friendNewsSince(((friendsState() || {}).friends) || [], readFeedSeenAt()); }, // eslint-disable-next-line react-hooks/exhaustive-deps
+  [tab, menu, progTick]);
   const locks = React.useMemo(() => { const l = loadTextbookProgress().learn; return { league: !featureOpen(l, 'league'), shop: !featureOpen(l, 'shop') }; }, [tab, menu, progTick]); // eslint-disable-line react-hooks/exhaustive-deps
   const tabs = [
     { id: 'path', icon: Route, label: 'Путь' },

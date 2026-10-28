@@ -71,3 +71,17 @@ describe('особые уроки дороги — такие же уроки: �
     expect(s.daily[dayOf(now)]).toMatchObject({ l: 2, n: 1, p: 1 });
   });
 });
+
+describe('новости: прочитанный выпуск — не «новый» и на другом устройстве', () => {
+  it('отметка в прогрессе (w:<id>) читается вместе с отметкой устройства', async () => {
+    const { readNewsSeen, newsShownKeys, NEWS } = await import('../news.js');
+    const { emptyLearn, markShown, mergeLearn, normalizeLearn } = await import('../../textbook/learn-state.js');
+    const id = NEWS[0].id;
+    expect(newsShownKeys([id])).toEqual([`w:${id}`, `n:news:${id}`]);
+    const pc = markShown(emptyLearn(), newsShownKeys([id]), 1000);
+    // телефон: своя отметка пуста, прогресс пришёл с ПК
+    const phone = mergeLearn(normalizeLearn(emptyLearn()), normalizeLearn(pc));
+    expect(readNewsSeen(phone)[id]).toBe(1000);
+    expect(readNewsSeen(emptyLearn())[id]).toBeUndefined();
+  });
+});
