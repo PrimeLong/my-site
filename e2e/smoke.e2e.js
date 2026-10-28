@@ -5190,6 +5190,50 @@ test('особые уроки не пропустить: после урока �
   expect(errors).toEqual([]);
 });
 
+test('лавка: «Пыльная витрина» — тряпкой по стеклу, 100% — блик и 3 монеты; до трёх витрин в день', async ({ page }) => {
+  await page.addInitScript(() => {
+    if (localStorage.getItem('ems-textbook-v1')) return;
+    localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons: { 'sc-i1': { at: Date.now() - 86400000, runs: 1, best: 90 } }, coins: { '2026-10-01': 50 } } }));
+  });
+  const { errors } = await openApp(page, '/', '{}', { tab: 'shop' });
+  const card = page.getByTestId('shop-dust');
+  await expect(card).toHaveAttribute('data-done', '0');
+  const earnedNow = () => page.evaluate(() => Object.values(JSON.parse(localStorage.getItem('ems-textbook-v1')).learn.coins || {}).reduce((a, x) => a + x, 0));
+  const before = await earnedNow();
+  await card.getByTestId('dust-open').click();
+  const game = page.getByTestId('dust-game');
+  await expect(game).toHaveAttribute('data-phase', 'play');
+  await expect(game.getByTestId('dust-hint')).toContainText('3 монеты');
+  // мазок мышью — часть стекла уже чистая
+  const glass = game.getByTestId('dust-glass');
+  const box = await glass.boundingBox();
+  await page.mouse.move(box.x + 10, box.y + box.height * 0.4);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width - 10, box.y + box.height * 0.4, { steps: 16 });
+  await page.mouse.move(box.x + 10, box.y + box.height * 0.42, { steps: 16 });
+  await page.mouse.up();
+  await expect.poll(async () => Number(await game.getByTestId('dust-percent').getAttribute('data-value'))).toBeGreaterThan(0);
+  // остальное — с клавиатуры: Enter протирает полосу за полосой
+  await glass.focus();
+  for (let k = 0; k < 40 && (await game.getAttribute('data-phase')) === 'play'; k += 1) await page.keyboard.press('Enter');
+  await expect(game.getByTestId('dust-percent')).toHaveAttribute('data-value', '100');
+  const res = game.getByTestId('dust-result');
+  await expect(res).toHaveAttribute('data-paid', '3');
+  await expect(res.getByTestId('dust-coins')).toContainText('+3 монеты');
+  await expect(res).toContainText('ещё 2 из 3');
+  // ещё витрина — снова пыль, проценты с нуля
+  await res.getByTestId('dust-again').click();
+  await expect(game).toHaveAttribute('data-phase', 'play');
+  await expect(game.getByTestId('dust-percent')).toHaveAttribute('data-value', '0');
+  await game.getByTestId('dust-close').click();
+  await expect(game).toHaveCount(0);
+  await expect(card).toHaveAttribute('data-done', '1');
+  // три монеты витрины (вместе с ними могли прийти и печати, которые ждали расчёта наград)
+  expect(await earnedNow()).toBeGreaterThanOrEqual(before + 3);
+  expect(await page.evaluate(() => Object.keys(JSON.parse(localStorage.getItem('ems-textbook-v1')).learn.claimed).filter((k) => k.startsWith('dust:')).length)).toBe(1);
+  expect(errors).toEqual([]);
+});
+
 test('«Разбор графика» — остановка на дороге юнита: график собирается по шагам, вопрос, +10 опыта; кнопка на карточке урока', async ({ page }) => {
   await page.addInitScript(() => {
     if (localStorage.getItem('ems-textbook-v1')) return;

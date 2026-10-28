@@ -127,3 +127,47 @@ describe('книги полки: больше текста и озвучка о�
     expect(passageAt(parts, 0)).toBe(null);
   });
 });
+
+describe('«Пыльная витрина» в лавке (src/learn/dust.js)', () => {
+  it('за витрину — 3 монеты, до трёх в день; четвёртая — без монет; назавтра снова', async () => {
+    const { DUST, dustClaim, dustDone, dustLeft } = await import('../dust.js');
+    const { balance } = await import('../rewards.js');
+    const { emptyLearn } = await import('../../textbook/learn-state.js');
+    const T = Date.parse('2026-10-28T10:00:00Z');
+    let s = emptyLearn();
+    for (let k = 0; k < 4; k += 1) s = dustClaim(s, T + k * 60000);
+    expect(balance(s)).toBe(DUST.coins * DUST.perDay);
+    expect(dustDone(s, T)).toBe(3);
+    expect(dustLeft(s, T)).toBe(0);
+    expect(dustLeft(s, T + 86400000)).toBe(3);
+    s = dustClaim(s, T + 86400000);
+    expect(balance(s)).toBe(DUST.coins * (DUST.perDay + 1));
+  });
+  it('тряпка: один проход оставляет середину мутной, второй — чисто; край круга почти не тронут', async () => {
+    const { DUST, dustGrid, wipeAt, cleanShare, stampsAlong, shownPercent } = await import('../dust.js');
+    const g = dustGrid(80, 80, 8);
+    expect(g.cols).toBe(10); expect(cleanShare(g)).toBe(0);
+    wipeAt(g, 44, 44, 30);
+    const mid = g.v[5 * 10 + 5];
+    expect(mid).toBeGreaterThan(DUST.thr);
+    wipeAt(g, 44, 44, 30);
+    expect(g.v[5 * 10 + 5]).toBeLessThan(DUST.thr);
+    expect(g.v[0]).toBe(1);
+    const pts = stampsAlong(0, 0, 30, 0, 9);
+    expect(pts.length).toBe(10);
+    expect(pts[pts.length - 1]).toEqual([30, 0]);
+    expect(shownPercent(DUST.clean)).toBe(100);
+    expect(shownPercent(0.45)).toBe(50);
+  });
+  it('ключи витрин хранятся отдельно и не вытесняют награды за уроки', async () => {
+    const { normalizeLearn, emptyLearn } = await import('../../textbook/learn-state.js');
+    const claimed = { 'l:sc-i1': 1000 };
+    for (let d = 1; d <= 20; d += 1) for (let k = 1; k <= 3; k += 1) claimed[`dust:2026-09-${String(d).padStart(2, '0')}:${k}`] = 2000 + d;
+    const s = normalizeLearn({ ...emptyLearn(), claimed });
+    expect(s.claimed['l:sc-i1']).toBe(1000);
+    const dust = Object.keys(s.claimed).filter((k) => k.startsWith('dust:'));
+    expect(dust.length).toBe(30);
+    expect(dust).toContain('dust:2026-09-20:3');
+    expect(dust).not.toContain('dust:2026-09-01:1');
+  });
+});

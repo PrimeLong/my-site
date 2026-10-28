@@ -15,7 +15,7 @@ import {
   Package, Repeat, CalendarDays, ShieldCheck, ShieldAlert, Newspaper, Sparkles, Croissant, Stamp, Scale, Moon, Palette, MonitorSmartphone, Headphones, BookOpen, Landmark, BarChart3,
   Gauge, Store, Anchor, Shirt, WandSparkles, Settings,
   Ghost, Users, Flag, UserPlus, Gem,
-  Wallet, MessageCircle, Lamp, Coins, TrendingUp, Gamepad2,
+  Wallet, MessageCircle, Lamp, Coins, TrendingUp, Gamepad2, Lock, Globe,
 } from 'lucide-react';
 import { IconButton, TopBar } from './ds.jsx';
 import { useReducedMotion } from './ds-art.jsx';
@@ -164,7 +164,7 @@ const ICON = {
   sparkles: Sparkles, croissant: Croissant, stamp: Stamp, scale: Scale, moon: Moon, palette: Palette, devices: MonitorSmartphone, headphones: Headphones, book: BookOpen,
   landmark: Landmark, chart: BarChart3, gauge: Gauge, store: Store, anchor: Anchor, shirt: Shirt, wand: WandSparkles, bell: Bell, settings: Settings,
   pumpkin: Ghost, ghost: Ghost, fire: Flame, users: Users, flag: Flag, 'user-plus': UserPlus, gem: Gem, wallet: Wallet, message: MessageCircle,
-  lamp: Lamp, coins: Coins, 'trending-up': TrendingUp, game: Gamepad2,
+  lamp: Lamp, coins: Coins, 'trending-up': TrendingUp, game: Gamepad2, lock: Lock, globe: Globe,
 };
 export const NIcon = ({ name, size = 20, ...rest }) => { const I = ICON[name] || Bell; return <I size={size} aria-hidden="true" {...rest} />; };
 

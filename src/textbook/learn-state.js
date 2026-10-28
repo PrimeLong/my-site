@@ -523,12 +523,15 @@ const countMap = (v, limit, hi) => {
   Object.keys(obj(v)).filter(okKey).slice(0, limit).forEach((k) => { const x = cnt(v[k], hi); if (x) out[k] = x; });
   return out;
 };
-// полученные награды: ключи заданий дня («q:ГГГГ-ММ-ДД:…») — только за последние месяцы, остальные — все
+// полученные награды: ключи заданий дня («q:ГГГГ-ММ-ДД:…») — только за последние месяцы, витрины лавки
+// («dust:ГГГГ-ММ-ДД:n», src/learn/dust.js) — за последние дни, остальные — все
 function claimedMap(v) {
   const all = tsMap(v, 5000);
+  const daily = (k) => k.startsWith('q:') || k.startsWith('dust:');
   const quests = Object.keys(all).filter((k) => k.startsWith('q:')).sort().slice(-250);
-  const rest = Object.keys(all).filter((k) => !k.startsWith('q:')).sort().slice(0, MAX_CLAIMED - 250);
-  const out = {}; [...rest, ...quests].forEach((k) => { out[k] = all[k]; });
+  const dust = Object.keys(all).filter((k) => k.startsWith('dust:')).sort().slice(-30);
+  const rest = Object.keys(all).filter((k) => !daily(k)).sort().slice(0, MAX_CLAIMED - 250);
+  const out = {}; [...rest, ...quests, ...dust].forEach((k) => { out[k] = all[k]; });
   return out;
 }
 // вклады копилки: ключ — время вклада (мс), значение — монеты; храним последние сорок
