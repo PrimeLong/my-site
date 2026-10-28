@@ -1,0 +1,33 @@
+# Подписи к портретам «Персоналий» (инструкция — README.md рядом).
+# Формат: id;автор;лицензия;ссылка на страницу файла. Пустые строки и строки с # не читаются.
+id;автор;лицензия;ссылка
+robbins;;;
+malthus;;;
+ricardo;;;
+smith;;;
+jenkin;;;
+marshall;;;
+king;;;
+engel;;;
+giffen;;;
+pigou;;;
+coase;;;
+ostrom;;;
+law;;;
+bagehot;;;
+witte;;;
+fisher;;;
+friedman;;;
+volcker;;;
+jevons;;;
+dupuit;;;
+kahneman;;;
+ford;;;
+taylor;;;
+viner;;;
+cournot;;;
+rockefeller;;;
+schumpeter;;;
+chamberlin;;;
+robinson;;;
+hotelling;;;

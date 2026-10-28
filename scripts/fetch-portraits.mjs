@@ -11,11 +11,16 @@
    Сборка на Vercel запускает скрипт сама (vercel.json, buildCommand) с ключом --soft: нет сети —
    прежний список остаётся, сборка идёт дальше.
 
+   Фото, положенные в public/people руками (инструкция — people/README.md), скрипт не трогает и не
+   перезаписывает: у такого человека он ничего не скачивает.
+
    Запуск: npm run portraits   (нужен доступ к en.wikipedia.org, commons.wikimedia.org
    и upload.wikimedia.org). */
 import { writeFile, mkdir } from 'node:fs/promises';
 import { PEOPLE } from '../src/learn/people.js';
-import { commonsFile, photoFromCommons } from '../src/learn/portraits.js';
+import { commonsFile, photoFromCommons } from '../src/learn/commons.js';
+import { PHOTOS } from '../src/learn/people-photos.js';
+import { listPeoplePhotos } from './voice-files-plugin.js';
 
 const soft = process.argv.includes('--soft');
 const UA = { 'User-Agent': 'InflatiaPortraits/1.0 (educational app; portraits with attribution)' };
@@ -24,8 +29,11 @@ const get = (url) => fetch(url, { headers: UA, signal: AbortSignal.timeout(10000
 const out = {};
 let reached = false;
 await mkdir(new URL('../public/people/', import.meta.url), { recursive: true });
+// положенные руками: файл есть, а в прошлом списке скачанных его нет
+const manual = new Set(Object.keys(listPeoplePhotos()).filter((id) => !PHOTOS[id]));
 for (const p of PEOPLE.flatMap((g) => g.people)) {
   if (!p.wiki) continue;
+  if (manual.has(p.id)) { console.log(`· ${p.id}: фото положено руками — не трогаю`); continue; }
   try {
     const res = await get(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(p.wiki)}`);
     reached = true;

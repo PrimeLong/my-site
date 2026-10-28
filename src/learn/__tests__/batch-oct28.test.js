@@ -171,3 +171,32 @@ describe('«Пыльная витрина» в лавке (src/learn/dust.js)', 
     expect(dust).not.toContain('dust:2026-09-01:1');
   });
 });
+
+describe('портреты «Персоналий» руками: файл в public/people и подпись в people/credits.csv', () => {
+  it('имя файла — id человека; подходят jpg, png, webp; на один id — один файл', async () => {
+    const fs = await import('node:fs'); const os = await import('node:os'); const path = await import('node:path');
+    const { listPeoplePhotos } = await import('../../../scripts/voice-files-plugin.js');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'people-'));
+    ['Robbins.JPG', 'smith.webp', 'smith.png', 'notes.txt', '.gitkeep'].forEach((f) => fs.writeFileSync(path.join(dir, f), 'x'));
+    expect(listPeoplePhotos(dir)).toEqual({ robbins: 'Robbins.JPG', smith: 'smith.png' });
+    expect(listPeoplePhotos(path.join(dir, 'нет'))).toEqual({});
+  });
+  it('подписи: id;автор;лицензия;ссылка — заголовок, # и пустые строки пропускаются, ссылка только https', async () => {
+    const { parseCredits } = await import('../../../scripts/voice-files-plugin.js');
+    const text = '# подписи\nid;автор;лицензия;ссылка\nrobbins;;;\nSmith; Джон Кэй ;Public domain;https://commons.wikimedia.org/wiki/File:Smith.jpg\nostrom;Prolineserver;CC BY-SA 3.0;javascript:alert(1)\n\n';
+    expect(parseCredits(text)).toEqual({
+      smith: { author: 'Джон Кэй', license: 'Public domain', source: 'https://commons.wikimedia.org/wiki/File:Smith.jpg' },
+      ostrom: { author: 'Prolineserver', license: 'CC BY-SA 3.0', source: '' },
+    });
+  });
+  it('у каждого человека в people/credits.csv есть строка, имена файлов в инструкции — его id', async () => {
+    const fs = await import('node:fs');
+    const { PEOPLE } = await import('../people.js');
+    const csv = fs.readFileSync(new URL('../../../people/credits.csv', import.meta.url), 'utf8');
+    const readme = fs.readFileSync(new URL('../../../people/README.md', import.meta.url), 'utf8');
+    PEOPLE.flatMap((g) => g.people).forEach((p) => {
+      expect(csv, p.id).toMatch(new RegExp(`^${p.id};`, 'm'));
+      expect(readme, p.id).toContain(`\`${p.id}.jpg\``);
+    });
+  });
+});

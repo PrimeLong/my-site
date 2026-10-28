@@ -17,6 +17,7 @@
     "balance:replay": "node scripts/replay-balance.mjs",
     "voice:export": "node scripts/voice-export.mjs",
     "books:export": "node scripts/books-export.mjs",
+    "people:export": "node scripts/people-export.mjs",
     "portraits": "node scripts/fetch-portraits.mjs"
   },
   "dependencies": {
