@@ -7,7 +7,7 @@ export const MAX_FRIENDS = 100;
 export const MAX_PENDING = 50;
 // забег: сутки на принятие, три дня гонки, не больше трёх своих приглашений, ждущих ответа
 // friendMs — сколько нужно дружить, чтобы позвать на забег (совпадает с RACE.friendHours клиента)
-export const RACE = { acceptMs: 24 * 3600 * 1000, days: 3, maxOpen: 3, keep: 20, friendMs: 24 * 3600 * 1000 };
+export const RACE = { acceptMs: 24 * 3600 * 1000, days: 3, maxOpen: 3, keep: 20, friendMs: 24 * 3600 * 1000, restDays: 3, sameDays: 7 };
 export const SLOTS = ['head', 'face', 'neck', 'hand', 'frame'];
 export const EVENT_KINDS = new Set(['unit', 'streak', 'seal', 'month', 'league', 'race']);
 
@@ -44,4 +44,19 @@ export function raceStatus(race, now = Date.now()) {
 // открытый забег — ждёт ответа или идёт (закончился ли он — решает клиент по своему дню)
 export const raceOpen = (race, now = Date.now()) => ['pending', 'active'].includes(raceStatus(race, now))
   && !(race.status === 'active' && race.start && now - Date.parse(`${race.start}T00:00:00Z`) > (RACE.days + 1) * 86400000);
+/* Пауза между забегами (совпадает с raceRest клиента): пока идёт забег, другой не начать; после
+   финиша — три дня без забегов, а с тем же другом — неделя. Считаются только принятые забеги;
+   финиш — начало дня после трёх дней забега (всемирное время). Ответ — null или { until, why }. */
+const DAY_MS = 86400000;
+export const raceEnd = (r) => Date.parse(`${r.start}T00:00:00Z`) + (r.days || RACE.days) * DAY_MS;
+export function raceRest(races, login, other = null, now = Date.now()) {
+  const played = arr(races).filter((r) => r && r.status === 'active' && validDay(r.start) && [r.from, r.to].includes(login));
+  if (played.some((r) => now < raceEnd(r))) return { until: Math.max(...played.filter((r) => now < raceEnd(r)).map(raceEnd)), why: 'busy' };
+  const last = (list) => (list.length ? Math.max(...list.map(raceEnd)) : 0);
+  const same = other ? last(played.filter((r) => [r.from, r.to].includes(other))) + RACE.sameDays * DAY_MS : 0;
+  const any = last(played) + RACE.restDays * DAY_MS;
+  if (same > now && same >= any) return { until: same, why: 'same' };
+  if (any > now) return { until: any, why: 'rest' };
+  return null;
+}
 export const validDay = (v) => typeof v === 'string' && DAY.test(v) && !Number.isNaN(Date.parse(`${v}T00:00:00Z`));

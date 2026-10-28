@@ -1,7 +1,7 @@
 // друзья и забеги: заявки по точному логину, карточка для друзей, приглашение на забег (docs/mechanics.md)
 import { describe, it, expect, vi } from 'vitest';
 import accountHandler from '../account.js';
-import { cleanCard, raceStatus, RACE } from '../_lib/friends.js';
+import { cleanCard, raceStatus, raceRest, RACE } from '../_lib/friends.js';
 
 let ipN = 0;
 const acc = (body) => new Promise((resolve) => {
@@ -84,6 +84,45 @@ describe('забег с другом', () => {
     expect(ok.data.races[0]).toMatchObject({ status: 'active', start: today, mine: false, other: a.login, baseMine: 35, baseTheirs: 0 });
     expect((await acc({ action: 'race-answer', token: b.token, id, accept: false })).status).toBe(400);
     clock.mockRestore();
+  });
+  it('пауза между забегами: пока идёт — новый не начать; после финиша три дня отдыха, с тем же другом — неделя', async () => {
+    const a = await reg('olga'); const b = await reg('petr'); const c = await reg('rita');
+    for (const x of [b, c]) {
+      await acc({ action: 'friend-add', token: a.token, login: x.login });
+      await acc({ action: 'friend-answer', token: x.token, login: a.login, accept: true });
+    }
+    const real = Date.now(); const DAY = 86400000;
+    const at = (ms) => vi.spyOn(Date, 'now').mockReturnValue(ms);
+    let clock = at(real + RACE.friendMs + 60000);
+    const inv = await acc({ action: 'race-invite', token: a.token, login: b.login });
+    await acc({ action: 'race-answer', token: b.token, id: inv.data.races[0].id, accept: true });
+    // забег идёт — с другим другом не начать
+    const busy = await acc({ action: 'race-invite', token: a.token, login: c.login });
+    expect(busy.status).toBe(400);
+    expect(busy.data.error).toContain('уже идёт забег');
+    // день после финиша — ещё отдых
+    const start = Date.parse(`${new Date(real + RACE.friendMs + 60000).toISOString().slice(0, 10)}T00:00:00Z`);
+    const end = start + RACE.days * DAY;
+    clock.mockRestore(); clock = at(end + DAY);
+    const rest = await acc({ action: 'race-invite', token: a.token, login: c.login });
+    expect(rest.status).toBe(400);
+    expect(rest.data.error).toContain('три дня отдыха');
+    // через три дня — с другим другом можно, а с тем же — только через неделю
+    clock.mockRestore(); clock = at(end + 3 * DAY + 1000);
+    const same = await acc({ action: 'race-invite', token: a.token, login: b.login });
+    expect(same.status).toBe(400);
+    expect(same.data.error).toContain('раз в неделю');
+    expect((await acc({ action: 'race-invite', token: a.token, login: c.login })).status).toBe(200);
+    clock.mockRestore();
+  });
+  it('raceRest: считаются только принятые забеги; финиш — после трёх дней', () => {
+    const DAY = 86400000; const s0 = Date.parse('2026-10-01T00:00:00Z');
+    const r = { from: 'a', to: 'b', status: 'active', start: '2026-10-01', days: 3 };
+    expect(raceRest([r], 'a', 'c', s0 + DAY)).toMatchObject({ why: 'busy' });
+    expect(raceRest([r], 'a', 'c', s0 + 4 * DAY)).toMatchObject({ why: 'rest', until: s0 + 6 * DAY });
+    expect(raceRest([r], 'a', 'b', s0 + 4 * DAY)).toMatchObject({ why: 'same', until: s0 + 10 * DAY });
+    expect(raceRest([r], 'a', 'c', s0 + 6 * DAY)).toBe(null);
+    expect(raceRest([{ ...r, status: 'declined' }, { ...r, status: 'pending' }], 'a', 'b', s0 + DAY)).toBe(null);
   });
   it('приглашение без ответа сутки — протухло; карточка чистится от мусора', () => {
     const now = Date.now();

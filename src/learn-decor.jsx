@@ -94,10 +94,15 @@ export function holdCradle(m, idx, dx) {
   m.balls.forEach((b) => { b.drag = group.includes(b); if (b.drag) { b.a = a; b.w = 0; } });
   return group.length;
 }
+/* затухание колыбели — в секунду, а не за шаг расчёта: прежние 0,2% за подшаг гасили размах вдвое
+   за полторы секунды. Теперь размах уменьшается вдвое примерно за 4–5 секунд: заметно качается
+   секунд 15 и затихает за полминуты (и тогда анимация засыпает — батарею не тратит) */
+export const CRADLE_DAMP = 0.3;
 function stepCradle(m, dt) {
   const sub = 8; const h = dt / sub; let hit = 0;
+  const keep = Math.exp(-CRADLE_DAMP * h);
   for (let s = 0; s < sub; s += 1) {
-    m.balls.forEach((b) => { if (b.drag) return; b.w += (-(980 / m.L) * Math.sin(b.a)) * h; b.w *= 0.998; b.a += b.w * h; });
+    m.balls.forEach((b) => { if (b.drag) return; b.w += (-(980 / m.L) * Math.sin(b.a)) * h; b.w *= keep; b.a += b.w * h; });
     // соседи касаются и сближаются — обмен скоростями (равные массы, упругий удар)
     for (let i = 0; i < m.balls.length - 1; i += 1) {
       const p = m.balls[i]; const q = m.balls[i + 1];

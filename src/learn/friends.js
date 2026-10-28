@@ -13,7 +13,30 @@ import { pathState, levelOf, LEVEL_BY_ID } from './course.js';
 import { placeOf } from '../ds-tokens.js';
 
 const DAY_MS = 86400000;
-export const RACE = { days: 3, acceptHours: 24, win: 40, tie: 25, lose: 15, onlineDays: 7, friendHours: 24 };
+export const RACE = { days: 3, acceptHours: 24, win: 40, tie: 25, lose: 15, onlineDays: 7, friendHours: 24, restDays: 3, sameDays: 7 };
+/* Пауза между забегами (сервер проверяет то же — raceRest в api/_lib/friends.js): пока идёт свой забег,
+   другой не начать; после финиша — три дня без забегов, с тем же другом — неделя. races — забеги из
+   /friends (other — второй участник); считаются только принятые. Ответ — null или { until, why, days }. */
+const raceEndMs = (r) => Date.parse(`${r.start}T00:00:00Z`) + (r.days || RACE.days) * DAY_MS;
+export function raceRest(races = [], other = null, now = Date.now()) {
+  const played = races.filter((r) => r && r.status === 'active' && r.start);
+  const left = (until) => ({ until, days: Math.max(1, Math.ceil((until - now) / DAY_MS)) });
+  const going = played.filter((r) => now < raceEndMs(r));
+  if (going.length) return { why: 'busy', ...left(Math.max(...going.map(raceEndMs))) };
+  const last = (list) => (list.length ? Math.max(...list.map(raceEndMs)) : 0);
+  const same = other ? last(played.filter((r) => r.other === other)) + RACE.sameDays * DAY_MS : 0;
+  const any = last(played) + RACE.restDays * DAY_MS;
+  if (same > now && same >= any) return { why: 'same', ...left(same) };
+  if (any > now) return { why: 'rest', ...left(any) };
+  return null;
+}
+export function raceRestText(rest) {
+  if (!rest) return '';
+  const d = `${rest.days} ${plural(rest.days, 'день', 'дня', 'дней')}`;
+  if (rest.why === 'busy') return 'Сейчас у вас идёт забег — следующий можно после финиша.';
+  if (rest.why === 'same') return `С одним другом забег — раз в неделю: снова можно через ${d}.`;
+  return `После забега — три дня отдыха: следующий можно через ${d}.`;
+}
 /* звать на забег можно друга, с которым дружите хотя бы сутки: только что добавленного — странно
    (жалоба), забег — между знакомыми. friendSince — когда стали друзьями (since с сервера) */
 export const raceReadyIn = (f, now = Date.now()) => {
@@ -126,7 +149,9 @@ export function raceOffer(data, learn, now = Date.now(), offered = null) {
   const today = dayOf(now);
   if (offered === today) return null;
   const busy = new Set((data.races || []).filter((r) => r.status === 'pending' || (r.status === 'active' && raceView(r, learn, null, now).status === 'active')).map((r) => r.other));
-  const list = raceable(data.friends, now).filter((f) => !busy.has(f.login));
+  // идёт свой забег или отдых после него — не предлагаем; с кем бегали на этой неделе — тоже
+  if (raceRest(data.races || [], null, now)) return null;
+  const list = raceable(data.friends, now).filter((f) => !busy.has(f.login) && !raceRest(data.races || [], f.login, now));
   if (!list.length) return null;
   const done = (learn.done || {})[today] || 0;
   if (mix01(`race:${today}:${done}`) > 0.5) return null;

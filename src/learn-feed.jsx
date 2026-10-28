@@ -75,7 +75,10 @@ export const FEED_CSS = `
   .fd-set { position: relative; border: 1px solid var(--ds-rule2); border-radius: 10px; background: linear-gradient(180deg, color-mix(in srgb, var(--u) 9%, var(--ds-card)), var(--ds-card));
     box-shadow: inset 0 0 0 3px var(--ds-card), inset 0 0 0 4px var(--ds-rule), 0 2px 4px var(--ds-shade); padding: 12px 14px 12px; }
   .fd-set-top { display: flex; align-items: center; gap: 8px; font: 700 12px var(--ds-sans); letter-spacing: .14em; text-transform: uppercase; color: var(--ds-ink2); }
-  .fd-onair { display: inline-flex; align-items: center; gap: 5px; color: var(--ds-bad); }
+  .fd-onair { display: inline-flex; align-items: center; gap: 5px; color: var(--ds-bad); white-space: nowrap; flex-shrink: 0; }
+  /* имя ведущей (без фамилии) и номер сюжета — одной строкой: на телефоне шапка рвалась по словам
+     («В / ЭФИРЕ», «Лада Звонарёва · / сюжет 2», отчёт mvrcrxg5); не влезет — многоточие */
+  .fd-set-who { margin: 0; min-width: 0; letter-spacing: .08em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .fd-onair::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: currentColor; box-shadow: 0 0 0 3px color-mix(in srgb, var(--ds-bad) 25%, transparent); }
   .fd-set[data-speaking="true"] .fd-onair::before { animation: fd-blink 1s steps(2) infinite; }
   @keyframes fd-blink { 50% { opacity: .25; } }
@@ -287,7 +290,7 @@ function RadioSet({ entry, speech, picture, skipTitle, flag }) {
     <div className={`fd-set ${live ? 'fd-new' : ''}`} data-testid={live ? 'lesson-card' : 'feed-msg'} data-style="listen" data-key={entry.key} data-speaking={String(speaking)}>
       <div className="fd-set-top">
         <Portrait who={whoId} size={26} />
-        <span className="fd-onair">в эфире</span><span className="ln-kind" style={{ margin: 0 }}>· {(CAST[card.who] || CAST[DEFAULT_VOICE.listen]).name} · сюжет {index}</span><span style={{ flex: 1 }} />{flag}
+        <span className="fd-onair">в эфире</span><span className="ln-kind fd-set-who" title={(CAST[card.who] || CAST[DEFAULT_VOICE.listen]).name}>{(CAST[card.who] || CAST[DEFAULT_VOICE.listen]).name.split(' ')[0]} · сюжет {index}</span><span style={{ flex: 1 }} />{flag}
       </div>
       <div className="fd-set-main">
         <button type="button" className="fd-play" data-testid="feed-play" aria-label={`${speaking ? 'Читаю' : 'Слушать'}: сюжет ${index}`} onClick={() => speech.speak(entry.key, text, whoId)}>

@@ -1,6 +1,6 @@
 // друзья и забег: карточка, события, забег и награда, «иногда» предложить забег (docs/mechanics.md)
 import { describe, it, expect } from 'vitest';
-import { buildCard, cardEvents, eventText, raceView, claimRace, raceCoins, raceClaimed, raceOffer, raceable, friendFeed, seenText, RACE } from '../friends.js';
+import { buildCard, cardEvents, eventText, raceView, claimRace, raceCoins, raceClaimed, raceOffer, raceable, friendFeed, seenText, raceRest, raceRestText, RACE } from '../friends.js';
 import { emptyLearn, finishLesson, addDays } from '../../textbook/learn-state.js';
 import { balance, settle, achievementsOf } from '../rewards.js';
 import { courseCtx } from '../program.js';
@@ -75,6 +75,19 @@ describe('забег с другом', () => {
     // с Алиной забег уже идёт — предлагать некого
     expect(offers.map((_, k) => raceOffer({ ...data, races: [race] }, { ...emptyLearn(), done: { [DAY]: k + 1 } }, NOW)).every((o) => o === null)).toBe(true);
     expect(raceOffer(null, emptyLearn(), NOW)).toBeNull();
+  });
+  it('пауза между забегами: идёт — нельзя; после финиша три дня отдыха, с тем же другом — неделя; предложений нет', () => {
+    const D = 86400e3; const s0 = Date.parse('2026-10-01T00:00:00Z');
+    const r = { id: 'r1', other: 'alina', status: 'active', start: '2026-10-01', days: 3 };
+    expect(raceRest([r], 'boris', s0 + D)).toMatchObject({ why: 'busy' });
+    expect(raceRest([r], 'boris', s0 + 4 * D)).toMatchObject({ why: 'rest', days: 2 });
+    expect(raceRestText(raceRest([r], 'boris', s0 + 4 * D))).toBe('После забега — три дня отдыха: следующий можно через 2 дня.');
+    expect(raceRest([r], 'alina', s0 + 7 * D)).toMatchObject({ why: 'same', days: 3 });
+    expect(raceRest([r], 'boris', s0 + 7 * D)).toBe(null);
+    expect(raceRest([{ ...r, status: 'declined' }], 'alina', s0 + D)).toBe(null);
+    // в паузу забег после урока не предлагается
+    const data = { friends: [friend({}, s0 + 4 * D)], races: [r] };
+    expect(Array.from({ length: 6 }, (_, k) => raceOffer(data, { ...emptyLearn(), done: { '2026-10-05': k + 1 } }, s0 + 4 * D)).every((o) => o === null)).toBe(true);
   });
   it('лента друзей — свежие события всех друзей', () => {
     const f1 = { login: 'a', name: 'А', card: { events: [{ k: 'streak', n: 3, at: NOW - 1000 }, { k: 'seal', id: 'first', at: NOW - 30 * 86400e3 }] } };

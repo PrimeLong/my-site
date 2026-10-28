@@ -392,14 +392,17 @@ export const openChest = (s, unitId, now = Date.now()) => earn(s, chestCoins(uni
 export const STREAK_BONUS = [[3, 15], [7, 40], [14, 80], [30, 200], [60, 300], [100, 500]];
 
 /* ------------------------------ ПЕЧАТИ-ДОСТИЖЕНИЯ ------------------------------
-   ctx — то, что знает только курс: сколько пройдено уроков и юнитов, какие виды уроков. */
+   ctx — то, что знает только курс: сколько пройдено уроков и юнитов, какие виды уроков.
+   Печать за первый раз щедрее обычной награды за то же самое: печать «Месяц в пути» больше бонуса
+   серии в 30 дней, печать «Испытание месяца» — больше самого испытания (жалоба: «за печать 30 монет,
+   а за просто месяц — 100, лучше наоборот»). */
 export const ACHIEVEMENTS = [
   { id: 'first', icon: 'footprints', title: 'Первый шаг', text: 'Пройден первый урок', how: 'Пройдите любой урок', coins: 10, test: (s, c) => c.lessonsDone >= 1 },
   // только за урок, пройденный без ошибок сейчас: счётчик дня растёт в момент такого урока (не «лучший результат» старых прохождений)
   { id: 'perfect', icon: 'check', title: 'Без помарок', text: 'Урок без единой ошибки', how: 'Пройдите урок без единой ошибки', coins: 20, test: (s) => Object.values(s.daily || {}).some((d) => d.p > 0) },
-  { id: 'streak3', icon: 'flame', title: 'Три дня подряд', text: 'Серия — три дня', how: 'Занимайтесь три дня подряд', coins: 10, test: (s, c) => c.longest >= 3 },
-  { id: 'streak7', icon: 'flame', title: 'Неделя в пути', text: 'Серия — семь дней', how: 'Занимайтесь семь дней подряд', coins: 30, test: (s, c) => c.longest >= 7 },
-  { id: 'streak30', icon: 'flame', title: 'Месяц в пути', text: 'Серия — тридцать дней', how: 'Занимайтесь тридцать дней подряд', coins: 100, test: (s, c) => c.longest >= 30 },
+  { id: 'streak3', icon: 'flame', title: 'Три дня подряд', text: 'Серия — три дня', how: 'Занимайтесь три дня подряд', coins: 20, test: (s, c) => c.longest >= 3 },
+  { id: 'streak7', icon: 'flame', title: 'Неделя в пути', text: 'Серия — семь дней', how: 'Занимайтесь семь дней подряд', coins: 50, test: (s, c) => c.longest >= 7 },
+  { id: 'streak30', icon: 'flame', title: 'Месяц в пути', text: 'Серия — тридцать дней', how: 'Занимайтесь тридцать дней подряд', coins: 250, test: (s, c) => c.longest >= 30 },
   { id: 'unit', icon: 'landmark', title: 'Место на карте', text: 'Пройден первый юнит', how: 'Пройдите все уроки одного юнита', coins: 20, test: (s, c) => c.unitsDone >= 1 },
   { id: 'kinds', icon: 'shapes', title: 'Все жанры', text: 'Пройдены уроки всех восьми видов', how: 'Пройдите уроки всех восьми видов', coins: 30, test: (s, c) => c.kinds >= 8 },
   // знания, показанные делом: проверка юнита без единой ошибки (вступительный тест сам по себе печать не даёт)
@@ -411,7 +414,7 @@ export const ACHIEVEMENTS = [
   { id: 'early', icon: 'sunrise', title: 'Ранняя пташка', text: 'Урок до восьми утра', how: 'Пройдите урок до восьми утра — по часам вашего устройства', coins: 10, test: (s) => Object.values(s.daily || {}).some((d) => d.h & 1) },
   { id: 'owl', icon: 'moon', title: 'Сова', text: 'Урок после десяти вечера', how: 'Пройдите урок после десяти вечера — по часам вашего устройства', coins: 10, test: (s) => Object.values(s.daily || {}).some((d) => d.h & 2) },
   { id: 'saver', icon: 'piggy', title: 'Пятьсот монет', text: 'Заработано 500 монет', how: 'Заработайте 500 монет', coins: 30, test: (s) => earned(s) >= 500 },
-  { id: 'month', icon: 'calendar', title: 'Испытание месяца', text: 'Выполнено испытание месяца', how: 'Выполните испытание месяца', coins: 30, test: (s) => Object.keys(s.claimed || {}).some((k) => k.startsWith('m:')) },
+  { id: 'month', icon: 'calendar', title: 'Испытание месяца', text: 'Выполнено испытание месяца', how: 'Выполните испытание месяца', coins: 150, test: (s) => Object.keys(s.claimed || {}).some((k) => k.startsWith('m:')) },
   { id: 'diamond', icon: 'gem', title: 'Огранщик', text: 'Урок взят на алмазном уровне', how: 'Возьмите урок на алмазном уровне', coins: 20, test: (s) => Object.values(s.lessons || {}).some((l) => l.diamond) },
   // забег с другом (src/learn/friends.js): победа — отметка race:<id>:won
   { id: 'race', icon: 'flag', title: 'Забег', text: 'Выигран забег с другом', how: 'Позовите друга на забег и наберите за три дня больше опыта', coins: 30, test: (s) => Object.keys(s.claimed || {}).some((k) => /^race:[a-z0-9]+:won$/.test(k)) },

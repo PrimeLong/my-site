@@ -1044,19 +1044,21 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
     // урок начат — с первого ответа
     if (!started) { setStarted(true); update(startLesson); if (run.mode === 'lesson') track('lesson_start', { lesson: run.lessonId }); }
     const firstTime = !(orig in a.first);
+    // верно с первого раза: собранное с падениями домино выполнено, но не с первого раза
+    const firstOk = r.ok && !r.partial;
     const ms = activeNow() - a.itemStart;
     /* рекорд мини-игры — после каждой сыгранной партии, и когда игра вернулась после ошибки: экран итогов
        сравнивает с сохранённым рекордом, и несохранённый лучший счёт давал потом ложный «новый рекорд» */
     if (GAME_KINDS.includes(cur.kind) && answer && answer.score) update((s) => recordBest(s, cur.id, answer.score));
     if (firstTime) {
-      a.first[orig] = r.ok;
+      a.first[orig] = firstOk;
       // аналитика без персональных данных: верно ли с первой попытки — по упражнению (api/events.js)
-      track(r.ok ? 'ex_first_try_ok' : 'ex_first_try_fail', { exercise: String(cur.of || cur.id), ok: r.ok, ms });
-      setLog((l) => [...l, r.ok]);
-      if (r.ok && run3 >= 1) setPulse((p) => p + 1);
+      track(firstOk ? 'ex_first_try_ok' : 'ex_first_try_fail', { exercise: String(cur.of || cur.id), ok: firstOk, ms });
+      setLog((l) => [...l, firstOk]);
+      if (firstOk && run3 >= 1) setPulse((p) => p + 1);
       // встреченное упражнение: в повторение и проверки первыми пойдут те, что виделись реже
       const seenId = cur.of || cur.id;
-      update((s) => recordSeen(recordAttempt(s, cur.kind, r.ok, ms, { lesson: cur.lesson || null }), seenId));
+      update((s) => recordSeen(recordAttempt(s, cur.kind, firstOk, ms, { lesson: cur.lesson || null }), seenId));
       if (GAME_KINDS.includes(cur.kind) && answer && answer.score) a.bonus += gameXp(answer.score);
       if (GAME_KINDS.includes(cur.kind) && answer) a.game = { kind: cur.kind, right: answer.right, answered: answer.answered, ok: r.ok };
     }
@@ -1065,13 +1067,14 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
       // похожая задача вместо исходной отвечает за исходную: ошибка по ней снимается, подсказка переходит
       const baseId = cur.of || cur.id;
       // ошибка решена в практике или верно с первой попытки на повторении в уроке — уходит из «Повторить ошибки»
-      if (run.mode === 'practice' || run.mode === 'fix' || (cur.review && firstTime)) update((s) => resolveMistake(s, baseId));
-      // решено с подсказкой — невидимо уходит в «Повторение» пораньше; без подсказки — снимается
-      update((s) => (a.hinted[orig] ? addHinted(s, baseId) : clearHinted(s, baseId)));
+      if (run.mode === 'practice' || run.mode === 'fix' || (cur.review && firstTime && firstOk)) update((s) => resolveMistake(s, baseId));
+      // решено с подсказкой (или домино собрано с падениями) — невидимо уходит в «Повторение» пораньше; без подсказки — снимается
+      const helped = !!a.hinted[orig] || !!r.partial;
+      update((s) => (helped ? addHinted(s, baseId) : clearHinted(s, baseId)));
       // та же задача ждёт повторения в учебнике — это и есть её повторение (review-sync.js)
-      if (!a.hinted[orig]) update((p) => afterPathAnswer(p, baseId), { whole: true });
+      if (!helped) update((p) => afterPathAnswer(p, baseId), { whole: true });
       // серия: с третьего верного подряд каждый — ещё +1 опыта (огонёк в шапке показывает «+1»)
-      if (firstTime) { a.bonus += streakBonus(run3 + 1); setRun3(run3 + 1); }
+      if (firstTime && firstOk) { a.bonus += streakBonus(run3 + 1); setRun3(run3 + 1); } else if (r.partial) setRun3(0);
       Audio.play('coin'); vibrate(15);
     } else {
       setRun3(0);
@@ -1090,8 +1093,8 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
     }
     setAnim((x) => ({ k: x.k + 1, kind: r.ok ? 'flash' : 'shake' }));
     wrongRun.current = r.ok ? 0 : wrongRun.current + 1;
-    const say = pickPhrase(situation({ ok: r.ok, streak: r.ok && firstTime ? run3 + 1 : 0, hinted: !!a.hinted[orig], retry: !!cur.retry, wrongRun: wrongRun.current }), said.current);
-    setFb({ ok: r.ok, why: r.why, say, skipped: !!r.skipped });
+    const say = pickPhrase(situation({ ok: r.ok, streak: firstOk && firstTime ? run3 + 1 : 0, hinted: !!a.hinted[orig] || !!r.partial, retry: !!cur.retry, wrongRun: wrongRun.current }), said.current);
+    setFb({ ok: r.ok, why: r.why, say, skipped: !!r.skipped, partial: !!r.partial });
     // украшение урока отзывается на ответ
     if (!r.skipped) tellAnswer(r.ok);
   };
@@ -1218,7 +1221,7 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
   const verdictBar = inst && fb && !fb.empty ? (
     <AnswerBar ok={fb.ok} plain={feed} stamp={GAME_KINDS.includes(inst.kind) ? (fb.ok ? 'Игра засчитана' : 'Игра без зачёта') : inst.kind === 'open' ? (fb.skipped ? 'Вопрос пропущен' : 'Ответ записан') : null}
       say={GAME_KINDS.includes(inst.kind) || inst.kind === 'open' ? null : fb.say} className={fb.ok ? 'ds-flash' : ''} key={`fb${anim.k}`}>
-      <div style={{ marginTop: 10 }} data-testid="ex-feedback" data-ok={String(fb.ok)}>
+      <div style={{ marginTop: 10 }} data-testid="ex-feedback" data-ok={String(fb.ok)} data-partial={String(!!fb.partial)}>
         {inst.kind === 'open' && inst.explain && (
           <div className="tb-body" style={{ fontSize: 15, color: 'inherit' }} data-testid="open-review"><b>Разбор.</b> <Blocks blocks={inst.explain} ctx={noopCtx} /></div>
         )}
@@ -1226,7 +1229,7 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
         {/* «не засчитано» читалось как «урок не засчитан» — а урок с игрой пройден в любом случае (docs/mechanics.md) */}
         {GAME_KINDS.includes(inst.kind) && !fb.ok && run.mode === 'lesson' && <div style={{ fontSize: 15, marginTop: 4 }} data-testid="game-lesson-note">Урок это не отменяет — он будет пройден, только без алмаза.</div>}
         {!fb.ok && !GAME_KINDS.includes(inst.kind) && <div style={{ fontSize: 15 }}>Правильно: <b>{answerText(inst)}</b></div>}
-        {!fb.ok && fb.why && <div style={{ fontSize: 15, marginTop: 4, lineHeight: 1.5 }} data-testid="ex-why"><Inline nodes={fb.why} ctx={noopCtx} /></div>}
+        {(!fb.ok || fb.partial) && fb.why && <div style={{ fontSize: 15, marginTop: 4, lineHeight: 1.5 }} data-testid="ex-why"><Inline nodes={fb.why} ctx={noopCtx} /></div>}
         {!fb.ok && !fb.why && inst.explain && !inst.steps && <div className="tb-body" style={{ fontSize: 15, marginTop: 4, color: 'inherit' }}><Blocks blocks={inst.explain} ctx={noopCtx} /></div>}
         {!fb.ok && inst.explain && inst.steps && <StepsExplain blocks={inst.explain} key={inst.uid} />}
         {/* верный ответ на расчёт — ход решения по кнопке: важно не только число, но и почему так считают */}
@@ -1587,6 +1590,10 @@ function answerOf(inst, resp) {
     case 'tf': return resp === true || resp === 'true' ? 'Верно' : resp === false || resp === 'false' ? 'Неверно' : null;
     case 'calc': return resp ? `${String(resp).replace('-', '−')}${inst.unit ? ` ${unitFor(inst, resp)}` : ''}` : null;
     case 'open': return String(resp || '').trim() || null;
+    case 'domino': {
+      const falls = resp && resp.falls ? resp.falls.length : 0;
+      return resp && resp.done ? `цепочка собрана${falls ? `, домино падало ${falls} ${falls % 10 === 1 && falls % 100 !== 11 ? 'раз' : 'раза'}` : ''}` : null;
+    }
     default: return null;
   }
 }
@@ -1595,7 +1602,7 @@ function FeedAnswer({ h }) {
   const skipped = !!(resp && resp.skip);
   const mine = answerOf(inst, resp);
   const tone = skipped ? 'skip' : fb.ok ? 'ok' : 'bad';
-  const who = skipped ? 'Вопрос пропущен' : inst.kind === 'open' ? 'Ваш ответ' : fb.ok ? 'Ваш ответ · верно' : 'Ваш ответ · не совсем';
+  const who = skipped ? 'Вопрос пропущен' : inst.kind === 'open' ? 'Ваш ответ' : fb.partial ? 'Ваш ответ · собрано' : fb.ok ? 'Ваш ответ · верно' : 'Ваш ответ · не совсем';
   return (
     <div className="fd-qa" data-kind={inst.kind}>
       <div className="fd-qa-q tb-body"><Blocks blocks={inst.prompt} ctx={noopCtx} /></div>

@@ -305,14 +305,15 @@ describe('упражнения: ровно один верный ответ', ()
           break;
         }
         case 'domino': {
-          // 4–5 звеньев, 7–8 карточек; засчитано, только если цепочка собрана без падений
+          // 4–5 звеньев, 7–8 карточек; собранная цепочка — выполнено, а с падениями — не с первого раза (partial)
           expect(inst.chain.length).toBeGreaterThanOrEqual(4); expect(inst.chain.length).toBeLessThanOrEqual(5);
           expect(inst.deck.length).toBeGreaterThanOrEqual(7); expect(inst.deck.length).toBeLessThanOrEqual(8);
           expect(new Set(inst.deck.map((c) => c.raw)).size, `${ex.id}: карточки не повторяются`).toBe(inst.deck.length);
           inst.deck.filter((c) => c.link == null).forEach((c) => expect(plain(c.why).length, `${ex.id}: «${c.raw}» без объяснения`).toBeGreaterThan(20));
           expect(ready(inst, { placed: inst.chain.slice(0, -1), falls: [], done: false })).toBe(false);
           expect(check(inst, { placed: inst.chain, falls: [], done: true }).ok).toBe(true);
-          expect(check(inst, { placed: inst.chain, falls: [{ key: 'f0', at: 1 }], done: true }).ok).toBe(false);
+          expect(check(inst, { placed: inst.chain, falls: [], done: true }).partial).toBe(false);
+          expect(check(inst, { placed: inst.chain, falls: [{ key: 'f0', at: 1 }], done: true })).toMatchObject({ ok: true, partial: true });
           // сцена: звенья со сдвигом кривой — те, что про кривую; цепочка про новость газеты
           inst.deck.filter((c) => c.link != null).forEach((c) => c.effects.filter((e) => /^[DS][+-]$/.test(e)).forEach((e) => expect(c.raw, `${ex.id}: ${e}`).toMatch(e[0] === 'D' ? /спрос/i : /предложени/i)));
           expect(inst.headline).toMatch(/^[^a-zа-яё]*$/);

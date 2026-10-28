@@ -395,10 +395,13 @@ export function check(inst, resp) {
     // открытый вопрос: любой продуманный ответ засчитан, дальше — разбор
     // пропуск — не ошибка: у открытого вопроса неверного ответа нет, разбор откроется и так
     case 'open': return resp && resp.skip ? { ok: true, why: null, skipped: true } : { ok: String(resp || '').trim().length >= OPEN_MIN, why: null };
+    /* домино собрано — задание выполнено; падения — честно в разборе, а с первого раза оно не засчитано
+       (partial). Красная плашка «Правильно: …» с той же цепочкой, что ученик уже собрал, путала
+       (жалоба mvrcxjt8: «всё серое, как будто снова ошибся») */
     case 'domino': {
       const falls = resp && resp.falls ? resp.falls.length : 0;
-      const ok = !!(resp && resp.done) && falls === 0;
-      return { ok, why: ok ? null : text(`Цепочка собрана, но домино падало ${falls} ${falls % 10 === 1 && falls % 100 !== 11 ? 'раз' : 'раза'}: каждое звено должно прямо следовать из предыдущего.`) };
+      const ok = !!(resp && resp.done);
+      return { ok, partial: ok && falls > 0, why: ok && falls ? text(`Домино падало ${falls} ${falls % 10 === 1 && falls % 100 !== 11 ? 'раз' : 'раза'} — поэтому с первого раза не засчитано. Каждое звено должно прямо следовать из предыдущего.`) : null };
     }
     default: return { ok: false, why: null };
   }
@@ -632,6 +635,11 @@ function hardPool(unitId, upto = Infinity) {
 // задача учебника с шаблоном приходит с новыми числами — это и есть шаблон: дважды в урок не берём
 const noTwins = (autos, variants) => autos.filter((e) => !(e.source && variants.some((v) => v.variant === TEMPLATE_BY_SOURCE[e.source])));
 export const HARD_IN_PRACTICE = 2;
+/* Задача посложнее не приходит снова и снова (жалоба mvrd8goi: «в сотый раз вижу» — у раннего урока
+   список hard короткий, и одни и те же две задачи стояли в каждом уроке сильного ученика): реже
+   виденные — первыми, а задачу с неизменными числами, виденную HARD_SEEN_MAX раз, больше не берём. */
+export const HARD_SEEN_MAX = 3;
+const freshHard = (list, seen, rand) => bySeen(list.filter((e) => timesSeen(e, seen) < HARD_SEEN_MAX), seen, rand);
 // задача семинарского уровня: у задачи учебника с шаблоном и у расчёта с параметрами — сразу новые
 // числа (жалоба mv4j2khb: в алмазном «Повторении» она приходила с числами из учебника), иначе — как есть
 function hardInstance(e, rand) {
@@ -714,7 +722,7 @@ function buildLessonBase(lessonId, rand, { mistakes = [], hinted = [], level = '
     const { variants, autos } = hardPool(unit.id, lesson.no);
     // задача учебника, которая уже есть в уроке обычным шагом, второй раз «семинаром» не приходит (жалоба mvde42co)
     const taken = new Set(items.map((it) => it.id));
-    const hard = shuffle([...variants, ...autos].filter((e) => !taken.has(e.id)), rand).slice(0, HARD_IN_PRACTICE);
+    const hard = freshHard([...variants, ...autos].filter((e) => !taken.has(e.id)), seen, rand).slice(0, HARD_IN_PRACTICE);
     hard.forEach((e) => {
       const k = items.map((it, i) => i).reverse().find((i) => i > 0 && !items[i].review && !items[i].hard && !SELF_CHECK.includes(items[i].kind));
       const it = hardInstance(e, rand);
@@ -762,9 +770,9 @@ export function buildLevelCheck(levelId, rand = Math.random, { seen = {} } = {})
    Всё в таком уроке помечено diamond: true. Награды — в src/learn/rewards.js. */
 export const DIAMOND_HARD = 4;
 export const DIAMOND_PAIRS_SECONDS = 25;
-const hardItems = (unitId, n, rand, avoid = new Set(), upto = Infinity) => {
+const hardItems = (unitId, n, rand, avoid = new Set(), upto = Infinity, seen = {}) => {
   const { variants, autos } = hardPool(unitId, upto);
-  return shuffle([...variants, ...autos].filter((e) => !avoid.has(e.id)), rand).slice(0, n).map((e) => hardInstance(e, rand));
+  return freshHard([...variants, ...autos].filter((e) => !avoid.has(e.id)), seen, rand).slice(0, n).map((e) => hardInstance(e, rand));
 };
 function buildDiamond(lessonId, rand, opts) {
   const lesson = LESSON_BY_ID[lessonId];
@@ -774,7 +782,7 @@ function buildDiamond(lessonId, rand, opts) {
     // алмазный повтор — расчёты с параметрами приходят с новыми числами
     const items = lesson.exercises.map((e) => instantiate(EXERCISES[e.id], rand, { renumber: true }));
     const deep = lesson.inner.some((c) => c.diamond);
-    if (!deep) hardItems(unitId, 2, rand, new Set(items.map((it) => it.id)), lesson.no).forEach((it) => items.push(it));
+    if (!deep) hardItems(unitId, 2, rand, new Set(items.map((it) => it.id)), lesson.no, opts.seen).forEach((it) => items.push(it));
     // «Откройте сами» на повторе не нужен: кривую ученик уже нашёл
     const inner = lesson.inner.filter((c) => !c.discover);
     // карточки собираются до того, как mark скопирует упражнения: uid у копий тот же
@@ -790,7 +798,7 @@ function buildDiamond(lessonId, rand, opts) {
   }
   if (lesson.kind === 'review' || lesson.kind === 'summary') {
     const p = buildLessonBase(lessonId, rand, opts);
-    const hard = hardItems(unitId, 3, rand, new Set(p.items.map((it) => it.id)));
+    const hard = hardItems(unitId, 3, rand, new Set(p.items.map((it) => it.id)), Infinity, opts.seen);
     const keep = Math.max(1, p.items.length - hard.length);
     const items = p.items.slice(0, keep).concat(hard);
     // задачи посложнее бывают и короткими («верно или неверно»): урок не короче трёх минут
@@ -805,7 +813,7 @@ function buildDiamond(lessonId, rand, opts) {
   if (easy > 0) own.unshift(own.splice(easy, 1)[0]);
   // задача учебника с новыми числами — это её шаблон: если шаблон уже есть в уроке, второй копии не будет
   const items = own.map((e) => freshCopy(e, rand, {}, { sibling: false })).filter((it, k, list) => list.findIndex((x) => x.id === it.id) === k);
-  const hard = hardItems(unitId, DIAMOND_HARD, rand, new Set([...all.map((e) => e.id), ...items.map((it) => it.id)]), lesson.no);
+  const hard = hardItems(unitId, DIAMOND_HARD, rand, new Set([...all.map((e) => e.id), ...items.map((it) => it.id)]), lesson.no, opts.seen);
   hard.forEach((it, k) => { const at = items.length - 1 - k; if (at > 0 && items.length >= 8) items.splice(at, 1, it); else items.push(it); });
   // короткий урок добираем до трёх минут повторением прошлых уроков юнита (реже виденное — первым)
   const prev = bySeen(UNIT_BY_ID[unitId].lessons.filter((l) => l.no < lesson.no).flatMap((l) => l.exercises.map((e) => EXERCISES[e.id])).filter(basic)

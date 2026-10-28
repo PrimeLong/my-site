@@ -15,7 +15,7 @@ import { friendsApi } from './lib/friends-store.js';
 import { ACHIEVEMENTS, coinsWord, plural } from './learn/rewards.js';
 import { LEAGUE_BY_ID } from './learn/league.js';
 import { dayOf, addDays } from './textbook/learn-state.js';
-import { eventText, EVENT_ICON, friendFeed, seenText, lastSeenDays, raceable, raceReadyIn, raceView, raceCoins, raceClaimed, claimRace, levelTitle, RACE } from './learn/friends.js';
+import { eventText, EVENT_ICON, friendFeed, seenText, lastSeenDays, raceable, raceReadyIn, raceView, raceCoins, raceClaimed, claimRace, levelTitle, raceRest, raceRestText, RACE } from './learn/friends.js';
 import { agoText } from './learn/notify.js';
 
 export const FRIENDS_CSS = `
@@ -357,7 +357,8 @@ export function FriendProfile({ login, data, learn, update, myWear, onBack }) {
   const c = f.card || {};
   const Em = emblemIcon(f.emblem);
   const race = ((data && data.races) || []).map((r) => raceView(r, learn, f, now)).find((v) => v.other === login && ['incoming', 'outgoing', 'active', 'finished'].includes(v.status) && !(v.status === 'finished' && raceClaimed(learn, v)));
-  const canRace = !race && raceable([f], now).length > 0;
+  const rest = race ? null : raceRest((data && data.races) || [], login, now);
+  const canRace = !race && !rest && raceable([f], now).length > 0;
   const seals = ACHIEVEMENTS.filter((a) => (c.seals || []).includes(a.id));
   const events = friendFeed([f], now, 60);
   const invite = async () => { setBusy(true); setMsg(null); try { await friendsApi.invite(login); Audio.play('up'); } catch (e) { setMsg(e.message); } setBusy(false); };
@@ -379,7 +380,7 @@ export function FriendProfile({ login, data, learn, update, myWear, onBack }) {
         </div>
         {race ? <RaceCard v={race} learn={learn} update={update} myWear={myWear} compact /> : canRace ? (
           <Button wide icon={Flag} disabled={busy} data-testid="friend-race" onClick={invite}>Позвать на забег</Button>
-        ) : <div className="ds-sub" style={{ fontSize: 13.5, textAlign: 'center' }} data-testid="friend-race-later">{raceReadyIn(f, now) > 0
+        ) : <div className="ds-sub" style={{ fontSize: 13.5, textAlign: 'center' }} data-testid="friend-race-later" data-rest={rest ? rest.why : undefined}>{rest ? raceRestText(rest) : raceReadyIn(f, now) > 0
           ? `Позвать на забег можно через сутки дружбы — ещё ${raceReadyIn(f, now)} ${plural(raceReadyIn(f, now), 'час', 'часа', 'часов')}.`
           : `Позвать на забег можно друга, который заходил за последние ${RACE.onlineDays} дней.`}</div>}
         {msg && <div role="alert" style={{ color: 'var(--ds-bad)', fontSize: 14, marginTop: 6 }}>{msg}</div>}

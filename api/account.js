@@ -8,7 +8,7 @@
    при регистрации один раз (и выдаётся заново в профиле по паролю). */
 import { getUser, setUser, setSession, delSession, hasKv, hit, getProfile, getSoloSlots, getTycoonSlots, getRecords, getReports, deleteUserData, setLeagueName, getLeagueNames,
   getUsers, getCards, setCard, getRaces, setRace } from './_lib/store.js';
-import { cleanCard, raceStatus, raceOpen, MAX_FRIENDS, MAX_PENDING, RACE } from './_lib/friends.js';
+import { cleanCard, raceStatus, raceOpen, raceRest, MAX_FRIENDS, MAX_PENDING, RACE } from './_lib/friends.js';
 import { isRude, RUDE_NAME } from '../src/lib/moderation.js';
 import { validBirthYear, isKid, needsParent } from '../src/lib/age.js';
 import {
@@ -276,6 +276,15 @@ async function handleRequest(req, res) {
     if (other) await save(other, theirs);
     return res.status(200).json(await friendsView(u));
   }
+  // пауза между забегами — словами: «через 2 дня»
+  const restWhy = (rest, friend = false) => {
+    const n = Math.max(1, Math.ceil((rest.until - Date.now()) / 86400000));
+    const days = `${n} ${n % 10 === 1 && n % 100 !== 11 ? 'день' : [2, 3, 4].includes(n % 10) && ![12, 13, 14].includes(n % 100) ? 'дня' : 'дней'}`;
+    if (friend) return `У друга идёт забег или отдых после него — позовите через ${days}`;
+    if (rest.why === 'busy') return 'У вас уже идёт забег — следующий можно после финиша';
+    if (rest.why === 'same') return `С одним другом забег — раз в неделю: снова можно через ${days}`;
+    return `После забега — три дня отдыха: следующий можно через ${days}`;
+  };
   if (action === 'race-invite') {
     const to = cleanLogin(body.login);
     const me = links(user);
@@ -287,6 +296,11 @@ async function handleRequest(req, res) {
     const races = await getRaces(me.races);
     if (races.some((r) => [r.from, r.to].includes(to) && raceOpen(r, now))) return res.status(400).json({ error: 'С этим другом забег уже идёт или ждёт ответа' });
     if (races.filter((r) => r.from === user.login && raceStatus(r, now) === 'pending').length >= RACE.maxOpen) return res.status(400).json({ error: 'Подождите ответа на прошлые приглашения' });
+    // пауза: идёт свой забег, три дня после финиша, неделя с тем же другом — и у друга тоже
+    const mine = raceRest(races, user.login, to, now);
+    if (mine) return res.status(400).json({ error: restWhy(mine) });
+    const theirs = raceRest(await getRaces(links(other).races), to, user.login, now);
+    if (theirs) return res.status(400).json({ error: restWhy(theirs, true) });
     if (await hit(`race:${user.login}`, 86400) > 10) return res.status(429).json({ error: 'Сегодня приглашений уже достаточно' });
     const race = { id: randomUUID().replace(/-/g, '').slice(0, 16), from: user.login, to, at: now, status: 'pending', days: RACE.days };
     await setRace(race);
@@ -301,6 +315,11 @@ async function handleRequest(req, res) {
     if (!race || race.to !== user.login) return res.status(404).json({ error: 'Приглашения нет' });
     const st = raceStatus(race);
     if (st !== 'pending') return res.status(400).json({ error: st === 'expired' ? 'Сутки на ответ уже прошли' : 'На приглашение уже ответили' });
+    // принять нельзя посреди своего забега и в паузу после него (пока приглашение ждало, мог начаться другой)
+    if (body.accept === true) {
+      const rest = raceRest(await getRaces(me.races), user.login, race.from, Date.now());
+      if (rest) return res.status(400).json({ error: restWhy(rest) });
+    }
     /* день старта — сегодня по всемирному времени (один часовой пояс на всё, src/textbook/learn-state.js):
        день, присланный устройством, не берём — иначе переводом часов можно было сдвинуть забег */
     const start = new Date(Date.now()).toISOString().slice(0, 10);
