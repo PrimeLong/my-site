@@ -2,7 +2,7 @@
 # Формат: id;автор;лицензия;ссылка на страницу файла. Пустые строки и строки с # не читаются.
 id;автор;лицензия;ссылка
 robbins;;Rights status: No known copyright restrictions.;https://www.flickr.com/photos/lselibrary/3983650428/?utm_source=chatgpt.com
-malthus;;;
+malthus;John Linnell (Wellcome Collection);CC BY 4.0;https://commons.wikimedia.org/wiki/File:Thomas_Robert_Malthus_Wellcome_L0069037_-crop.jpg
 ricardo;;;
 smith;;;
 jenkin;;;
