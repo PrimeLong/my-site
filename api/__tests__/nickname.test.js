@@ -13,7 +13,7 @@ const call = (handler, body, ip = `10.11.0.${ipN++}`) => new Promise((resolve) =
 });
 let n = 0;
 const uniq = (p) => `${p}nick${n++}`;
-const register = async (login, name = 'Анна') => (await call(accountHandler, { action: 'register', consentPage: true, consentPd: true, birthYear: 1990, login, password: 'secret1', name, playerId: `dev-${login}` })).data.token;
+const register = async (login, name = 'Анна') => (await call(accountHandler, { action: 'register', consentPage: true, consentPd: true, birthYear: 1990, login, password: 'secret12', name, playerId: `dev-${login}` })).data.token;
 const acc = (token, body) => call(accountHandler, { token, ...body });
 // ник, заведённый до фильтра: в базе лежит как есть
 const legacyRude = async (login) => { const token = await register(login); await setUser(login, { ...(await getUser(login)), name: 'Pidoras' }); return token; };
@@ -41,7 +41,7 @@ describe('ник раз в месяц', () => {
 
 describe('грубый ник', () => {
   it('новый грубый ник не проходит ни при регистрации, ни при смене', async () => {
-    expect((await call(accountHandler, { action: 'register', consentPage: true, consentPd: true, birthYear: 1990, login: uniq('x'), password: 'secret1', name: 'Pidoras' })).status).toBe(400);
+    expect((await call(accountHandler, { action: 'register', consentPage: true, consentPd: true, birthYear: 1990, login: uniq('x'), password: 'secret12', name: 'Pidoras' })).status).toBe(400);
     const t = await register(uniq('ok'));
     expect((await acc(t, { action: 'update', name: 'сука' })).status).toBe(400);
   });

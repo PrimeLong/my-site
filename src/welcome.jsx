@@ -6,7 +6,7 @@
 import React, { useState } from 'react';
 import { ArrowLeft, Timer, Coffee, Globe2, Check, X } from 'lucide-react';
 import { Audio } from './MacroSimulator.jsx';
-import { authenticate, RecoveryCodeView, StorageWarning, NameRefused, ConsentBox, ParentStep, consentsReady, BirthYearField, birthYearOf } from './account.jsx';
+import { authenticate, RecoveryCodeView, StorageWarning, NameRefused, ConsentBox, ParentStep, consentsReady, BirthYearField, birthYearOf, PasswordField, passwordLongEnough } from './account.jsx';
 import { validBirthYear, needsParent } from './lib/age.js';
 import { RUDE_NAME } from './lib/moderation.js';
 import { Mascot } from './mascot.jsx';
@@ -295,13 +295,13 @@ function AuthForm({ mode, go, plan, onCancel = null }) {
         <div className="wl-body">
           <Heading level={2} title="Сохраните код восстановления" style={{ marginBottom: 12 }} />
           {shown.storage === 'memory' && <StorageWarning />}
-          <RecoveryCodeView code={shown.recoveryCode} onDone={finish} />
+          <RecoveryCodeView code={shown.recoveryCode} onDone={finish} login={(shown.profile || {}).login || login.trim().toLowerCase()} />
         </div>
       </div>
     );
   }
   const title = { register: 'Создайте аккаунт', login: 'Вход', recover: 'Новый пароль по коду' }[mode];
-  const canSubmit = login.trim().length >= 3 && password.length >= 6 && (mode !== 'recover' || code.replace(/[^A-Za-z0-9]/g, '').length >= 12)
+  const canSubmit = login.trim().length >= 3 && passwordLongEnough(password, mode) && (mode !== 'recover' || code.replace(/[^A-Za-z0-9]/g, '').length >= 12)
     && (mode !== 'register' || (validBirthYear(birthYearOf(year)) && consents.page && consents.pd && (!parentStep || consentsReady(consents, birthYearOf(year)))));
   return (
     <div className="wl" data-testid={parentStep ? 'welcome-parent' : `welcome-${mode}`}>
@@ -322,10 +322,7 @@ function AuthForm({ mode, go, plan, onCancel = null }) {
               <input className="ds-field" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} autoCapitalize="characters" placeholder="XXXX-XXXX-XXXX" />
             </label>
           )}
-          <label className="ds-label">{mode === 'recover' ? 'Новый пароль' : 'Пароль'}
-            <input className="ds-field" type="password" value={password} onChange={(e) => setPassword(e.target.value)}
-              autoComplete={mode === 'login' ? 'current-password' : 'new-password'} placeholder="не короче 6 символов" />
-          </label>
+          <PasswordField label={mode === 'recover' ? 'Новый пароль' : 'Пароль'} value={password} onChange={setPassword} mode={mode} />
           {mode === 'register' && (
             <label className="ds-label">Имя
               <input className="ds-field" value={name} onChange={(e) => setName(e.target.value)} maxLength={24} placeholder="как вас называть" />

@@ -562,7 +562,7 @@ test('вход: первый запуск — приветствие, цель, 
   await expect(reg.locator('[data-nav="back"]')).toHaveCount(1);
   await expectNoSidewaysScroll(page);
   await reg.getByLabel('Логин').fill('anna');
-  await reg.getByLabel('Пароль').fill('secret1');
+  await reg.getByLabel('Пароль', { exact: true }).fill('secret12');
   await reg.getByLabel('Имя').fill('Анна');
   // год рождения: до 16 лет «Мир» — в детском режиме, подсказка говорит об этом сразу
   await reg.getByTestId('birth-year').fill('2013');
@@ -588,10 +588,26 @@ test('вход: первый запуск — приветствие, цель, 
   await reg.getByTestId('consent-page').check();
   await expect(reg.getByRole('button', { name: 'Создать аккаунт' })).toBeDisabled();
   await reg.getByTestId('consent-pd').check();
+  // пароль — не короче 8 символов; «Показать пароль» открывает набранное, второе нажатие прячет
+  const pw = reg.getByLabel('Пароль', { exact: true });
+  await pw.fill('secret1');
+  await expect(reg.getByRole('button', { name: 'Создать аккаунт' })).toBeDisabled();
+  await pw.fill('secret12');
+  await expect(pw).toHaveAttribute('type', 'password');
+  await reg.getByRole('button', { name: 'Показать пароль' }).click();
+  await expect(pw).toHaveAttribute('type', 'text');
+  await reg.getByRole('button', { name: 'Скрыть пароль' }).click();
+  await expect(pw).toHaveAttribute('type', 'password');
   await reg.getByRole('button', { name: 'Создать аккаунт' }).click();
-  // почты нет — код восстановления показывается один раз
+  // почты нет — код восстановления показывается один раз: скопировать, скачать .txt и «Я сохранил код»
   await expect(page.getByTestId('recovery-code')).toHaveText('ABCD-EFGH-JKMN');
   await expectGateOnly(page);
+  await expect(page.getByRole('button', { name: 'Скопировать код' })).toBeVisible();
+  const [file] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Скачать код .txt' }).click()]);
+  expect(file.suggestedFilename()).toBe('inflatia-kod-anna.txt');
+  const text = fs.readFileSync(await file.path(), 'utf8');
+  expect(text).toContain('Код: ABCD-EFGH-JKMN');
+  expect(text).toContain('Логин: anna');
   await page.getByRole('button', { name: 'Я сохранил код' }).click();
   // Путь; цель дня — минуты занятий (10 минут); урок гостя перешёл в аккаунт и засчитан
   await expect(page.getByTestId('path')).toBeVisible();
@@ -617,7 +633,7 @@ test('вход: первый запуск — приветствие, цель, 
   await page.getByRole('button', { name: 'У меня уже есть аккаунт' }).click();
   const login = page.getByTestId('welcome-login');
   await login.getByLabel('Логин').fill('anna');
-  await login.getByLabel('Пароль').fill('secret1');
+  await login.getByLabel('Пароль', { exact: true }).fill('secret12');
   await login.getByRole('button', { name: 'Войти' }).click();
   await expect(page.getByTestId('path')).toBeVisible();
 
@@ -631,7 +647,7 @@ test('вход: первый запуск — приветствие, цель, 
   const rec = page.getByTestId('welcome-recover');
   await rec.getByLabel('Логин').fill('anna');
   await rec.getByLabel('Код восстановления').fill('abcd-efgh-jkmn');
-  await rec.getByLabel('Новый пароль').fill('fresh12');
+  await rec.getByLabel('Новый пароль', { exact: true }).fill('fresh123');
   await rec.getByRole('button', { name: 'Задать пароль' }).click();
   await expect(page.getByTestId('recovery-code')).toHaveText('PQRS-TUVW-XYZ2');
   await page.getByRole('button', { name: 'Я сохранил код' }).click();
@@ -653,7 +669,7 @@ test('вход: до 14 лет — отдельный шаг «Подтверж�
   await goal.getByRole('button', { name: 'Продолжить' }).click();
   const reg = await guestToRegister(page);
   await reg.getByLabel('Логин').fill('kid');
-  await reg.getByLabel('Пароль').fill('secret1');
+  await reg.getByLabel('Пароль', { exact: true }).fill('secret12');
   await reg.getByTestId('birth-year').fill(String(new Date().getFullYear() - 12));
   await reg.getByTestId('consent-page').check();
   await reg.getByTestId('consent-pd').check();
@@ -3025,7 +3041,7 @@ test('вход: программа — вступительный тест, су
   await goal.getByRole('button', { name: 'Продолжить' }).click();
   const reg = await guestToRegister(page);
   await reg.getByLabel('Логин').fill('anna');
-  await reg.getByLabel('Пароль').fill('secret1');
+  await reg.getByLabel('Пароль', { exact: true }).fill('secret12');
   await reg.getByTestId('birth-year').fill('2000');
   await reg.getByTestId('consent-page').check();
   await reg.getByTestId('consent-pd').check();

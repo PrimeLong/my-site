@@ -11,7 +11,7 @@ const call = (body, ip = `10.7.0.${ipN++}`) => new Promise((resolve) => {
 });
 let n = 0;
 const uniq = (p) => `${p}sec${n++}`;
-const register = (login) => call({ action: 'register', consentPage: true, consentPd: true, birthYear: 1990, login, password: 'secret1' });
+const register = (login) => call({ action: 'register', consentPage: true, consentPd: true, birthYear: 1990, login, password: 'secret12' });
 
 describe('вход: лимит с одного адреса', () => {
   it(`не больше ${LOGIN_PER_HOUR} попыток входа в час с адреса — по любым логинам, даже верным`, async () => {
@@ -19,11 +19,11 @@ describe('вход: лимит с одного адреса', () => {
     const ip = '10.77.0.1';
     expect(LOGIN_PER_HOUR).toBe(30);
     for (let i = 0; i < LOGIN_PER_HOUR; i += 1) expect((await call({ action: 'login', login: uniq('ghost'), password: 'whatever' }, ip)).status).toBe(401);
-    const blocked = await call({ action: 'login', login, password: 'secret1' }, ip);
+    const blocked = await call({ action: 'login', login, password: 'secret12' }, ip);
     expect(blocked.status).toBe(429);
     expect(blocked.data.error).toMatch(/адреса/);
     // с другого адреса тот же логин входит
-    expect((await call({ action: 'login', login, password: 'secret1' }, '10.77.0.2')).status).toBe(200);
+    expect((await call({ action: 'login', login, password: 'secret12' }, '10.77.0.2')).status).toBe(200);
   });
 });
 
@@ -39,7 +39,7 @@ describe('вход: нарастающая блокировка логина', (
     expect(u.lockLevel).toBe(1);
     expect(u.lockUntil - Date.now()).toBeGreaterThan(50 * 1000);
     expect(u.lockUntil - Date.now()).toBeLessThanOrEqual(60 * 1000);
-    expect((await call({ action: 'login', login, password: 'secret1' })).status).toBe(429);
+    expect((await call({ action: 'login', login, password: 'secret12' })).status).toBe(429);
     // блокировка прошла — ещё пять промахов закрывают вход уже на 5 минут
     await setUser(login, { ...u, lockUntil: Date.now() - 1 });
     for (let i = 0; i < 5; i += 1) await call({ action: 'login', login, password: 'nope123' });
@@ -48,7 +48,7 @@ describe('вход: нарастающая блокировка логина', (
     expect(u.lockUntil - Date.now()).toBeGreaterThan(4 * 60 * 1000);
     // верный пароль после блокировки — счёт с нуля
     await setUser(login, { ...u, lockUntil: Date.now() - 1 });
-    expect((await call({ action: 'login', login, password: 'secret1' })).status).toBe(200);
+    expect((await call({ action: 'login', login, password: 'secret12' })).status).toBe(200);
     u = await getUser(login);
     expect(u).toMatchObject({ fails: 0, lockLevel: 0, lockUntil: 0 });
   });

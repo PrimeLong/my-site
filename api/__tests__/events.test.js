@@ -46,7 +46,7 @@ describe('события', () => {
 describe('отчёт для владельцев', () => {
   it('воронка за 30 дней по шагам и 20 самых трудных упражнений; не владельцу — 403', async () => {
     const owner = `evowner${Date.now() % 100000}`;
-    const reg = await call(accountHandler, { action: 'register', consentPage: true, consentPd: true, birthYear: 1990, login: owner, password: 'secret1' });
+    const reg = await call(accountHandler, { action: 'register', consentPage: true, consentPd: true, birthYear: 1990, login: owner, password: 'secret12' });
     expect((await ev({ action: 'report', session: reg.data.token })).status).toBe(403);
     process.env.OWNER_LOGINS = owner;
     for (let i = 0; i < 6; i += 1) await ev({ event: i < 5 ? 'ex_first_try_fail' : 'ex_first_try_ok', exercise: 'hard-one' });

@@ -11,6 +11,7 @@ import { getUser, setUser, setSession, delSession, hasKv, hit, getProfile, getSo
 import { cleanCard, raceStatus, raceOpen, raceRest, MAX_FRIENDS, MAX_PENDING, RACE } from './_lib/friends.js';
 import { isRude, RUDE_NAME } from '../src/lib/moderation.js';
 import { validBirthYear, isKid, needsParent } from '../src/lib/age.js';
+import { newPasswordOk, PASSWORD_HINT } from '../src/lib/password.js';
 import {
   LOGIN_RE, cleanLogin, hashPassword, checkPassword, newToken, emptyStats, publicProfile, userBySession,
   newRecoveryCode, hashRecovery, checkRecovery, sessionValue, checkName, nameBanned, isBlocked, nameNextAt, nameForOthers, RENAME_DAYS, DAY_MS, NAME_EVERY_DAYS,
@@ -69,8 +70,8 @@ async function handleRequest(req, res) {
   if (action === 'register') {
     const login = cleanLogin(body.login);
     if (!LOGIN_RE.test(login)) return res.status(400).json({ error: 'Логин: от 3 до 20 латинских букв, цифр или «_»' });
-    if (typeof body.password !== 'string' || body.password.length < 6 || body.password.length > 100) {
-      return res.status(400).json({ error: 'Пароль — не короче 6 символов' });
+    if (!newPasswordOk(body.password)) {
+      return res.status(400).json({ error: `Пароль — ${PASSWORD_HINT}` });
     }
     /* Две отдельные отметки: «ознакомлен со страницей» (данные и соглашение) и «согласие на обработку
        персональных данных». До 14 лет — ещё подтверждение родителя: отметка и его имя. Достаточно ли
@@ -135,8 +136,8 @@ async function handleRequest(req, res) {
     }
     const login = cleanLogin(body.login);
     const user = LOGIN_RE.test(login) ? await getUser(login) : null;
-    if (typeof body.newPassword !== 'string' || body.newPassword.length < 6 || body.newPassword.length > 100) {
-      return res.status(400).json({ error: 'Новый пароль — не короче 6 символов' });
+    if (!newPasswordOk(body.newPassword)) {
+      return res.status(400).json({ error: `Новый пароль — ${PASSWORD_HINT}` });
     }
     if (!user || !checkRecovery(body.code, user)) {
       if (!user) hashPassword('x');
@@ -337,7 +338,7 @@ async function handleRequest(req, res) {
   }
   if (action === 'password') {
     if (!checkPassword(body.oldPassword, user)) return res.status(403).json({ error: 'Старый пароль не подходит' });
-    if (typeof body.newPassword !== 'string' || body.newPassword.length < 6) return res.status(400).json({ error: 'Новый пароль — не короче 6 символов' });
+    if (!newPasswordOk(body.newPassword)) return res.status(400).json({ error: `Новый пароль — ${PASSWORD_HINT}` });
     // смена пароля закрывает все остальные сессии; этому устройству — новая
     const next = { ...user, ...hashPassword(body.newPassword), epoch: (user.epoch || 0) + 1 };
     await setUser(user.login, next);
