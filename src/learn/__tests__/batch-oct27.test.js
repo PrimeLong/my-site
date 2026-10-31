@@ -138,7 +138,7 @@ describe('разбор графика: шаги и числа совпадают
   });
 });
 
-describe('портреты «Персоналий» с Википедии: только свободные файлы Commons', async () => {
+describe('портреты «Персоналий»: проверка свободных файлов Commons (для сборки) и никакой сети в браузере', async () => {
   const { commonsFile, photoFromCommons, isFreeLicense, loadPhoto } = await import('../portraits.js');
   const meta = (license, artist = 'John Doe') => ({ extmetadata: { LicenseShortName: { value: license }, Artist: { value: `<a href="x">${artist}</a>` } },
     thumburl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/a/ab/Smith.jpg/480px-Smith.jpg', descriptionurl: 'https://commons.wikimedia.org/wiki/File:Smith.jpg' });
@@ -155,18 +155,14 @@ describe('портреты «Персоналий» с Википедии: то�
     expect(photoFromCommons(meta('Fair use'))).toBeNull();
     expect(photoFromCommons(meta('CC BY 4.0', 'Elliott &amp; Fry &#8212; studio&nbsp;London')).author).toBe('Elliott & Fry — studio London');
   });
-  it('загрузка: статья → файл Commons → свободная лицензия; несвободное — медальон, сеть упала — медальон', async () => {
+  it('браузер ученика в Википедию не ходит: нет своего файла — медальон, сеть не трогается', async () => {
     const real = globalThis.fetch;
-    const reply = (x) => Promise.resolve({ json: () => Promise.resolve(x) });
+    const calls = [];
     try {
-      globalThis.fetch = (url) => (String(url).includes('en.wikipedia.org')
-        ? reply({ originalimage: { source: 'https://upload.wikimedia.org/wikipedia/commons/a/ab/Smith.jpg' } })
-        : reply({ query: { pages: { 1: { imageinfo: [meta(String(url).includes('Smith') ? 'Public domain' : 'x')] } } } }));
-      expect(await loadPhoto({ id: 'test-a', wiki: 'Adam_Smith' })).toMatchObject({ license: 'Public domain' });
-      globalThis.fetch = () => reply({ originalimage: { source: 'https://upload.wikimedia.org/wikipedia/en/a/ab/Fair.jpg' } });
-      expect(await loadPhoto({ id: 'test-b', wiki: 'Someone' })).toBeNull();
-      globalThis.fetch = () => Promise.reject(new Error('offline'));
-      expect(await loadPhoto({ id: 'test-c', wiki: 'Someone_else' })).toBeNull();
+      globalThis.fetch = (url) => { calls.push(String(url)); return Promise.reject(new Error('нельзя')); };
+      expect(await loadPhoto({ id: 'test-a', wiki: 'Adam_Smith' })).toBeNull();
+      expect(await loadPhoto({ id: 'king', wiki: 'Gregory_King' })).toBeNull();
+      expect(calls).toEqual([]);
     } finally { globalThis.fetch = real; }
   });
 });

@@ -5427,6 +5427,9 @@ test('«Персоналии»: портрет — свой файл из public
   // знакомы все группы, кроме «Людей выбора»: их проходим сейчас — потом вся галерея в профиле
   await page.addInitScript((met) => {
     if (localStorage.getItem('ems-textbook-v1')) return;
+    // прежний кеш ответов Википедии и прежний флаг теста «сходи в Википедию» — больше ни на что не влияют
+    localStorage.setItem('ems-portraits-test', '1');
+    localStorage.setItem('ems-portraits-v1', JSON.stringify({ king: { file: 'https://upload.wikimedia.org/wikipedia/commons/a/ab/King.jpg', author: 'x', license: 'CC0', at: Date.now() } }));
     const at = Date.now() - 86400000;
     localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons: { 'sc-i1': { at, runs: 1, best: 90 }, 'sc-l1': { at, runs: 1, best: 90 } }, met } }));
   }, Object.fromEntries(PEOPLE.filter((g) => g.id !== 'people-scarcity').map((g) => [g.id, Date.now() - 86400000])));
@@ -5469,5 +5472,6 @@ test('«Персоналии»: портрет — свой файл из public
     await expect(card.getByRole('img', { name: `${noFile.name} — медальон с инициалами` })).toHaveCount(1);
   }
   expect(wiki, 'портреты не берутся с Википедии').toEqual([]);
+  expect(await page.evaluate(() => localStorage.getItem('ems-portraits-v1')), 'старый кеш Википедии стёрт').toBeNull();
   expect(errors).toEqual([]);
 });

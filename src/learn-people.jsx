@@ -100,7 +100,7 @@ export const PEOPLE_CSS = `
   @media (prefers-reduced-motion: reduce) { .pp-hero, .pp-pic img, .pp-pic::after, .pp-era-life, .pp-era-mark, .pp-hang, .pp-fb { animation: none; } }
 `;
 
-/* Фото человека: скачанное заранее или с Википедии (src/learn/portraits.js) — пока грузится или если
+/* Фото человека: свой файл из public/people (src/learn/portraits.js; в Википедию браузер не ходит) — если
    свободного фото нет, null */
 export function usePhoto(p, off = false) {
   const [ph, setPh] = useState(() => (off ? null : cachedPhoto(p) || null));
@@ -112,7 +112,7 @@ export function usePhoto(p, off = false) {
   }, [p.id, off]); // eslint-disable-line react-hooks/exhaustive-deps
   return ph;
 }
-/* Портрет: фото с Commons (свободная лицензия), иначе — гравированный медальон: штриховка гравюры,
+/* Портрет: свой файл из public/people (с подписью автора и лицензии), иначе — гравированный медальон: штриховка гравюры,
    двойная рамка и инициалы антиквой. Фото не загрузилось — тоже медальон. */
 export function Portrait({ p, color, hidden = false }) {
   const loaded = usePhoto(p, hidden);
