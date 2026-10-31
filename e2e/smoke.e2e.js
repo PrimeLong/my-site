@@ -3625,10 +3625,12 @@ test('новые глаголы: «Откройте сами», живая мо�
   const before = Number((await shop.getByTestId('shop-balance').innerText()).match(/\d+/)[0]);
   await piggy.getByTestId('piggy-amount').fill('100');
   await expect(piggy.getByTestId('piggy-chart')).toBeVisible();
-  // ставка недели — на карточке копилки; честно про проценты («так не бывает», рядом реальные 8% годовых) — свёрнуто
+  // ставка недели — на карточке копилки; честно про проценты (годовые простыми и рост со сложным; рядом обычные для вклада 8%) — свёрнуто
   await expect(piggy.getByTestId('rate-week')).toBeVisible();
   await piggy.getByTestId('piggy-real').locator('summary').click();
-  await expect(piggy.getByTestId('piggy-real')).toContainText(/\d+% годовых — в жизни так не бывает/);
+  await expect(piggy.getByTestId('piggy-real')).toContainText(/\d+% годовых простыми, а со сложным процентом деньги за год выросли бы примерно в [\d\s ,]+ раз/);
+  await expect(piggy.getByTestId('piggy-real')).toContainText('обычные для вклада 8% годовых');
+  await expect(piggy.getByTestId('piggy-real')).not.toContainText('реальные');
   await piggy.getByTestId('piggy-put').click();
   // вклад — под ставку этой недели
   await expect(shop.getByTestId('shop-msg')).toContainText(/Срочный вклад: 100 монет под \d+(,\d)?% в день\. Через 7 дней станет 1[0-2]\d\./);

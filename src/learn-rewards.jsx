@@ -25,7 +25,7 @@ const GardenView = React.lazy(() => import('./learn-garden.jsx').then((m) => ({ 
 const DustGame = React.lazy(() => import('./learn-dust.jsx'));
 import {
   balance, rateOn, rateHistory, priceOf, buy, setWear, outfitOf, deskOf, themeOf, FREEZE, BOOST, WARDROBE, OUTFIT_BY_ID, SLOT_LABEL, shopDay, boostActive, DEAL_OFF, questsFor, QUEST_ICON, monthChallenge, monthStamps, policyInfo, takePolicy, cancelPolicy, PREMIUM,
-  chestCoins, chestKey, hasClaim, openChest, achievementsOf, coinsWord, plural, greetingAt, COIN, PIGGY, piggyState, piggyPut, piggyTake, piggyAdd, topupRate, piggyValue, forgone, REAL_RATE, realCurve, weekRate,
+  chestCoins, chestKey, hasClaim, openChest, achievementsOf, coinsWord, plural, greetingAt, COIN, PIGGY, piggyState, piggyPut, piggyTake, piggyAdd, topupRate, piggyValue, forgone, REAL_RATE, realCurve, weekRate, yearGrowth,
   goalCoins,
 } from './learn/rewards.js';
 import { skillLevel, LEVEL_NAME, LEVEL_TEXT } from './learn/program.js';
@@ -871,8 +871,9 @@ function PiggyChart({ amount, rate, other = null, day = null, path = null, steps
     </svg>
   );
 }
-/* Честно про проценты: ставка в день — сотни процентов годовых, такого не бывает; а вот реальные
-   8% годовых — 1000 крон за 10 лет (docs/mechanics.md). Свёрнуто: «Это много или мало?» */
+/* Честно про проценты: ставка в день — сотни процентов годовых простыми, а со сложным процентом — рост в сотни и
+   тысячи раз за год, такого не бывает; а вот обычные для вклада 8% годовых — 1000 крон за 10 лет
+   (docs/mechanics.md). Свёрнуто: «Это много или мало?» */
 function RealRate({ rate }) {
   const pts = realCurve();
   const W = 300; const H = 70; const pad = 14; const top = pts[pts.length - 1].value;
@@ -882,7 +883,7 @@ function RealRate({ rate }) {
     <details className="rw-real" data-testid="piggy-real">
       <summary>Это много или мало?</summary>
       <div className="ds-sub" style={{ fontSize: 13, lineHeight: 1.4, marginTop: 6 }}>
-        {fmtPct(rate)} в день ≈ {Math.round(rate * 365 * 100)}% годовых — в жизни так не бывает, а вот как выглядят реальные {Math.round(REAL_RATE * 100)}% годовых:
+        {fmtPct(rate)} в день — это {Math.round(rate * 365 * 100)}% годовых простыми, а со сложным процентом деньги за год выросли бы примерно в {yearGrowth(rate).toLocaleString('ru-RU')} раз. В жизни так не бывает, а вот как выглядят обычные для вклада {Math.round(REAL_RATE * 100)}% годовых:
       </div>
       <svg className="rw-piggy-chart" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`1000 крон под ${Math.round(REAL_RATE * 100)}% годовых: через 10 лет ${top}`}>
         <polyline points={pts.map((p, i) => `${x(i)},${y(p.value)}`).join(' ')} fill="none" stroke="var(--u-ink)" strokeWidth="1.6" />
