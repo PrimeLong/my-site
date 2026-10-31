@@ -23,7 +23,7 @@ import { sectionDone, sectionProgress, dueItems, chapterRead, chapterShare } fro
 import { COIN, bookFirstTry, earn } from './learn/rewards.js';
 import { emptyLearn } from './textbook/learn-state.js';
 import { CHARTS, chartDefaults, checkGraph, captionVars } from './textbook/charts.js';
-import { actionOf, parseInline, checkAnswer, matchTraps, LEVELS } from './textbook/markdown.js';
+import { actionOf, parseInline, checkAnswer, matchTraps, LEVELS, typo } from './textbook/markdown.js';
 import { loadProgress, saveProgress, latestProgress, PROGRESS_EVENT, markRead, unmarkRead, recordAnswer, scheduleAfter, reviewQueue, chapterScore, setLast, daysUntil, confidenceStats, addStudyMinute } from './textbook/progress.js';
 import { afterBookAnswer, dropFromReview } from './textbook/review-sync.js';
 import { EXAMS, examSet, examTemplates, examResult, mixedSet, mixedChapters, weakTopics, journalWeeks, journalSummary } from './textbook/check.js';
@@ -423,7 +423,7 @@ function Link({ n, ctx }) {
 
 export function Inline({ nodes, ctx }) {
   return nodes.map((n, i) => {
-    if (n.t === 'text') return <React.Fragment key={i}>{n.v}</React.Fragment>;
+    if (n.t === 'text') return <React.Fragment key={i}>{typo(n.v)}</React.Fragment>;
     if (n.t === 'math') return <Tex key={i} tex={n.v} />;
     if (n.t === 'b') return <b key={i}><Inline nodes={n.c} ctx={ctx} /></b>;
     if (n.t === 'i') return <i key={i}><Inline nodes={n.c} ctx={ctx} /></i>;

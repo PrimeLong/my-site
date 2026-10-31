@@ -10,6 +10,7 @@
    Ядро лёгкое и едет в стартовом файле (нижняя панель, «Мир»); иллюстрации — отдельно. */
 import React from 'react';
 import { DS_THEMES, tokenVars, worldTokens } from './ds-tokens.js';
+import { typo } from './lib/typo.js';
 
 export const DS_CSS = `
   .ds { background: var(--ds-paper); color: var(--ds-ink); font-family: var(--ds-sans); font-size: 16px; line-height: 1.5; -webkit-tap-highlight-color: transparent; --u-ink: color-mix(in srgb, var(--u) 80%, #000); }
@@ -308,8 +309,9 @@ export function Heading({ eyebrow, title, sub, level = 1, children, className, .
   return (
     <div className={className} {...rest}>
       {eyebrow && <div className="ds-eyebrow" style={{ marginBottom: 4 }}>{eyebrow}</div>}
-      <Tag className={level === 1 ? 'ds-h1' : level === 2 ? 'ds-h2' : 'ds-h3'}>{title}</Tag>
-      {sub && <div className="ds-sub" style={{ fontSize: 15, marginTop: 4 }}>{sub}</div>}
+      {/* неразрывные пробелы после коротких предлогов и перед тире (src/lib/typo.js) */}
+      <Tag className={level === 1 ? 'ds-h1' : level === 2 ? 'ds-h2' : 'ds-h3'}>{typo(title)}</Tag>
+      {sub && <div className="ds-sub" style={{ fontSize: 15, marginTop: 4 }}>{typo(sub)}</div>}
       {children}
     </div>
   );
