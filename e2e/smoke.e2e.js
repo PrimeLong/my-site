@@ -1872,11 +1872,15 @@ test('урок: после перезагрузки продолжается с 
     await page.getByRole('dialog', { name: 'Выйти из урока?' }).getByRole('button', { name: 'Выйти', exact: true }).click();
     await expect(page.getByTestId('lesson')).toHaveCount(0);
   };
-  // первый урок: три верных подряд — огонёк «3»
+  // первый урок: три верных подряд — молния «3 подряд верно» (огонёк — только у серии дней)
   await startLesson(page, 'sc-l1');
   for (let k = 0; k < 3; k += 1) { await passCards(page); await answerExercise(page); await page.getByRole('button', { name: 'Дальше', exact: true }).click(); }
   await passCards(page);
   await expect(flame).toHaveAttribute('data-streak', '3');
+  await expect(flame).toHaveText(/3\s*подряд верно/);
+  await expect(flame).toHaveAttribute('aria-label', '3 подряд верно');
+  await expect(flame.locator('svg.lucide-zap')).toHaveCount(1);
+  await expect(flame.locator('svg.lucide-flame')).toHaveCount(0);
   expect(await rc()).toBe(3);
   const ex = page.getByTestId('ex');
   const here = [await ex.getAttribute('data-kind'), await ex.getAttribute('data-answer')];

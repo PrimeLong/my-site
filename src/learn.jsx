@@ -13,7 +13,7 @@
    Карта экранов — src/learn/screens.js. */
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
-  X, ArrowLeft, Flame, Coins, Target, Lock, Check, Gem, ChevronLeft, Calculator, BookOpenText, BookOpen, Trophy, Timer, Delete, ChevronRight, RotateCcw, Sparkles, Dumbbell,
+  X, ArrowLeft, Flame, Zap, Coins, Target, Lock, Check, Gem, ChevronLeft, Calculator, BookOpenText, BookOpen, Trophy, Timer, Delete, ChevronRight, RotateCcw, Sparkles, Dumbbell,
   Clock, Scale, Hourglass, Ticket, TrendingUp, CircleCheck, Medal, ArrowLeftRight, Handshake, Coffee, Wallet, Link, Utensils, Boxes, Users,
   Snowflake, ArrowDownToLine, ArrowUpToLine, Languages, MessageCircle, Headphones, Gamepad2, Repeat, Flag, Croissant, Landmark, Radio, MapPin, ArrowUp, ChevronDown, SkipForward,
   Wrench, Feather, ChartSpline,
@@ -332,11 +332,12 @@ const CSS = `
   .ln-peek-verdict.bad { border-left-color: var(--ds-bad); background: color-mix(in srgb, var(--ds-bad) 10%, var(--ds-card)); color: var(--ds-ink); }
   @media (prefers-reduced-motion: reduce) { .ln-peek { animation: none; } }
   .ln-head { display: flex; align-items: center; gap: 10px; padding: calc(10px + env(safe-area-inset-top)) 14px 4px; max-width: 592px; width: 100%; margin: 0 auto; }
-  /* огонёк серии верных ответов подряд */
+  /* молния «подряд верно» — верные ответы подряд в уроке (огонёк — только серия дней) */
   .ln-fire { position: relative; flex-shrink: 0; display: inline-flex; align-items: center; gap: 3px; height: 28px; padding: 0 10px 0 7px; border-radius: 999px;
     background: linear-gradient(135deg, #FFB547, #FF6A3D); color: #fff; font: 800 14px var(--ds-head); box-shadow: 0 3px 0 #C2410C, 0 8px 16px -8px rgba(255, 106, 61, .8);
     animation: ln-fire-in .45s cubic-bezier(.3, 1.6, .5, 1) both; }
   .ln-fire b { display: inline-block; min-width: 1ch; text-align: center; animation: ln-fire-bump .35s cubic-bezier(.3, 1.8, .5, 1); }
+  .ln-fire-cap { font: 700 12px/1 var(--ds-sans); margin-left: 2px; white-space: nowrap; }
   .ln-fire-ic { animation: ln-flicker 1.2s ease-in-out infinite; transform-origin: 50% 90%; }
   .ln-fire.big { animation: ln-fire-big .6s cubic-bezier(.3, 1.6, .5, 1); }
   .ln-fire.out { background: linear-gradient(135deg, #B9B2A6, #8E877C); box-shadow: 0 3px 0 #6F695F; animation: ln-fire-out .9s ease-in forwards; }
@@ -895,9 +896,10 @@ function newPlan(run, learn) {
   if (run.mode === 'fix') return { items: buildFix(learn, run.unitId).items, cards: {} };
   return { items: buildPractice(practiceIds(learn), Math.random, { weak: weakLessons(learn).map((w) => w.id) }).items, cards: {} };
 }
-/* Серия верных ответов подряд — огонёк в шапке урока. С третьего верного подряд: «🔥 3», каждый новый
-   верный ответ раздувает число и выпускает «+1» (опыт за серию); на 5, 10, 15… — вспышка искр.
-   Ошибка — огонёк сереет, качается и гаснет. plus — показывать «+1» (на повторе урока опыт почти не идёт). */
+/* Верные ответы подряд — молния в шапке урока (огонёк — только серия дней, docs/mechanics.md, «Экономика
+   наград»). С третьего верного подряд: «⚡ 3 подряд верно», каждый новый верный ответ раздувает число и
+   выпускает «+1» (опыт за верные подряд); на 5, 10, 15… — вспышка искр. Ошибка — молния сереет, качается и
+   гаснет. plus — показывать «+1» (на повторе урока опыт почти не идёт). */
 function StreakFlame({ n, plus = true }) {
   const [gone, setGone] = useState(0);
   const prev = useRef(n);
@@ -911,9 +913,9 @@ function StreakFlame({ n, plus = true }) {
   const shown = on ? n : gone;
   const milestone = on && n % 5 === 0;
   return (
-    <span className={`ln-fire${on ? '' : ' out'}${milestone ? ' big' : ''}`} data-testid="lesson-streak" data-streak={shown} role="status" aria-label={`Серия: ${shown} верных подряд`}>
-      <Flame size={15} className="ln-fire-ic" aria-hidden="true" />
-      <b key={shown}>{shown}</b>
+    <span className={`ln-fire${on ? '' : ' out'}${milestone ? ' big' : ''}`} data-testid="lesson-streak" data-streak={shown} role="status" aria-label={`${shown} подряд верно`}>
+      <Zap size={15} className="ln-fire-ic" aria-hidden="true" />
+      <b key={shown}>{shown}</b><small className="ln-fire-cap" aria-hidden="true">подряд верно</small>
       {on && plus && <span key={`p${n}`} className="ln-fire-plus" aria-hidden="true">+1</span>}
       {milestone && <span key={`s${n}`} className="ln-fire-sparks" aria-hidden="true">{Array.from({ length: 8 }, (_, i) => <i key={i} style={{ '--a': `${i * 45}deg` }} />)}</span>}
     </span>
@@ -1540,7 +1542,7 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
               {result.streakUp > 0 && <StreakBurst days={result.streakUp} />}
               <div className="ln-tickets">
                 <div data-testid="result-xp" data-bonus={result.bonus || 0}><div className="ds-eyebrow" style={{ fontSize: 12 }}>Опыт{result.boosted ? ' ×2' : ''}</div><div className="v"><CountUp value={result.xp} prefix="+" /></div>
-                  {result.bonus > 0 && <div className="ln-xp-bonus"><Flame size={12} aria-hidden="true" />+{result.bonus} {result.game ? 'за игру и серии' : 'за серии'}</div>}</div>
+                  {result.bonus > 0 && <div className="ln-xp-bonus"><Zap size={12} aria-hidden="true" />+{result.bonus} {result.game ? 'за игру и верные подряд' : 'за верные подряд'}</div>}</div>
                 <div data-testid="result-acc"><div className="ds-eyebrow" style={{ fontSize: 12 }}>Точность</div><div className="v">{Math.round(result.accuracy)}%</div></div>
                 <div data-testid="result-time"><div className="ds-eyebrow" style={{ fontSize: 12 }}>Время</div><div className="v">{mmss(result.ms)}</div></div>
               </div>
