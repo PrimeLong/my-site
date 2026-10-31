@@ -96,7 +96,9 @@ export function StorageNotice() {
   const ok = () => { try { localStorage.setItem(STORAGE_NOTICE_KEY, String(Date.now())); } catch { /* приватный режим */ } setHidden(true); };
   return (
     <>
-      <div role="region" aria-label="Память браузера" data-testid="storage-notice"
+      {/* на ПК — узкой карточкой в левом нижнем углу: не ложится на демо-урок приветствия и на «Начать» */}
+      <style>{'@media (min-width: 1024px) { .ems-storage-notice { right: auto !important; left: 24px !important; max-width: 380px !important; margin: 0 !important; } }'}</style>
+      <div role="region" aria-label="Память браузера" data-testid="storage-notice" className="ems-storage-notice"
         style={{ position: 'fixed', left: 12, right: 12, bottom: 'calc(82px + env(safe-area-inset-bottom))', zIndex: 300, maxWidth: 520, margin: '0 auto',
           background: '#FFFDF6', color: '#2A2420', border: '1px solid #CDBFA3', borderRadius: 8, boxShadow: '0 6px 22px rgba(40,30,15,.22)', padding: '12px 14px',
           font: '14px/1.45 "PT Sans", system-ui, sans-serif' }}>

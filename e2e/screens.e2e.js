@@ -170,6 +170,17 @@ async function passCards(page) {
   }
 }
 
+// приветствие на ПК: две колонки (docs/mechanics.md, «Приветствие и загрузка»); остальные снимки — телефонные
+test('экраны: приветствие на ПК (desktop)', async ({ page, isMobile }) => {
+  test.skip(isMobile, 'снимок ПК');
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const errors = await setup(page, { theme: 'light', account: false });
+  await page.goto('/', { waitUntil: 'networkidle' });
+  await expect(page.getByTestId('welcome')).toBeVisible();
+  await shot(page, '01-welcome-desktop', 'light', { wait: 1500 });
+  expect(errors).toEqual([]);
+});
+
 for (const theme of ['light', 'dark']) {
   test.describe(`экраны: тема ${theme}`, () => {
     test.beforeEach(({ isMobile }) => { test.skip(!isMobile, 'скриншоты — телефонные'); });

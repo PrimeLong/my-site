@@ -99,6 +99,19 @@ const CSS = `
   .wl-cta-go { animation: wl-cta 1.8s ease-in-out .4s infinite; }
   @keyframes wl-cta { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--u) 45%, transparent) } 50% { box-shadow: 0 0 0 8px transparent } }
   @media (prefers-reduced-motion: reduce) { .wl-hello *, .wl-hello { animation: none !important; } .wl-try-bar i { transition: none; } .wl-demand .curve { stroke-dasharray: none; } }
+  /* ПК: две колонки — слева знак, обещания и кнопки, справа «Урок за 30 секунд» (docs/mechanics.md, «Приветствие и
+     загрузка»). Разметка та же, что на телефоне: .wl-body растворяется (display: contents), и её дети встают в
+     сетку; внизу — место под уведомление о памяти браузера, чтобы оно не легло на кнопки */
+  @media (min-width: 1024px) {
+    .wl.wl-hello { max-width: 1120px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(360px, 460px); column-gap: 64px;
+      align-content: center; padding: 32px 32px 220px; }
+    .wl-hello > .wl-body { display: contents; }
+    .wl-hello > .wl-body > * { grid-column: 1; justify-self: center; }
+    .wl-hello > .wl-body > .wl-g1, .wl-hello > .wl-body > .wl-g2 { justify-self: stretch; }
+    .wl-hello > .wl-body > .wl-try { grid-column: 2; grid-row: 1 / span 7; align-self: center; max-width: none; margin: 0; }
+    .wl-hello > .wl-foot { grid-column: 1; width: 100%; max-width: 380px; justify-self: center; }
+    .wl-hello .wl-hero { margin-top: 4px; }
+  }
 `;
 
 function Top({ onBack }) {
