@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, Suspense } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import { syncProgress, fetchRoom, track, trackDaily } from './lib/client.js';
 import {
   Landmark, Coins, Globe2, TrendingUp, TrendingDown, Users, Scale, ShieldCheck, X, AlertTriangle, Target, Volume2,
