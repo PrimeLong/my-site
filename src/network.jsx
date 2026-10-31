@@ -9,9 +9,12 @@ import { CB_PERSONAS, SCENARIOS, DIFFICULTIES, FX_REGIMES, GOALS, LEVERS, MOF_PE
 import React, { Suspense, useEffect, useMemo, useState } from 'react';
 import { trackDaily, cancelSubmission, createRoom, fetchRoom, joinRoom, kickFromRoom, leaveRoom, listPublicRooms, reportPortfolioValue, sendChatMessage, setRoomDifficulty, submitDecisions, watchRoom } from './lib/client.js';
 import {
-  AchievementsModal, Audio, AudioControls, AuthModal, COLOR, GlobalStyle, NETWORK_SLOT_COUNT, ROLE_ICON,
-  StateSeal, clearNetworkSlotAt, emblemIcon, forgetAccount, useAccount, accountKidsMode, loadNetworkSlots, roomCodeFromUrl, seatRole, useNetworkSlotPreviews,
+  Audio, AudioControls, AuthModal, COLOR, GlobalStyle, NETWORK_SLOT_COUNT, ROLE_ICON,
+  clearNetworkSlotAt, emblemIcon, forgetAccount, useAccount, accountKidsMode, loadNetworkSlots, roomCodeFromUrl, useNetworkSlotPreviews,
 } from './MacroSimulator.jsx';
+import { AchievementsModal } from './world-menu.jsx';
+import { StateSeal } from './state-seal.jsx';
+import { seatRole } from './lib/seats.js';
 import {
   ALL_METRICS, AchievementToast, Atmosphere, CabinetZone, ChartFallback, ChartPanel,
   ColumnResizeHandle, CountryMap, SocietyView, CrisisBar, DEFAULT_COLUMN_ORDER, GameOverBar,

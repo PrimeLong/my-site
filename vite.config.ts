@@ -54,6 +54,11 @@ export default defineConfig({
             // зависимости recharts (d3, decimal.js, анимация) — отдельно от самого recharts
             { name: 'recharts-deps', test: /node_modules[\\/](d3-[a-z-]+|decimal\.js-light|react-smooth|fast-equals|recharts-scale|victory-vendor|internmap|lodash|eventemitter3|tiny-invariant|clsx|react-is|prop-types|dom-helpers|react-transition-group)[\\/]/, priority: 25 },
             { name: 'recharts', test: /node_modules[\\/]recharts[\\/]/, priority: 20, maxSize: 360 * 1024 },
+            /* справочники партии (константы, роли, сценарии) нужны меню «Мира» сразу, а движок — только когда
+               партия начинается. Без своей группы catalog.js уезжал в чанк движка (группа engine забирает и
+               зависимости engine.js), и статический импорт из MacroSimulator.jsx тянул на приветствие все
+               три чанка движка, ~340 КБ. Теперь движок грузится лениво (import('./lib/engine.js')). */
+            { name: 'catalog', test: /src[\\/]lib[\\/]catalog\.js$/, priority: 15 },
             // движок партии (расчёт, политика, карта, тексты новостей) — делится на части до 360 КБ
             { name: 'engine', test: /src[\\/]lib[\\/]((engine|autopilot)\.js|model[\\/]|content[\\/]|politics[\\/]|world[\\/])/, priority: 10, maxSize: 360 * 1024 },
           ],

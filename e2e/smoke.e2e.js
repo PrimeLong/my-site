@@ -477,6 +477,27 @@ async function expectGateOnly(page) {
   for (const id of ['bottom-nav', 'shell', 'path', 'tasks', 'learn-profile', 'world', 'lesson', 'learn-book']) await expect(page.getByTestId(id)).toHaveCount(0);
 }
 
+/* Бюджет первого экрана (docs/mechanics.md, «Приветствие и загрузка»): приветствие грузит не больше 600 КБ JS
+   без сжатия. Движок партии, справочники «Мира» и меню партии — ленивые чанки; раньше статический импорт
+   src/lib/catalog.js тянул на приветствие весь движок, и выходило ~1,08 МБ. */
+const FIRST_SCREEN_JS_KB = 600;
+test('вход: приветствие грузит не больше 600 КБ JS — движок партии и меню «Мира» не грузятся', async ({ page }) => {
+  const js = [];
+  page.on('response', async (r) => {
+    if (!/\.js(\?|$)/.test(r.url())) return;
+    try { js.push({ url: r.url(), size: (await r.body()).length }); } catch { /* ответ без тела */ }
+  });
+  const { errors } = await openApp(page, '/', '{}', { tab: null });
+  await expect(page.getByRole('button', { name: 'Начать' })).toBeVisible();
+  // всё, что первый экран догружает сам (без нажатий)
+  await page.waitForTimeout(1500);
+  const kb = Math.round(js.reduce((a, x) => a + x.size, 0) / 1024);
+  const list = js.map((x) => `${x.url.split('/').pop()} ${Math.round(x.size / 1024)} КБ`).join(', ');
+  expect(kb, `JS на приветствии: ${list}`).toBeLessThanOrEqual(FIRST_SCREEN_JS_KB);
+  expect(js.map((x) => x.url).filter((u) => /\/assets\/(catalog|world-menu|game|tycoon|network)-/.test(u)), 'ленивые чанки «Мира»').toEqual([]);
+  expect(errors).toEqual([]);
+});
+
 test('вход: первый запуск — приветствие, цель, урок гостем, «Сохраните прогресс», регистрация; выход, вход и восстановление', async ({ page }) => {
   test.setTimeout(120_000);
   await withTestFlag(page);

@@ -50,6 +50,7 @@ npm run dev        # клиент на Vite; api/* локально не под�
 npm run lint       # oxlint
 npm test           # vitest: модель партии, курс и тексты, награды, сервер
 npm run build      # tsc -b && vite build; сборка падает, если JS-чанк больше 400 КБ
+                   # (бюджет первого экрана — 600 КБ JS без сжатия — проверяет e2e «вход: приветствие…»)
 npm run e2e        # Playwright: desktop, phone (Chromium) и webkit (iPhone 13)
 npx playwright test --project=desktop --project=phone   # без установленного WebKit
 npx playwright test e2e/visual.e2e.js --project=phone --update-snapshots   # обновить эталоны

@@ -12,7 +12,7 @@ import { RUDE_NAME } from './lib/moderation.js';
 import { Mascot } from './mascot.jsx';
 import { InflatiaMark } from './logo.jsx';
 import { DsRoot, Button, IconButton, Heading } from './ds.jsx';
-import { ArtStyle, Guilloche, Rosette } from './ds-art.jsx';
+import { ArtStyle, Guilloche, Rosette } from './ds-art-core.jsx';
 import { dsThemeId } from './ds-tokens.js';
 import { loadProgress, saveProgress } from './textbook/progress.js';
 import { setGoal, setProfile, PROFILE_GOAL_LABEL, LESSONS_FOR_MINUTES } from './textbook/learn-state.js';

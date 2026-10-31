@@ -30,12 +30,15 @@ import { BookLink } from './booklink.jsx';
 import { LEVER_BOOK, WHY_BOOK, COMPASS_BOOK, bookForChain } from './lib/booklinks.js';
 import { advancedOpen, readLearnLevel, ADVANCED_TABS, ADVANCED_ROWS, ADVANCED_CHAPTERS, ADVANCED_QUARTER } from './lib/disclosure.js';
 import {
-  ACHIEVEMENTS, ACHIEVEMENTS_KEY, AchievementsModal, AUTOSAVE_KEY, loadUnlockedAchievements,
+  ACHIEVEMENTS, ACHIEVEMENTS_KEY, AUTOSAVE_KEY, loadUnlockedAchievements,
   loadRolesPlayed, validateSnapshot, SAVE_VERSION, SOLO_SLOT_COUNT, AudioControls, COLOR, FONT,
-  GlobalStyle, THEMES, StateSeal, ROLE_ICON, NETWORK_PLAYED_KEY, loadNetworkSlots, writeNetworkSlots,
+  GlobalStyle, THEMES, ROLE_ICON, NETWORK_PLAYED_KEY, loadNetworkSlots, writeNetworkSlots,
   isNetworkPlayed, ROLES_PLAYED_KEY, getPlayerId, useEscapeClose, useExclusiveDropdown, useAccount, accountKidsMode,
-  DailyBoard, loadDailyName, saveDailyName, recordDailyBest, dailyDateLabel, loadFold, saveFold,
+  loadFold, saveFold,
 } from './MacroSimulator.jsx';
+// окно достижений и вызов дня живут с меню «Мира» (ленивый модуль)
+import { StateSeal } from './state-seal.jsx';
+import { AchievementsModal, DailyBoard, loadDailyName, saveDailyName, recordDailyBest, dailyDateLabel } from './world-menu.jsx';
 
 /* Экран партии (одиночная игра): панели ролей, показатели, новости, карта,
    общество, биржа, сохранения, итоги. Вынесен из MacroSimulator.jsx в отдельный
