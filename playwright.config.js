@@ -27,7 +27,7 @@ export default defineConfig({
        установленный WebKit (npx playwright install webkit); в CI ставится вместе с Chromium.
        Локально без него: npx playwright test --project=desktop --project=phone */
     { name: 'webkit', use: { ...devices['iPhone 13'] }, testMatch: /smoke\.e2e\.js$/,
-      grep: /меню открывается|навигация: у каждого экрана|путь: карточка урока|одиночная партия: квартал проходит|вход: экраны до входа/ },
+      grep: /меню открывается|навигация: у каждого экрана|путь: карточка урока|путь: повтор пройденного урока|одиночная партия: квартал проходит|вход: экраны до входа/ },
   ],
   webServer: {
     command: 'npm run build && npx vite preview --port 4173 --strictPort',

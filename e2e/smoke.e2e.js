@@ -6,6 +6,8 @@ import { freshRoom, resolveQuarter, publicView } from '../api/room.js';
 import { makeInitialEconomy, defaultDecisions } from '../src/lib/engine.js';
 import { SCREENS } from '../src/learn/screens.js';
 import { BOOK_BY_ID, bookSpeech, passageAt, passageStart } from '../src/learn/shelf.js';
+import { PEOPLE } from '../src/learn/people.js';
+import { listPeoplePhotos, readPhotoCredits } from '../scripts/voice-files-plugin.js';
 
 /* Общая подготовка каждой страницы: серверные функции подменены, внешние
    запросы и ошибки страницы собираются — тест падает, если сайт полез за
@@ -1411,27 +1413,45 @@ async function answerExercise(page, { wrong = false, skipOpen = false } = {}) {
   // мини-игра и «Домино» проверяются сами, когда доиграны
   if (!['swipe', 'rush', 'wallet', 'domino'].includes(kind) && !(kind === 'open' && skipOpen)) await page.getByRole('button', { name: kind === 'open' ? 'Ответить' : 'Проверить' }).click();
   const fb = page.getByTestId('ex-feedback');
-  await expect(fb).toHaveAttribute('data-ok', String(!wrong || kind === 'open'));
+  // домино с падением собрано — засчитано не с первого раза (data-partial), но и не ошибка
+  await expect(fb).toHaveAttribute('data-ok', String(!wrong || kind === 'open' || kind === 'domino'));
+  if (kind === 'domino') await expect(fb).toHaveAttribute('data-partial', String(wrong));
   if (kind === 'open' && skipOpen) { await expect(page.getByTestId('lesson-foot')).toContainText('Вопрос пропущен'); await expect(page.getByTestId('open-review')).toBeVisible(); }
   return kind;
 }
+/* Нарочная ошибка возможна не везде: собранное с падением домино засчитано (не с первого раза), у открытого
+   вопроса неверного ответа нет. Порядок упражнений в уроке случайный, поэтому ошибка, назначенная на такое
+   упражнение, переносится на следующее. mistake: true — ошибка нужна «на повтор» (практика «Повторить
+   ошибки»): тогда переносится и с мини-игр — они в практику не идут (canPractice). Без переноса тест через
+   раз не находил ошибку в практике (flaky на phone, smoke :1621). */
+const NO_WRONG_KINDS = ['domino', 'open'];
+const GAME_KINDS_E2E = ['swipe', 'rush', 'wallet'];
 // пройти урок до экрана итогов; wrongAt — номера упражнений, где ошибиться нарочно
-async function playLesson(page, { wrongAt = [], skipOpen = false } = {}) {
+async function playLesson(page, { wrongAt = [], skipOpen = false, mistake = false } = {}) {
   const kinds = new Set();
   let retries = 0;
   let cards = 0;
+  let owe = 0;
   for (let i = 0; i < 70; i += 1) {
     if (await page.getByTestId('lesson-result').isVisible()) break;
     // карточки перед упражнением: шаг, слово (перевернуть), пункт итогов — прочитать и дальше
     cards += await passCards(page);
     if (await page.getByTestId('ex-retry').isVisible()) retries += 1;
-    kinds.add(await answerExercise(page, { wrong: wrongAt.includes(i), skipOpen }));
+    if (wrongAt.includes(i)) owe += 1;
+    const kind = await page.getByTestId('ex').getAttribute('data-kind');
+    const wrong = owe > 0 && !NO_WRONG_KINDS.includes(kind) && !(mistake && GAME_KINDS_E2E.includes(kind));
+    if (wrong) owe -= 1;
+    kinds.add(await answerExercise(page, { wrong, skipOpen }));
     await page.getByRole('button', { name: 'Дальше', exact: true }).click();
   }
   await expect(page.getByTestId('lesson-result')).toBeVisible();
   return { kinds, retries, cards };
 }
 const withTestFlag = (page) => page.addInitScript(() => { window.__INFLATIA_TEST__ = true; });
+/* Длинные сценарии в WebKit (эмуляция iPhone) идут в полтора-два раза дольше, чем в Chromium, и не укладывались
+   в минуту — падали по таймауту в случайном месте второй половины («element is not stable» — это просто
+   последнее ожидание перед таймаутом). Тройной бюджет — только в WebKit: в Chromium замедление ловится как раньше. */
+const slowInWebkit = () => test.slow(test.info().project.name === 'webkit', 'WebKit (iPhone) медленнее Chromium: длинный сценарий');
 // «Откройте сами»: четыре разные цены — четыре дня в «Зерне», точки на графике, линия, «Дальше»
 async function playDiscover(page, prices = [12, 18, 26, 33]) {
   const d = page.getByTestId('discover');
@@ -1493,6 +1513,7 @@ async function startLesson(page, id, button = /Начать|Повторить/)
 }
 
 test('путь: карточка урока, «Знакомство» шагами, ошибка и её повтор, итоги, замок следующего урока', async ({ page }) => {
+  slowInWebkit();
   await withTestFlag(page);
   const { errors, external } = await openApp(page, '/', '{}', { tab: 'path' });
   const path = page.getByTestId('path');
@@ -1601,8 +1622,23 @@ test('путь: карточка урока, «Знакомство» шагам
   await expect(page.getByTestId('prof-lessons')).toHaveText('1');
   await expect(page.getByTestId('prof-calendar').locator('.today')).toHaveCount(1);
   await expect(page.getByTestId('prof-types')).toHaveCount(0);
-  // повтор пройденного урока — «Подробнее в учебнике» открывает главу, «назад» — снова итоги
-  await openTab(page, 'path');
+  expect(external).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
+/* Повтор пройденного урока — отдельным тестом: вместе с первым прохождением это два полных урока «Знакомство»
+   в одном тесте, и в WebKit (iPhone) он не укладывался в минуту — падал по таймауту в случайном месте второй
+   половины (flaky на CI, smoke :1495 на webkit). Урок здесь уже пройден вчера — как после теста выше. */
+test('путь: повтор пройденного урока — «Урок уже был пройден», «Подробнее в учебнике» открывает главу, «назад» — снова итоги', async ({ page }) => {
+  slowInWebkit();
+  await withTestFlag(page);
+  await page.addInitScript(() => {
+    if (localStorage.getItem('ems-textbook-v1')) return;
+    localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons: { 'sc-i1': { at: Date.now() - 86400000, runs: 1, best: 80 } } } }));
+  });
+  const { errors, external } = await openApp(page, '/', '{}', { tab: 'path' });
+  const path = page.getByTestId('path');
+  await expect(pathNode(page, 'sc-i1')).toHaveAttribute('data-state', 'done');
   await startLesson(page, 'sc-i1', 'Повторить');
   await playLesson(page);
   await expect(page.getByTestId('lesson-result')).toContainText('Урок уже был пройден');
@@ -1678,7 +1714,7 @@ test('путь: выход после первого ответа — урок �
     await page.getByTestId('term-sheet').getByRole('button', { name: 'Понятно' }).click();
     await expect(page.getByTestId('term-sheet')).toHaveCount(0);
   }
-  await playLesson(page, { wrongAt: [2] });
+  await playLesson(page, { wrongAt: [2], mistake: true });
   await page.getByTestId('lesson-result').getByRole('button', { name: 'Дальше', exact: true }).click();
   // практика: ошибка решается — и уходит из списка
   await openTasks(page);
@@ -3027,6 +3063,10 @@ async function expectScreen(page, name, seen) {
 const clickBack = (page) => page.locator('[data-nav="back"]:not([inert] *)').filter({ visible: true }).click();
 
 test('навигация: у каждого экрана один «назад» туда, откуда пришли, и нет двух путей в одно место', async ({ page }) => {
+  /* обход всех экранов одним сеансом (в конце — проверка, что обойдены все из src/learn/screens.js) — около
+     сорока переходов; в WebKit (iPhone) это дольше минуты, и тест падал по таймауту в конце обхода
+     (smoke :3029 на webkit). Сеанс делить нельзя — в WebKit у теста тройной бюджет, в Chromium — обычный. */
+  slowInWebkit();
   await withTestFlag(page);
   // юнит 1 пройден — в конце его дороги сундук
   await page.addInitScript(() => {
@@ -5288,49 +5328,56 @@ test('«Разбор графика» — остановка на дороге �
   expect(errors).toEqual([]);
 });
 
-test('«Персоналии»: портреты с Википедии — только свободные файлы Commons с подписью автора; иначе медальон', async ({ page }) => {
-  // Википедию подменяем: Роббинс — общественное достояние, Мальтус — fair use, Рикардо — локальный файл английской Википедии
-  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
-  await page.route('https://en.wikipedia.org/**', (r) => {
-    const u = r.request().url();
-    const src = u.includes('Robbins') ? 'https://upload.wikimedia.org/wikipedia/commons/a/ab/Robbins.jpg'
-      : u.includes('Malthus') ? 'https://upload.wikimedia.org/wikipedia/commons/c/cd/Malthus.jpg' : 'https://upload.wikimedia.org/wikipedia/en/e/ef/Ricardo.jpg';
-    return r.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ originalimage: { source: src } }) });
-  });
-  await page.route('https://commons.wikimedia.org/**', (r) => {
-    const free = r.request().url().includes('Robbins');
-    const name = free ? 'Robbins' : 'Malthus';
-    return r.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ query: { pages: { 7: { imageinfo: [{
-      thumburl: `https://upload.wikimedia.org/wikipedia/commons/thumb/a/ab/${name}.jpg/480px-${name}.jpg`, descriptionurl: `https://commons.wikimedia.org/wiki/File:${name}.jpg`,
-      extmetadata: { LicenseShortName: { value: free ? 'Public domain' : 'Fair use' }, Artist: { value: '<span>Elliott &amp; Fry</span>' } } }] } } } }) });
-  });
-  await page.route('https://upload.wikimedia.org/**', (r) => r.fulfill({ status: 200, contentType: 'image/png', body: png }));
-  await page.addInitScript(() => {
-    localStorage.setItem('ems-portraits-test', '1');
+test('«Персоналии»: портрет — свой файл из public/people с подписью из people/credits.csv; нет файла — медальон; Википедию не спрашиваем', async ({ page }) => {
+  // что лежит в public/people и что написано в people/credits.csv — тем же разбором, что и при сборке
+  const files = listPeoplePhotos();
+  const credits = readPhotoCredits();
+  const everyone = PEOPLE.flatMap((g) => g.people);
+  const noFile = everyone.find((p) => !files[p.id]);
+  // знакомы все группы, кроме «Людей выбора»: их проходим сейчас — потом вся галерея в профиле
+  await page.addInitScript((met) => {
     if (localStorage.getItem('ems-textbook-v1')) return;
     const at = Date.now() - 86400000;
-    localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons: { 'sc-i1': { at, runs: 1, best: 90 }, 'sc-l1': { at, runs: 1, best: 90 } } } }));
-  });
+    localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons: { 'sc-i1': { at, runs: 1, best: 90 }, 'sc-l1': { at, runs: 1, best: 90 } }, met } }));
+  }, Object.fromEntries(PEOPLE.filter((g) => g.id !== 'people-scarcity').map((g) => [g.id, Date.now() - 86400000])));
+  const wiki = [];
+  page.on('request', (r) => { if (/wikipedia\.org|wikimedia\.org/.test(r.url())) wiki.push(r.url()); });
   const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
   await page.locator('[data-testid=path-extra][data-extra="people"]').click();
   const pg = page.getByTestId('people');
-  await expect(pg.getByTestId('people-page')).toHaveAttribute('data-person', 'robbins');
-  await expect(pg.getByTestId('people-portrait')).toHaveAttribute('data-photo', 'true');
-  await expect(pg.getByTestId('people-portrait').locator('img')).toHaveAttribute('src', /upload\.wikimedia\.org\/wikipedia\/commons\/thumb\/a\/ab\/Robbins\.jpg/);
-  await expect(pg.getByTestId('people-credit')).toContainText('Фото: Elliott & Fry · Public domain · Wikimedia Commons');
-  await expect(pg.getByTestId('people-credit').locator('a')).toHaveAttribute('href', 'https://commons.wikimedia.org/wiki/File:Robbins.jpg');
-  // ответ запомнен устройством — без повторного запроса к Википедии
-  expect(await page.evaluate(() => Object.keys(JSON.parse(localStorage.getItem('ems-portraits-v1') || '{}')))).toContain('robbins');
-  await pg.locator('[data-testid=people-opt][data-ok="true"]').click();
-  await page.getByTestId('people-next').click();
-  // Мальтус: fair use — медальон и без подписи
-  await expect(pg.getByTestId('people-page')).toHaveAttribute('data-person', 'malthus');
-  await expect(pg.getByTestId('people-portrait')).toHaveAttribute('data-photo', 'false');
-  await expect(pg.getByTestId('people-credit')).toHaveCount(0);
-  await pg.locator('[data-testid=people-opt][data-ok="true"]').click();
-  await page.getByTestId('people-next').click();
-  // Рикардо: файл не на Commons — медальон
-  await expect(pg.getByTestId('people-page')).toHaveAttribute('data-person', 'ricardo');
-  await expect(pg.getByTestId('people-portrait')).toHaveAttribute('data-photo', 'false');
+  for (const p of PEOPLE.find((g) => g.id === 'people-scarcity').people) {
+    await expect(pg.getByTestId('people-page')).toHaveAttribute('data-person', p.id);
+    const pic = pg.getByTestId('people-portrait');
+    if (files[p.id]) {
+      // фото — со своего адреса; подпись — автор, лицензия и ссылка из credits.csv
+      await expect(pic).toHaveAttribute('data-photo', 'true');
+      await expect(pic.locator('img')).toHaveAttribute('src', `/people/${files[p.id]}`);
+      const c = credits[p.id];
+      if (c) {
+        const credit = pg.getByTestId('people-credit');
+        if (c.author) await expect(credit).toContainText(c.author);
+        if (c.license) await expect(credit).toContainText(c.license);
+        if (c.source) await expect(credit.locator('a')).toHaveAttribute('href', c.source);
+      } else await expect(pg.getByTestId('people-credit')).toHaveCount(0);
+    } else {
+      await expect(pic).toHaveAttribute('data-photo', 'false');
+      await expect(pg.getByTestId('people-credit')).toHaveCount(0);
+    }
+    await pg.locator('[data-testid=people-opt][data-ok="true"]').click();
+    await page.getByTestId('people-next').click();
+  }
+  await page.getByTestId('people-finish').click();
+  // галерея профиля: у кого есть файл — фото, у кого нет — медальон с инициалами
+  await openTab(page, 'profile');
+  const gallery = page.getByTestId('prof-gallery');
+  await gallery.scrollIntoViewIfNeeded();
+  await expect(gallery.locator('[data-testid=gallery-person][data-met="true"]')).toHaveCount(everyone.length);
+  await expect(gallery.locator('[data-testid=people-portrait][data-photo="true"]')).toHaveCount(everyone.filter((p) => files[p.id]).length);
+  if (noFile) {
+    const card = gallery.locator(`[data-testid=gallery-person][data-person="${noFile.id}"]`);
+    await expect(card.getByTestId('people-portrait')).toHaveAttribute('data-photo', 'false');
+    await expect(card.getByRole('img', { name: `${noFile.name} — медальон с инициалами` })).toHaveCount(1);
+  }
+  expect(wiki, 'портреты не берутся с Википедии').toEqual([]);
   expect(errors).toEqual([]);
 });
