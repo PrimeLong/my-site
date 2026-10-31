@@ -15,7 +15,7 @@ async function openMore(page, id) {
 }
 
 const DIR = 'screens';
-const ACCOUNT = { token: 't', login: 'tester', name: 'Тест', emblem: 'star', kidsMode: false };
+const ACCOUNT = { token: 't', login: 'tester', name: 'Тест', emblem: 'star', kidsMode: false, birthYear: 1990 };
 // пройдено всё, кроме «Итогов юнита»: на Пути видно и пройденное, и текущее; любой урок открыт для повтора
 const DONE = ['sc-i1', 'sc-l1', 'sc-l2', 'sc-i2', 'sc-l3', 'sc-l4', 'sc-l5', 'sc-l6', 'sc-w', 'sc-s1', 'sc-radio', 'sc-g', 'sc-rev', 'sc-sum', 'sd-i1', 'sd-l1', 'sd-w', 'sd-i2', 'sd-l3', 'sd-s1', 'sd-l-radio', 'sd-g', 'sd-rev'];
 

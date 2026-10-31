@@ -45,7 +45,8 @@ export const forgetAccount = () => saveAccount(null);
 export const accountKidsMode = (a = loadAccount()) => !a || a.kidsMode !== false;
 /* renameBy — до какого момента сменить ник, нарушающий правила (иначе блок), blocked — срок вышел,
    nameNextAt — когда ник можно сменить снова (раз в 30 дней). Всё считает сервер (api/_lib/accounts.js). */
-const fromProfile = (profile) => ({ name: profile.name, emblem: profile.emblem, kidsMode: profile.kidsMode !== false, leaguePublic: profile.leaguePublic === true,
+// год рождения — на устройстве тоже: по нему лавка решает, показывать ли скидки и отсчёты (src/lib/age.js, noScarcity)
+const fromProfile = (profile) => ({ name: profile.name, emblem: profile.emblem, kidsMode: profile.kidsMode !== false, leaguePublic: profile.leaguePublic === true, birthYear: profile.birthYear || null,
   renameBy: profile.renameBy || null, blocked: profile.blocked === true, nameNextAt: profile.nameNextAt || 0 });
 // при запуске: подтянуть с сервера имя, значок и детский режим
 export const refreshAccount = async () => {

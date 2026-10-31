@@ -52,7 +52,7 @@ async function openTasks(page) {
 }
 /* Вход обязателен: во всех тестах, кроме тестов первого запуска («вход: …»), пользователь уже
    вошёл — аккаунт лежит на устройстве до загрузки страницы. */
-const ACCOUNT = { token: 't', login: 'tester', name: 'Тест', emblem: 'star', kidsMode: false };
+const ACCOUNT = { token: 't', login: 'tester', name: 'Тест', emblem: 'star', kidsMode: false, birthYear: 1990 };
 test.beforeEach(async ({ page }, info) => {
   // уведомление о памяти браузера уже прочитано — кроме теста самого уведомления
   if (!info.title.startsWith('память браузера:')) await page.context().addInitScript(() => { try { localStorage.setItem('ems-storage-notice', '1'); } catch { /* нет хранилища */ } });
@@ -5317,6 +5317,36 @@ test('особые уроки не пропустить: после урока �
   });
   await page.reload({ waitUntil: 'networkidle' });
   await expect(pathNode(page, 'sc-l3')).not.toHaveAttribute('data-state', 'locked');
+  expect(errors).toEqual([]);
+});
+
+/* Лавка без давления дефицитом (docs/mechanics.md, «Хеллоуин»): младше 16 — ни «−30%», ни зачёркнутой цены, ни
+   отсчётов «обновится через», «ещё N дней, потом через год»; скидка дня остаётся. Взрослому — как раньше. */
+test('лавка: младше 16 — без «−30%» и «ещё N дней, потом через год»; взрослому — со скидкой и сроком', async ({ page }) => {
+  await page.clock.setFixedTime(new Date('2026-10-31T10:00:00Z'));
+  await page.addInitScript(() => {
+    if (localStorage.getItem('ems-textbook-v1')) return;
+    const at = Date.now() - 86400000;
+    localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons: { 'sc-i1': { at, runs: 1, best: 90 }, 'sc-l1': { at, runs: 1, best: 90 } }, coins: { '2026-01-01': 50 } } }));
+  });
+  // ученик 2013 года рождения: в 2026 году ему 12 или 13
+  await page.context().addInitScript((a) => { localStorage.setItem('ems-account', JSON.stringify(a)); }, { ...ACCOUNT, birthYear: 2013, kidsMode: true });
+  const { errors } = await openApp(page, '/', '{}', { tab: 'shop' });
+  const shop = page.getByTestId('shop');
+  await expect(shop.getByTestId('shop-halloween')).toBeVisible();
+  await expect(shop.getByTestId('shop-halloween')).toContainText('Хеллоуинские вещи для Инфли. Купленное остаётся навсегда.');
+  await expect(shop).not.toContainText('потом через год');
+  await expect(shop).not.toContainText('Обновится через');
+  await expect(shop).not.toContainText('−30%');
+  await expect(shop.getByTestId('shop-deal')).toHaveCount(0);
+  await expect(shop.locator('[data-testid=shop-item][data-deal="true"] .rw-price s')).toHaveCount(0);
+  // взрослому — плашка скидки и срок сезона
+  // (скрипты страницы идут после скриптов контекста — взрослый аккаунт перекрывает детский)
+  await page.addInitScript((a) => { localStorage.setItem('ems-account', JSON.stringify(a)); }, { ...ACCOUNT, birthYear: 1990 });
+  await gotoApp(page, '/', 'shop');
+  await expect(shop.getByTestId('shop-halloween')).toContainText('потом через год');
+  await expect(shop.getByTestId('shop-deal')).toHaveCount(1);
+  await expect(shop.getByTestId('shop-tabs')).toContainText('−30%');
   expect(errors).toEqual([]);
 });
 

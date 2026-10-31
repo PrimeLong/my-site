@@ -4,6 +4,8 @@
    src/ds-art.jsx); расчёты — в чистых модулях src/learn/rewards.js и src/learn/program.js. */
 import React, { useEffect, useRef, useState } from 'react';
 import { trackDaily } from './lib/client.js';
+import { loadAccount } from './account.jsx';
+import { noScarcity } from './lib/age.js';
 import {
   X, Wallet, ShieldCheck, CalendarDays, Check, Flame, GraduationCap, Timer, Map as MapIcon, Target, Coins, TrendingUp, TrendingDown, Minus, Gem, Zap,
   ListChecks, ChevronRight, Ghost, Crown, Lock, Plus, Store, Palette, Shirt, PiggyBank, ChevronDown,
@@ -468,13 +470,13 @@ function RateChart({ hist }) {
 // до полуночи по всемирному времени — когда обновится витрина
 const untilMidnight = (now) => { const m = dayStart(now) + 24 * 3600000 - now; const hh = Math.floor(m / 3600000); const mm = Math.floor((m % 3600000) / 60000); return `${hh} ч ${mm} мин`; };
 // карточка вещи: Инфля в ней, цена по курсу (со скидкой — старая зачёркнута), купить / надеть
-function ShopItem({ o, learn, day, wear, b, onBuy, onToggle, deal = false, goal = false, hw = null }) {
+function ShopItem({ o, learn, day, wear, b, onBuy, onToggle, deal = false, goal = false, hw = null, calm = false }) {
   const desk = o.slot === 'desk'; const theme = o.slot === 'theme';
   const owned = !!(learn.owned || {})[o.id]; const on = (desk ? deskOf(learn) : theme ? themeOf(learn) : wear[o.slot]) === o.id;
   const price = priceOf(o.id, day, learn); const full = priceOf(o.id, day);
   return (
     <div className="rw-item" data-testid="shop-item" data-item={o.id} data-owned={String(owned)} data-on={String(on)} data-deal={deal ? 'true' : undefined} data-rare={o.rare && !o.season ? 'true' : undefined} data-season={o.season || undefined}>
-      {deal && !owned && <span className="rw-deal" data-testid="shop-deal">−{Math.round(DEAL_OFF * 100)}%</span>}
+      {deal && !owned && !calm && <span className="rw-deal" data-testid="shop-deal">−{Math.round(DEAL_OFF * 100)}%</span>}
       {o.season ? <span className="rw-rare rw-season"><Ghost size={11} aria-hidden="true" />хеллоуин</span> : theme ? <span className="rw-rare rw-theme-tag"><Palette size={11} aria-hidden="true" />тема урока</span> : desk ? <span className="rw-rare rw-desk-tag"><Gem size={11} aria-hidden="true" />в урок</span> : o.rare && <span className="rw-rare"><Gem size={11} aria-hidden="true" />редкое</span>}
       {/* украшение урока — живое прямо на витрине: его можно потрогать до покупки */}
       {theme ? <SkinPreview id={o.id} /> : desk ? <div className="rw-desk-stage"><DeskDecor id={o.id} height={64} preview label={`${o.title}: потрогайте`} /></div>
@@ -489,7 +491,7 @@ function ShopItem({ o, learn, day, wear, b, onBuy, onToggle, deal = false, goal 
           {hw && <div className="rw-goal" role="progressbar" aria-label="Собрано тыкв" aria-valuemin={0} aria-valuemax={hw.goal} aria-valuenow={hw.pumpkins}><i style={{ width: `${(hw.pumpkins / hw.goal) * 100}%` }} /></div>}
           <div className="ds-sub" style={{ fontSize: 12.5 }}>{hw && hw.ready ? 'Заберите её на Пути' : 'Каждый урок — тыква'}</div>
         </> : <>
-          <div className="rw-price">{price < full && <s>{full}</s>}{price} <span style={{ fontWeight: 400 }}>мон.</span><small>{o.crowns} кр.</small></div>
+          <div className="rw-price">{price < full && !calm && <s>{full}</s>}{price} <span style={{ fontWeight: 400 }}>мон.</span><small>{o.crowns} кр.</small></div>
           {/* цена отказа: чего стоит вещь, кроме монет */}
           <div className="rw-forgone" data-testid="shop-forgone" title={`Цена отказа: ${forgone(price).text} или +${forgone(price).week} в копилке за неделю`}>{forgone(price).text} · копилка дала бы +{forgone(price).week}</div>
           {goal && b < price && <div className="rw-goal" role="progressbar" aria-label="Накоплено на покупку" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.floor((b / price) * 100)}><i style={{ width: `${Math.min(100, (b / price) * 100)}%` }} /></div>}
@@ -680,7 +682,10 @@ export function ShopView({ learn, update, now = Date.now(), focus = null }) {
   };
   const toggle = (o) => { Audio.play('paper'); update((s) => setWear(s, o.slot, (s.wear || {})[o.slot] === o.id ? null : o.id, now)); };
   const putOn = (slot, id) => { Audio.play('paper'); update((s) => setWear(s, slot, id, now)); };
-  const itemProps = { learn, day, wear, b, onBuy: doBuy, onToggle: toggle };
+  /* младше 16 (или возраст не известен) — без давления дефицитом: ни «−30%», ни зачёркнутой цены, ни отсчётов
+     (docs/mechanics.md, «Хеллоуин»); скидка дня остаётся — просто без плашки */
+  const calm = noScarcity((loadAccount() || {}).birthYear, now);
+  const itemProps = { learn, day, wear, b, onBuy: doBuy, onToggle: toggle, calm };
   const dealOpen = today.deal && !(learn.owned || {})[today.deal];
   const hw = today.season.length > 0 ? halloween(learn, now) : null;
   return (
@@ -729,8 +734,8 @@ export function ShopView({ learn, update, now = Date.now(), focus = null }) {
               <button key={t.id} type="button" role="tab" className="sh-tab" aria-selected={tab === t.id} data-testid="shop-tab" data-tab={t.id}
                 onClick={() => { if (tab !== t.id) { Audio.play('paper'); setTab(t.id); } }}>
                 <Icon size={19} aria-hidden="true" /><span>{t.label}</span>
-                {t.id === 'showcase' && dealOpen && <span className="sh-badge" aria-label="скидка дня">−{Math.round(DEAL_OFF * 100)}%</span>}
-                {t.id === 'showcase' && !dealOpen && hw && <span className="sh-badge hw" aria-label="хеллоуин"><Ghost size={10} aria-hidden="true" /></span>}
+                {t.id === 'showcase' && dealOpen && !calm && <span className="sh-badge" aria-label="скидка дня">−{Math.round(DEAL_OFF * 100)}%</span>}
+                {t.id === 'showcase' && (!dealOpen || calm) && hw && <span className="sh-badge hw" aria-label="хеллоуин"><Ghost size={10} aria-hidden="true" /></span>}
                 {t.id === 'useful' && pig && pig.ripe && <span className="sh-dot" aria-label="вклад созрел" />}
               </button>
             );
@@ -742,13 +747,13 @@ export function ShopView({ learn, update, now = Date.now(), focus = null }) {
           {tab === 'showcase' && <>
             {hw && (
               <div className="rw-hw" data-testid="shop-halloween">
-                <Heading level={3} title="Хеллоуинская витрина" sub={`Только на Хеллоуин — ${seasonLeftText(hw)}, потом через год. Купленное остаётся навсегда.`} />
+                <Heading level={3} title="Хеллоуинская витрина" sub={calm ? 'Хеллоуинские вещи для Инфли. Купленное остаётся навсегда.' : `Только на Хеллоуин — ${seasonLeftText(hw)}, потом через год. Купленное остаётся навсегда.`} />
                 <div className="rw-items" style={{ margin: '10px 0 16px' }}>
                   {[...today.season, WEB_FRAME].map((id) => <ShopItem key={id} o={OUTFIT_BY_ID[id]} goal={OUTFIT_BY_ID[id].rare} hw={hw} {...itemProps} />)}
                 </div>
               </div>
             )}
-            <Heading level={3} title="Витрина дня" sub={`Обновится через ${untilMidnight(now)} — в ${rolloverLocal(now)} по вашему времени (полночь по Гринвичу). На одну вещь — скидка дня ${Math.round(DEAL_OFF * 100)}%.`} />
+            <Heading level={3} title="Витрина дня" sub={calm ? 'Каждый день — новые вещи.' : `Обновится через ${untilMidnight(now)} — в ${rolloverLocal(now)} по вашему времени (полночь по Гринвичу). На одну вещь — скидка дня ${Math.round(DEAL_OFF * 100)}%.`} />
             <div className="rw-items" style={{ margin: '10px 0 16px' }} data-testid="shop-showcase">
               {today.showcase.map((id) => <ShopItem key={id} o={OUTFIT_BY_ID[id]} deal={id === today.deal} {...itemProps} />)}
               {!today.showcase.length && <div className="ds-sub" style={{ gridColumn: '1 / -1', fontSize: 14.5 }}>Всё обычное уже ваше — дальше вкладки «Ювелир» и «Для урока».</div>}
