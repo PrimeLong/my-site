@@ -4,6 +4,7 @@
    (src/privacy.jsx). */
 import React from 'react';
 import { X } from 'lucide-react';
+import { OperatorBlock, AgeRating } from './legal-block.jsx';
 
 export const TERMS_TITLE = 'Пользовательское соглашение';
 export const TERMS_CAVEAT = 'Учебная игра, не финансовый совет';
@@ -54,7 +55,8 @@ export function TermsPage({ onClose }) {
             </ul>
           </section>
         ))}
-        <p className="ds-faint" style={{ fontSize: 13, marginTop: 18 }}>Редакция от 5 октября 2026 года.</p>
+        <OperatorBlock />
+        <p className="ds-faint" style={{ fontSize: 13, marginTop: 18 }}>Редакция от 31 октября 2026 года. <AgeRating /></p>
       </div>
     </div>
   );

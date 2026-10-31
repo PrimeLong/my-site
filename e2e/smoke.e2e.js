@@ -543,9 +543,16 @@ test('вход: первый запуск — приветствие, цель, 
   await expect(page.getByTestId('privacy')).toContainText('Что мы храним');
   await expect(page.getByTestId('privacy')).toContainText('Upstash');
   await expect(page.getByTestId('privacy')).toContainText('за пределами России');
+  // оператор и контакты — заглушки до решения владельца; знак маркировки — из одной константы (src/legal.js)
+  await expect(page.getByTestId('privacy').getByTestId('operator')).toContainText('[ФИО/название]');
+  await expect(page.getByTestId('privacy').getByTestId('operator')).toContainText('[адрес для обращений]');
+  await expect(page.getByTestId('privacy').getByTestId('operator')).toContainText('[e-mail]');
+  await expect(page.getByTestId('privacy').getByTestId('age-rating')).toContainText('[возрастная маркировка]');
   await page.getByTestId('privacy').getByRole('button', { name: 'Закрыть' }).click();
   await reg.getByTestId('consent-terms').click();
   await expect(page.getByTestId('terms')).toContainText('Учебная игра, не финансовый совет');
+  await expect(page.getByTestId('terms').getByTestId('operator')).toContainText('Оператор и контакты');
+  await expect(page.getByTestId('terms').getByTestId('age-rating')).toContainText('[возрастная маркировка]');
   await page.getByTestId('terms').getByRole('button', { name: 'Закрыть' }).click();
   await reg.getByTestId('consent-page').check();
   await expect(reg.getByRole('button', { name: 'Создать аккаунт' })).toBeDisabled();

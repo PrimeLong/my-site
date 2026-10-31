@@ -4,6 +4,7 @@
    школьники, поэтому текст — простыми словами, без мелкого шрифта. */
 import React, { useState } from 'react';
 import { X } from 'lucide-react';
+import { OperatorBlock, AgeRating } from './legal-block.jsx';
 
 export const PRIVACY_TITLE = 'Данные и конфиденциальность';
 // раздел: заголовок и пункты; сроки — те же, что в api/_lib/store.js
@@ -77,7 +78,8 @@ export function PrivacyPage({ onClose }) {
             </ul>
           </section>
         ))}
-        <p className="ds-faint" style={{ fontSize: 13, marginTop: 18 }}>Редакция от 31 октября 2026 года.</p>
+        <OperatorBlock />
+        <p className="ds-faint" style={{ fontSize: 13, marginTop: 18 }}>Редакция от 31 октября 2026 года. <AgeRating /></p>
       </div>
     </div>
   );
