@@ -27,6 +27,7 @@
 - [`docs/mechanics.md`](docs/mechanics.md) — словарь механик: виды заданий и шагов урока,
   механики вокруг уроков, экономика наград, навигация, первый экран партии, обратная связь,
   доступность.
+- [`docs/roadmap-audit.md`](docs/roadmap-audit.md) — аудит продукта: какие фичи объединить или убрать по данным событий, лиги и «пять минут в день», переход на часовой пояс ученика, слой i18n, новые «Персоналии», вариант нижней панели. Только план — решения за владельцем.
 - [`docs/legal-todo.md`](docs/legal-todo.md) — вопросы юристу (персональные данные, маркировка,
   соглашение, голоса). Юридических выводов в коде и текстах нет — только открытые вопросы.
 
@@ -50,12 +51,17 @@ npm run dev        # клиент на Vite; api/* локально не под�
 npm run lint       # oxlint
 npm test           # vitest: модель партии, курс и тексты, награды, сервер
 npm run build      # tsc -b && vite build; сборка падает, если JS-чанк больше 400 КБ
+                   # (бюджет первого экрана — 600 КБ JS без сжатия — проверяет e2e «вход: приветствие…»)
 npm run e2e        # Playwright: desktop, phone (Chromium) и webkit (iPhone 13)
 npx playwright test --project=desktop --project=phone   # без установленного WebKit
 npx playwright test e2e/visual.e2e.js --project=phone --update-snapshots   # обновить эталоны
 npx playwright install webkit   # один раз, чтобы локально шёл проект webkit
 npm run balance    # стенд длинных партий: баланс модели
 npm run icons      # иконки и картинка для ссылок из public/favicon.svg
+npm run voice:normalize   # записи речи public/voice и public/books: −16 LUFS, пик −1,5 dBTP, моно, 56 кбит/с (ffmpeg)
+npm run books:export      # books/: тексты для озвучки книг и README с тем, что уже записано
+npm run people:optimize   # портреты public/people: до 480 px по ширине, JPEG до 80 КБ, без EXIF (нужен ffmpeg)
+npm run people:export     # people/README.md: кто есть, сколько портретов лежит
 ```
 
 Перед коммитом: `npm run lint`, `npm test`, `npm run build`, `npx playwright test`

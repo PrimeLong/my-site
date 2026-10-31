@@ -6,12 +6,15 @@
    (экспортированы оттуда), а не копии. */
 import { AlertTriangle, BookOpen, Check, ChevronDown, Clock, Copy, Crown, Info, Map as MapIcon, Megaphone, Newspaper, RotateCcw, Share2, ShieldAlert, Trophy, Users, X } from 'lucide-react';
 import { CB_PERSONAS, SCENARIOS, DIFFICULTIES, FX_REGIMES, GOALS, LEVERS, MOF_PERSONAS, POLITICAL_REGIME_INFO, PRESIDENT_PERSONAS, clamp, defaultDecisions, fmtSignedPct, leverPreview, pctFmt, pickPressQuestion, pressSpeakerSeat, quarterLabel, scaleLever } from './lib/engine.js';
-import React, { Suspense, useMemo, useState } from 'react';
-import { cancelSubmission, createRoom, fetchRoom, joinRoom, kickFromRoom, leaveRoom, listPublicRooms, reportPortfolioValue, sendChatMessage, setRoomDifficulty, submitDecisions, watchRoom } from './lib/client.js';
+import React, { Suspense, useEffect, useMemo, useState } from 'react';
+import { trackDaily, cancelSubmission, createRoom, fetchRoom, joinRoom, kickFromRoom, leaveRoom, listPublicRooms, reportPortfolioValue, sendChatMessage, setRoomDifficulty, submitDecisions, watchRoom } from './lib/client.js';
 import {
-  AchievementsModal, Audio, AudioControls, AuthModal, COLOR, GlobalStyle, NETWORK_SLOT_COUNT, ROLE_ICON,
-  StateSeal, clearNetworkSlotAt, emblemIcon, forgetAccount, useAccount, accountKidsMode, loadNetworkSlots, roomCodeFromUrl, seatRole, useNetworkSlotPreviews,
+  Audio, AudioControls, AuthModal, COLOR, GlobalStyle, NETWORK_SLOT_COUNT, ROLE_ICON,
+  clearNetworkSlotAt, emblemIcon, forgetAccount, useAccount, accountKidsMode, loadNetworkSlots, roomCodeFromUrl, useNetworkSlotPreviews,
 } from './MacroSimulator.jsx';
+import { AchievementsModal } from './world-menu.jsx';
+import { StateSeal } from './state-seal.jsx';
+import { seatRole } from './lib/seats.js';
 import {
   ALL_METRICS, AchievementToast, Atmosphere, CabinetZone, ChartFallback, ChartPanel,
   ColumnResizeHandle, CountryMap, SocietyView, CrisisBar, DEFAULT_COLUMN_ORDER, GameOverBar,
@@ -507,6 +510,8 @@ function NetworkLobby({ onEnter }) {
 }
 
 export function NetworkEntryScreen({ onEnter, onBack }) {
+  // аналитика: раздел открыт — не чаще раза в день с устройства (docs/mechanics.md, «Аналитика»)
+  useEffect(() => { trackDaily('network_open'); }, []);
   return (
     <div className="ems-root ems-hero-bg" style={{ display: 'flex', justifyContent: 'center', padding: '44px 16px' }}>
       <GlobalStyle />
@@ -531,6 +536,8 @@ export function NetworkEntryScreen({ onEnter, onBack }) {
 const QUARTER_TIMEOUT_MS = 5 * 60 * 1000; // держим в синхроне с QUARTER_TIMEOUT_MS в api/room.js
 
 export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
+  // аналитика: раздел открыт — не чаще раза в день с устройства (docs/mechanics.md, «Аналитика»)
+  useEffect(() => { trackDaily('network_open'); }, []);
   const { id, seat, token, ownerToken } = network;
   const isOwner = !!ownerToken;
   // приглашение: на телефоне — системное «Поделиться», иначе ссылка в буфер

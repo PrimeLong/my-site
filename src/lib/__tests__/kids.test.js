@@ -4,7 +4,7 @@ import {
   botCentralBank, botFinanceMinistry, botPresident, PRESIDENT_ACTIONS, presActionAvailable,
 } from '../engine.js';
 import { kidsBlocked } from '../politics/president.js';
-import { KIDS_AGE, PARENT_AGE, ageFromYear, isKid, needsParent, kidsModeOf, validBirthYear } from '../age.js';
+import { KIDS_AGE, PARENT_AGE, ageFromYear, isKid, needsParent, kidsModeOf, validBirthYear, noScarcity } from '../age.js';
 
 /* Детский режим «Мира»: до 16 лет (или по выбору в профиле) в партии нет войн, присоединений,
    переворотов и несвободных режимов — ни в решениях, ни в событиях, ни в газете. Партии
@@ -62,6 +62,13 @@ describe('возраст: год рождения', () => {
     expect(isKid(2009, now)).toBe(false);  // 16 или 17
     expect(needsParent(2012, now)).toBe(true);  // 13 или 14
     expect(needsParent(2011, now)).toBe(false); // 14 или 15
+  });
+  it('лавка без давления дефицитом — младше 16 и когда год не известен (гость, старый профиль)', () => {
+    expect(noScarcity(2010, now)).toBe(true);
+    expect(noScarcity(2009, now)).toBe(false);
+    expect(noScarcity(1990, now)).toBe(false);
+    expect(noScarcity(null, now)).toBe(true);
+    expect(noScarcity(undefined, now)).toBe(true);
   });
   it('год проверяется: от 100 лет назад до 4 лет назад, целое число', () => {
     expect(validBirthYear(2010, now)).toBe(true);

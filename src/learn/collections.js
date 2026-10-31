@@ -42,6 +42,8 @@ export function monthItems(learn, now = Date.now()) {
     const key = `m:${ym}`; const got = claimed.has(key); const now_ = ym === cur.month;
     const base = { id: key, kind: 'month', year: y, month: m, title: MONTH_NAMES[m - 1], full: `${MONTH_NAMES[m - 1].toLowerCase()} ${y}`, got, at: got ? (learn.claimed || {})[key] || 0 : 0, coins: cur.coins };
     if (got) out.push({ ...base, text: `Испытание месяца — ${base.full} — выполнено.` });
+    // новичок под конец месяца: испытания этого месяца нет — первое начнётся с 1-го числа следующего
+    else if (now_ && cur.waiting) continue;
     else if (now_) out.push({ ...base, current: true, text: cur.title, progress: { have: cur.have, total: cur.target }, how: `${cur.title}. Осталось ${cur.need} ${cur.unit}, дней — ${cur.daysLeft}.` });
     else out.push({ ...base, missed: true, text: `Испытание месяца — ${base.full}.`, how: 'Этот месяц прошёл без марки: испытание не выполнено. Марки следующих месяцев ещё впереди.' });
   }

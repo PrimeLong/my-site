@@ -13,7 +13,7 @@
    Карта экранов — src/learn/screens.js. */
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
-  X, ArrowLeft, Flame, Coins, Target, Lock, Check, Gem, ChevronLeft, Calculator, BookOpenText, BookOpen, Trophy, Timer, Delete, ChevronRight, RotateCcw, Sparkles, Dumbbell,
+  X, ArrowLeft, Flame, Zap, Coins, Target, Lock, Check, Gem, ChevronLeft, Calculator, BookOpenText, BookOpen, Trophy, Timer, Delete, ChevronRight, RotateCcw, Sparkles, Dumbbell,
   Clock, Scale, Hourglass, Ticket, TrendingUp, CircleCheck, Medal, ArrowLeftRight, Handshake, Coffee, Wallet, Link, Utensils, Boxes, Users,
   Snowflake, ArrowDownToLine, ArrowUpToLine, Languages, MessageCircle, Headphones, Gamepad2, Repeat, Flag, Croissant, Landmark, Radio, MapPin, ArrowUp, ChevronDown, SkipForward,
   Wrench, Feather, ChartSpline,
@@ -22,7 +22,7 @@ import { unitStops, EXTRA_KIND } from './learn/stops.js';
 import { STATS_CSS } from './learn-stats.jsx';
 import { askSave } from './lib/guest.js';
 import { writeLearnLevel } from './lib/disclosure.js';
-import { track } from './lib/client.js';
+import { track, trackOnce } from './lib/client.js';
 import { Audio, getPlayerId, syncProfile } from './MacroSimulator.jsx';
 import { Blocks, Inline, ChartSvg, ChartLegend, TEXTBOOK_CSS, TextbookScreen } from './textbook.jsx';
 import { CHARTS, chartDefaults } from './textbook/charts.js';
@@ -252,7 +252,10 @@ const CSS = `
   /* телефон уже 340 px (320 px — старые и маленькие): дорога чуть мельче, чтобы не вылезать за экран */
   @media (max-width: 340px) { .ln-route { zoom: .9; } }
   .ln-route > svg { position: absolute; inset: 0; pointer-events: none; }
-  .ln-stop { position: absolute; width: 170px; margin-left: -85px; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  /* остановка — жетон в точке дороги; подпись — сбоку, на высоте жетона (docs/mechanics.md, «Навигация»):
+     там дорога проходит внутри круга, и подпись её не задевает */
+  .ln-stop { position: absolute; width: 62px; margin-left: -31px; display: flex; flex-direction: column; align-items: center; }
+  .ln-stop.ln-stop-chest { width: 170px; margin-left: -85px; gap: 4px; }
   /* остановка Пути — объёмная монета: снизу кромка темнее, нажатие опускает её */
   .ln-token { position: relative; width: 62px; height: 62px; border-radius: 50%; border: 3px solid var(--ds-rule2); background: var(--ds-card); color: var(--ds-ink2); cursor: pointer;
     display: flex; align-items: center; justify-content: center; box-shadow: 0 5px 0 var(--ds-rule2); margin-bottom: 5px; transition: transform .08s, box-shadow .08s; }
@@ -289,7 +292,10 @@ const CSS = `
   @keyframes ln-chest-wiggle { 0%, 82%, 100% { transform: none; } 86% { transform: rotate(-5deg); } 90% { transform: rotate(4deg); } 94% { transform: rotate(-2deg); } }
   @media (prefers-reduced-motion: reduce) { .ln-chest[data-opened="false"] .ln-chest-art { animation: none; } }
   .ln-pin::after { content: ''; position: absolute; left: 50%; bottom: -5px; margin-left: -5px; border: 5px solid transparent; border-bottom: 0; border-top-color: var(--u); }
-  .ln-stop-title { background: none; border: none; padding: 2px 4px; font: 700 13.5px/1.25 var(--ds-head); max-width: 170px; text-align: center; cursor: pointer; color: var(--ds-ink); }
+  .ln-stop-title { position: absolute; top: 31px; transform: translateY(-50%); width: max-content; max-width: var(--tw, 150px); background: none; border: none; padding: 2px 4px;
+    font: 700 13.5px/1.25 var(--ds-head); cursor: pointer; color: var(--ds-ink); }
+  .ln-stop-title.side-l { right: calc(100% + 8px); text-align: right; }
+  .ln-stop-title.side-r { left: calc(100% + 8px); text-align: left; }
   /* особые уроки дороги: «Персоналии» — портретная рамка цвета чернил, «Чтение» — пергамент, «Работа над
      ошибками» — красная, с меткой «сначала ошибки»; квадратные со скруглением — видно, что это не урок юнита */
   .ln-token.ln-extra { border-radius: 22px; --x: #3E6FA8; border-color: color-mix(in srgb, var(--x) 55%, var(--ds-rule2)); color: var(--x);
@@ -326,11 +332,12 @@ const CSS = `
   .ln-peek-verdict.bad { border-left-color: var(--ds-bad); background: color-mix(in srgb, var(--ds-bad) 10%, var(--ds-card)); color: var(--ds-ink); }
   @media (prefers-reduced-motion: reduce) { .ln-peek { animation: none; } }
   .ln-head { display: flex; align-items: center; gap: 10px; padding: calc(10px + env(safe-area-inset-top)) 14px 4px; max-width: 592px; width: 100%; margin: 0 auto; }
-  /* огонёк серии верных ответов подряд */
+  /* молния «подряд верно» — верные ответы подряд в уроке (огонёк — только серия дней) */
   .ln-fire { position: relative; flex-shrink: 0; display: inline-flex; align-items: center; gap: 3px; height: 28px; padding: 0 10px 0 7px; border-radius: 999px;
     background: linear-gradient(135deg, #FFB547, #FF6A3D); color: #fff; font: 800 14px var(--ds-head); box-shadow: 0 3px 0 #C2410C, 0 8px 16px -8px rgba(255, 106, 61, .8);
     animation: ln-fire-in .45s cubic-bezier(.3, 1.6, .5, 1) both; }
   .ln-fire b { display: inline-block; min-width: 1ch; text-align: center; animation: ln-fire-bump .35s cubic-bezier(.3, 1.8, .5, 1); }
+  .ln-fire-cap { font: 700 12px/1 var(--ds-sans); margin-left: 2px; white-space: nowrap; }
   .ln-fire-ic { animation: ln-flicker 1.2s ease-in-out infinite; transform-origin: 50% 90%; }
   .ln-fire.big { animation: ln-fire-big .6s cubic-bezier(.3, 1.6, .5, 1); }
   .ln-fire.out { background: linear-gradient(135deg, #B9B2A6, #8E877C); box-shadow: 0 3px 0 #6F695F; animation: ln-fire-out .9s ease-in forwards; }
@@ -889,9 +896,10 @@ function newPlan(run, learn) {
   if (run.mode === 'fix') return { items: buildFix(learn, run.unitId).items, cards: {} };
   return { items: buildPractice(practiceIds(learn), Math.random, { weak: weakLessons(learn).map((w) => w.id) }).items, cards: {} };
 }
-/* Серия верных ответов подряд — огонёк в шапке урока. С третьего верного подряд: «🔥 3», каждый новый
-   верный ответ раздувает число и выпускает «+1» (опыт за серию); на 5, 10, 15… — вспышка искр.
-   Ошибка — огонёк сереет, качается и гаснет. plus — показывать «+1» (на повторе урока опыт почти не идёт). */
+/* Верные ответы подряд — молния в шапке урока (огонёк — только серия дней, docs/mechanics.md, «Экономика
+   наград»). С третьего верного подряд: «⚡ 3 подряд верно», каждый новый верный ответ раздувает число и
+   выпускает «+1» (опыт за верные подряд); на 5, 10, 15… — вспышка искр. Ошибка — молния сереет, качается и
+   гаснет. plus — показывать «+1» (на повторе урока опыт почти не идёт). */
 function StreakFlame({ n, plus = true }) {
   const [gone, setGone] = useState(0);
   const prev = useRef(n);
@@ -905,9 +913,9 @@ function StreakFlame({ n, plus = true }) {
   const shown = on ? n : gone;
   const milestone = on && n % 5 === 0;
   return (
-    <span className={`ln-fire${on ? '' : ' out'}${milestone ? ' big' : ''}`} data-testid="lesson-streak" data-streak={shown} role="status" aria-label={`Серия: ${shown} верных подряд`}>
-      <Flame size={15} className="ln-fire-ic" aria-hidden="true" />
-      <b key={shown}>{shown}</b>
+    <span className={`ln-fire${on ? '' : ' out'}${milestone ? ' big' : ''}`} data-testid="lesson-streak" data-streak={shown} role="status" aria-label={`${shown} подряд верно`}>
+      <Zap size={15} className="ln-fire-ic" aria-hidden="true" />
+      <b key={shown}>{shown}</b><small className="ln-fire-cap" aria-hidden="true">подряд верно</small>
       {on && plus && <span key={`p${n}`} className="ln-fire-plus" aria-hidden="true">+1</span>}
       {milestone && <span key={`s${n}`} className="ln-fire-sparks" aria-hidden="true">{Array.from({ length: 8 }, (_, i) => <i key={i} style={{ '--a': `${i * 45}deg` }} />)}</span>}
     </span>
@@ -1033,7 +1041,9 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
     if (r.empty) { setFb({ ok: false, why: null, empty: true }); return; }
     const a = acc.current;
     // урок начат — с первого ответа
-    if (!started) { setStarted(true); update(startLesson); if (run.mode === 'lesson') track('lesson_start', { lesson: run.lessonId }); }
+    /* аналитика: lesson_start — активность, на каждый урок; first_lesson_start — шаг воронки, один раз с
+       устройства (docs/mechanics.md, «Аналитика») */
+    if (!started) { setStarted(true); update(startLesson); if (run.mode === 'lesson') { track('lesson_start', { lesson: run.lessonId }); trackOnce('first_lesson_start'); } }
     const firstTime = !(orig in a.first);
     // верно с первого раза: собранное с падениями домино выполнено, но не с первого раза
     const firstOk = r.ok && !r.partial;
@@ -1104,6 +1114,7 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
     let apply;
     if (run.mode === 'lesson') {
       track('lesson_done', { lesson: run.lessonId, ms });
+      trackOnce('first_lesson_done');
       xp = lessonXp({ firstTry: firstOk, replay, diamond, bonus: a.bonus });
       apply = (s) => finishLesson(s, run.lessonId, { xp, ...done, diamond });
       dropResume(run.lessonId);
@@ -1531,7 +1542,7 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
               {result.streakUp > 0 && <StreakBurst days={result.streakUp} />}
               <div className="ln-tickets">
                 <div data-testid="result-xp" data-bonus={result.bonus || 0}><div className="ds-eyebrow" style={{ fontSize: 12 }}>Опыт{result.boosted ? ' ×2' : ''}</div><div className="v"><CountUp value={result.xp} prefix="+" /></div>
-                  {result.bonus > 0 && <div className="ln-xp-bonus"><Flame size={12} aria-hidden="true" />+{result.bonus} {result.game ? 'за игру и серии' : 'за серии'}</div>}</div>
+                  {result.bonus > 0 && <div className="ln-xp-bonus"><Zap size={12} aria-hidden="true" />+{result.bonus} {result.game ? 'за игру и верные подряд' : 'за верные подряд'}</div>}</div>
                 <div data-testid="result-acc"><div className="ds-eyebrow" style={{ fontSize: 12 }}>Точность</div><div className="v">{Math.round(result.accuracy)}%</div></div>
                 <div data-testid="result-time"><div className="ds-eyebrow" style={{ fontSize: 12 }}>Время</div><div className="v">{mmss(result.ms)}</div></div>
               </div>
@@ -1948,10 +1959,19 @@ const nextLevelText = (levelId) => { const k = LEVELS.findIndex((l) => l.id === 
 
 /* Остановки юнита на дороге: жетоны вдоль извилистой дороги. Пройденная — в цвете юнита с
    сургучной печатью, текущая — с золотым кольцом и флажком «Вы здесь», закрытая — пунктир. */
-const ROW = 118; const ZIG = [0, 64, 92, 64, 0, -64, -92, -64];
-// название остановки (170 px) не выходит за края дороги шириной W
-const STOP_HALF = 85;
-const titleShift = (x, W) => Math.max(0, STOP_HALF - x) - Math.max(0, x + STOP_HALF - W);
+/* средние остановки — не ровно посередине (±30): подписи сбоку от жетона нужно место до края дороги
+   под самое длинное слово названия («чувствительность») */
+const ROW = 118; const ZIG = [-30, 56, 92, 56, 30, -56, -92, -56];
+/* подпись остановки — сбоку от жетона, где больше места до края дороги шириной W: у остановки справа —
+   слева, слева — справа, у средней — с другой стороны, чем следующая остановка (её дорога уходит туда);
+   ширина — до края дороги, не больше 150 px (docs/mechanics.md, «Навигация») */
+const TOKEN_R = 31; const TITLE_GAP = 8;
+function titleSide(x, nextX, W) {
+  if (Math.abs(x - W / 2) > 1) return x > W / 2 ? 'l' : 'r';
+  return nextX != null && nextX > x ? 'l' : 'r';
+}
+const titleWidth = (x, side, W) => Math.min(150, Math.floor((side === 'l' ? x : W - x) - TOKEN_R - TITLE_GAP - 2));
+const titleStyle = (pts, i, W) => { const side = titleSide(pts[i][0], pts[i + 1] ? pts[i + 1][0] : null, W); return { side, style: { '--tw': `${titleWidth(pts[i][0], side, W)}px` } }; };
 /* Убранство дороги: у каждой остановки, на другой стороне от неё, — дерево, фонарь, куст или
    верстовой столб с номером урока; в начале юнита — указатель с названием места. У пройденных
    остановок убранство в цвете юнита («дорога оживает»), у закрытых — серое. Чисто украшение:
@@ -1998,13 +2018,15 @@ function Prop({ kind, x, y, alive, no, scale = 1, flip = false }) {
    остановки пусто, иногда дерево с кустом; верстовой столб — изредка, с номером урока. */
 const hashOf = (str) => { let h = 2166136261; for (let i = 0; i < str.length; i += 1) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; };
 const rng = (seed) => { let x = seed || 1; return () => { x ^= x << 13; x ^= x >>> 17; x ^= x << 5; return ((x >>> 0) % 10000) / 10000; }; };
+/* убранство — между рядами остановок (y — середина между остановкой и следующей), у края, дальнего от
+   дороги: под подписями остановок его нет */
 function propsFor(id, i, W, y, left, spooky = false) {
   const r = rng(hashOf(id));
   if (r() < 0.18) return [];
   const pick = r();
   const kind = i % 5 === 3 && pick < 0.5 ? 'mile' : pick < 0.45 ? 'tree' : pick < 0.7 ? 'bush' : pick < 0.9 ? 'lamp' : 'tree';
   const side = (dx) => (left ? dx : W - dx);
-  const main = { kind, x: side(26 + r() * 42), y: y - 30 + r() * 56, scale: 0.72 + r() * 0.44, flip: kind !== 'mile' && r() < 0.5 };
+  const main = { kind, x: side(24 + r() * 30), y: y - 8 + r() * 12, scale: 0.68 + r() * 0.3, flip: kind !== 'mile' && r() < 0.5 };
   const out = [main];
   // у дерева иногда куст рядом — пара, а не одиночка
   if (kind === 'tree' && r() < 0.45) out.push({ kind: 'bush', x: main.x + (left ? 1 : -1) * (14 + r() * 10), y: main.y + 8 + r() * 6, scale: 0.55 + r() * 0.2, flip: r() < 0.5 });
@@ -2033,11 +2055,12 @@ function Route({ st, stops, seen, reduced, visible, resumes, onLesson, onExtra =
         <path d={seg(pts)} fill="none" stroke="var(--ds-rule2)" strokeWidth="1.5" strokeDasharray="6 7" />
         {lastDone >= 0 && <path d={seg(pts.slice(0, lastDone + 2))} fill="none" stroke="var(--u-ink)" strokeWidth="2.5" strokeDasharray="6 7" />}
         {stops.map((x, i) => {
-          // на другой стороне дороги от остановки; у остановки посередине — по очереди слева и справа
-          const z = ZIG[i % ZIG.length];
-          const left = z > 0 || (z === 0 && i % 8 === 0);
+          // между этой остановкой и следующей, у края, дальнего от дороги; после последней — не ставим
+          if (!pts[i + 1]) return null;
+          const mid = (pts[i][0] + pts[i + 1][0]) / 2;
+          const left = mid > W / 2 || (mid === W / 2 && i % 2 === 0);
           const done = x.type === 'lesson' ? x.l.done : x.done;
-          return propsFor(x.id, i, W, pts[i][1] - 4, left, spooky).map((pp, k) => <Prop key={`${x.id}:${k}`} {...pp} alive={done} no={x.type === 'lesson' ? x.l.no : i + 1} />);
+          return propsFor(x.id, i, W, (pts[i][1] + pts[i + 1][1]) / 2, left, spooky).map((pp, k) => <Prop key={`${x.id}:${k}`} {...pp} alive={done} no={x.type === 'lesson' ? x.l.no : i + 1} />);
         })}
       </svg>
       {stops.map((x, i) => {
@@ -2046,6 +2069,7 @@ function Route({ st, stops, seen, reduced, visible, resumes, onLesson, onExtra =
           const state = x.done ? 'done' : x.open ? 'open' : 'locked';
           // особый урок, которого ждёт следующий, — текущая остановка: «рекомендуем сейчас»
           const isRec = !x.done && rec === x.id;
+          const ts = titleStyle(pts, i, W);
           return (
             <div key={x.id} className="ln-stop" style={{ left: pts[i][0], top: pts[i][1] - 31 }}>
               {isRec && <span className="ln-pin rec" data-testid="path-rec">рекомендуем сейчас</span>}
@@ -2056,8 +2080,8 @@ function Route({ st, stops, seen, reduced, visible, resumes, onLesson, onExtra =
                 {x.done && <span className="ln-seal" aria-hidden="true"><Check size={13} strokeWidth={3.2} /></span>}
                 {x.type === 'fix' && <span className="ln-fix-count" data-testid="path-fix-count" aria-hidden="true">{x.count}</span>}
               </button>
-              <button type="button" className={`ln-stop-title ln-extra-title ${x.open || x.done ? '' : 'locked'}`} tabIndex={-1} aria-hidden="true"
-                style={{ transform: titleShift(pts[i][0], W) ? `translateX(${titleShift(pts[i][0], W)}px)` : undefined }}
+              <button type="button" className={`ln-stop-title ln-extra-title side-${ts.side} ${x.open || x.done ? '' : 'locked'}`} tabIndex={-1} aria-hidden="true"
+                data-testid="path-extra-title" data-side={ts.side} style={ts.style}
                 onClick={() => { Audio.play('click'); onExtra(x); }}><small>{x.type === 'fix' ? 'сначала — ошибки юнита' : EXTRA_KIND[x.type]}</small>{x.title}</button>
             </div>
           );
@@ -2069,6 +2093,7 @@ function Route({ st, stops, seen, reduced, visible, resumes, onLesson, onExtra =
         const unlocking = !reduced && visible && l.open && !l.done && !seen.has(l.id);
         const KindIcon = KIND_ICON[lesson.kind] || Dumbbell;
         const cls = l.done ? `done${l.diamond ? ' diamond' : ''}` : l.skipped ? 'skipped' : l.open ? '' : 'locked';
+        const ts = titleStyle(pts, i, W);
         return (
           <div key={l.id} className="ln-stop" style={{ left: pts[i][0], top: pts[i][1] - 31 }}>
             {/* отметка: прерванный урок — «продолжить»; программа советует — «рекомендуем сейчас» */}
@@ -2089,17 +2114,16 @@ function Route({ st, stops, seen, reduced, visible, resumes, onLesson, onExtra =
                   </span>
                 ) : l.open ? <KindIcon size={26} /> : <Lock size={22} />}
             </button>
-            {/* название — тоже кнопка урока: в жетон на телефоне попадают не всегда */}
-            {/* у остановки с краю дороги название сдвинуто внутрь: иначе оно вылезает за экран
-                узкого телефона, страница становится шире, и нижняя панель обрезается */}
-            <button type="button" className={`ln-stop-title ${l.open ? '' : 'locked'}`} tabIndex={-1} aria-hidden="true" data-testid="path-lesson-title" data-lesson={l.id}
-              style={{ transform: titleShift(pts[i][0], W) ? `translateX(${titleShift(pts[i][0], W)}px)` : undefined }}
+            {/* название — тоже кнопка урока: в жетон на телефоне попадают не всегда; сбоку, шириной до края
+                дороги — не вылезает за экран узкого телефона */}
+            <button type="button" className={`ln-stop-title side-${ts.side} ${l.open ? '' : 'locked'}`} tabIndex={-1} aria-hidden="true" data-testid="path-lesson-title" data-lesson={l.id}
+              data-side={ts.side} style={ts.style}
               onClick={() => { Audio.play('click'); onLesson(l); }}>{l.title}{l.skipped && <span className="ln-skip-tag"> · пропущен</span>}</button>
           </div>
         );
       })}
       {chest && (
-        <div className="ln-stop" style={{ left: pts[n - 1][0], top: pts[n - 1][1] - 31 }}>
+        <div className="ln-stop ln-stop-chest" style={{ left: pts[n - 1][0], top: pts[n - 1][1] - 31 }}>
           <button type="button" className="ln-chest" data-testid="chest" data-unit={chest.unitId} data-opened={String(chest.opened)} data-nav-target={`chest:${chest.unitId}`}
             aria-label={chest.opened ? 'Сундук юнита открыт' : 'Сундук юнита: открыть'} onClick={() => { Audio.play('click'); onChest(chest.unitId); }}>
             <span className="ln-chest-art"><Chest size={60} open={false} spent={chest.opened} label={chest.opened ? 'Сундук открыт' : 'Сундук юнита'} /></span>
@@ -2838,7 +2862,7 @@ export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReo
         {tab === 'league' && <div className="ln-wrap">{featureOpen(learn, 'league') ? <LeagueView learn={learn} update={update} /> : <FeatureLocked id="league" learn={learn} onPath={() => onTab('path')} />}</div>}
         {tab === 'news' && <Lazy><NewsView learn={learn} update={update} friends={friends} onFriend={(l) => setFriendLogin(l)} /></Lazy>}
         {tab === 'profile' && <Lazy><ProfileView learn={learn} update={update} onOpenBook={openBook} onSettings={() => setSettings(true)} onNotify={() => setBell(true)} unread={notify.unread.length}
-          friends={friends} guest={guest} onFriends={() => { Audio.play('paper'); setFriendsPage(true); }} /></Lazy>}
+          friends={friends} guest={guest} onFriends={() => { Audio.play('paper'); setFriendsPage(true); }} onPath={() => onTab('path')} /></Lazy>}
       </div>
       {settings && !reports && !analytics && <Lazy><SettingsView learn={learn} update={update} notify={notify} onBack={() => setSettings(false)} onThemeChange={onThemeChange}
         onPlacement={() => { setSettings(false); start({ mode: 'placement' }); }}

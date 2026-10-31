@@ -6,18 +6,18 @@
 import React, { useState } from 'react';
 import { ArrowLeft, Timer, Coffee, Globe2, Check, X } from 'lucide-react';
 import { Audio } from './MacroSimulator.jsx';
-import { authenticate, RecoveryCodeView, StorageWarning, NameRefused, ConsentBox, ParentStep, consentsReady, BirthYearField, birthYearOf } from './account.jsx';
+import { authenticate, RecoveryCodeView, StorageWarning, NameRefused, ConsentBox, ParentStep, consentsReady, BirthYearField, birthYearOf, PasswordField, passwordLongEnough } from './account.jsx';
 import { validBirthYear, needsParent } from './lib/age.js';
 import { RUDE_NAME } from './lib/moderation.js';
 import { Mascot } from './mascot.jsx';
 import { InflatiaMark } from './logo.jsx';
 import { DsRoot, Button, IconButton, Heading } from './ds.jsx';
-import { ArtStyle, Guilloche, Rosette } from './ds-art.jsx';
+import { ArtStyle, Guilloche, Rosette } from './ds-art-core.jsx';
 import { dsThemeId } from './ds-tokens.js';
 import { loadProgress, saveProgress } from './textbook/progress.js';
 import { setGoal, setProfile, PROFILE_GOAL_LABEL, LESSONS_FOR_MINUTES } from './textbook/learn-state.js';
 import { startGuest, endGuest } from './lib/guest.js';
-import { track } from './lib/client.js';
+import { track, trackOnce } from './lib/client.js';
 
 // ответы первого запуска: после регистрации они уходят в программу ученика (learn.profile)
 const ONBOARD_KEY = 'ems-onboarding';
@@ -99,6 +99,19 @@ const CSS = `
   .wl-cta-go { animation: wl-cta 1.8s ease-in-out .4s infinite; }
   @keyframes wl-cta { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--u) 45%, transparent) } 50% { box-shadow: 0 0 0 8px transparent } }
   @media (prefers-reduced-motion: reduce) { .wl-hello *, .wl-hello { animation: none !important; } .wl-try-bar i { transition: none; } .wl-demand .curve { stroke-dasharray: none; } }
+  /* ПК: две колонки — слева знак, обещания и кнопки, справа «Урок за 30 секунд» (docs/mechanics.md, «Приветствие и
+     загрузка»). Разметка та же, что на телефоне: .wl-body растворяется (display: contents), и её дети встают в
+     сетку; внизу — место под уведомление о памяти браузера, чтобы оно не легло на кнопки */
+  @media (min-width: 1024px) {
+    .wl.wl-hello { max-width: 1120px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(360px, 460px); column-gap: 64px;
+      align-content: center; padding: 32px 32px 220px; }
+    .wl-hello > .wl-body { display: contents; }
+    .wl-hello > .wl-body > * { grid-column: 1; justify-self: center; }
+    .wl-hello > .wl-body > .wl-g1, .wl-hello > .wl-body > .wl-g2 { justify-self: stretch; }
+    .wl-hello > .wl-body > .wl-try { grid-column: 2; grid-row: 1 / span 7; align-self: center; max-width: none; margin: 0; }
+    .wl-hello > .wl-foot { grid-column: 1; width: 100%; max-width: 380px; justify-self: center; }
+    .wl-hello .wl-hero { margin-top: 4px; }
+  }
 `;
 
 function Top({ onBack }) {
@@ -204,7 +217,7 @@ function Hello({ go }) {
         <div style={{ marginTop: 14, width: '100%' }} className="wl-g2"><Guilloche height={20} /></div>
       </div>
       <div className="wl-foot">
-        <Button wide className={tried ? 'wl-cta-go' : ''} onClick={() => { Audio.prime(); Audio.play('click'); track('welcome_start'); go('goal'); }}>{tried ? 'Начать — первый урок' : 'Начать'}</Button>
+        <Button wide className={tried ? 'wl-cta-go' : ''} onClick={() => { Audio.prime(); Audio.play('click'); trackOnce('welcome_start'); go('goal'); }}>{tried ? 'Начать — первый урок' : 'Начать'}</Button>
         <Button variant="secondary" wide onClick={() => { Audio.prime(); Audio.play('click'); go('login'); }}>У меня уже есть аккаунт</Button>
       </div>
     </div>
@@ -237,7 +250,7 @@ function Goal({ go, plan, setPlan }) {
         </div>
       </div>
       <div className="wl-foot">
-        <Button wide disabled={!ok} onClick={() => { Audio.play('click'); saveOnboarding(plan); applyPlan(plan); track('goal_done'); startGuest(); }}>Продолжить</Button>
+        <Button wide disabled={!ok} onClick={() => { Audio.play('click'); saveOnboarding(plan); applyPlan(plan); trackOnce('goal_done'); startGuest(); }}>Продолжить</Button>
       </div>
     </div>
   );
@@ -282,13 +295,13 @@ function AuthForm({ mode, go, plan, onCancel = null }) {
         <div className="wl-body">
           <Heading level={2} title="Сохраните код восстановления" style={{ marginBottom: 12 }} />
           {shown.storage === 'memory' && <StorageWarning />}
-          <RecoveryCodeView code={shown.recoveryCode} onDone={finish} />
+          <RecoveryCodeView code={shown.recoveryCode} onDone={finish} login={(shown.profile || {}).login || login.trim().toLowerCase()} />
         </div>
       </div>
     );
   }
   const title = { register: 'Создайте аккаунт', login: 'Вход', recover: 'Новый пароль по коду' }[mode];
-  const canSubmit = login.trim().length >= 3 && password.length >= 6 && (mode !== 'recover' || code.replace(/[^A-Za-z0-9]/g, '').length >= 12)
+  const canSubmit = login.trim().length >= 3 && passwordLongEnough(password, mode) && (mode !== 'recover' || code.replace(/[^A-Za-z0-9]/g, '').length >= 12)
     && (mode !== 'register' || (validBirthYear(birthYearOf(year)) && consents.page && consents.pd && (!parentStep || consentsReady(consents, birthYearOf(year)))));
   return (
     <div className="wl" data-testid={parentStep ? 'welcome-parent' : `welcome-${mode}`}>
@@ -309,10 +322,7 @@ function AuthForm({ mode, go, plan, onCancel = null }) {
               <input className="ds-field" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} autoCapitalize="characters" placeholder="XXXX-XXXX-XXXX" />
             </label>
           )}
-          <label className="ds-label">{mode === 'recover' ? 'Новый пароль' : 'Пароль'}
-            <input className="ds-field" type="password" value={password} onChange={(e) => setPassword(e.target.value)}
-              autoComplete={mode === 'login' ? 'current-password' : 'new-password'} placeholder="не короче 6 символов" />
-          </label>
+          <PasswordField label={mode === 'recover' ? 'Новый пароль' : 'Пароль'} value={password} onChange={setPassword} mode={mode} />
           {mode === 'register' && (
             <label className="ds-label">Имя
               <input className="ds-field" value={name} onChange={(e) => setName(e.target.value)} maxLength={24} placeholder="как вас называть" />

@@ -13,7 +13,7 @@ import {
   COLOR, Audio, AudioControls, GlobalStyle, ACHIEVEMENTS, ACHIEVEMENTS_KEY, loadUnlockedAchievements, TYCOON_SAVE_KEY,
   TYCOON_META_KEY, loadTycoonMeta, getPlayerId, loadAccount, emblemIcon, loadFold, saveFold,
 } from './MacroSimulator.jsx';
-import { fetchTycoonSlots, fetchTycoonSlot, saveTycoonSlot, deleteTycoonSlot, fetchRecords, submitRecord } from './lib/client.js';
+import { fetchTycoonSlots, fetchTycoonSlot, saveTycoonSlot, deleteTycoonSlot, fetchRecords, submitRecord, trackDaily } from './lib/client.js';
 import { taskText } from './textbook/tycoon-tasks.js';
 import { BusinessMap } from './countrymap.jsx';
 import { PlanSlider, Toggle, Row, MiniSpark } from './business.jsx';
@@ -90,6 +90,8 @@ function useNarrow() {
 /* lesson — задание из учебника ({ title, text, tab }): открывает нужную вкладку и висит
    плашкой над разделами, пока его не закроют. Механику не меняет. */
 export function TycoonScreen({ initial, setupNew, onExit, lesson = null }) {
+  // аналитика: раздел открыт — не чаще раза в день с устройства (docs/mechanics.md, «Аналитика»)
+  useEffect(() => { trackDaily('tycoon_open'); }, []);
   const [boot] = useState(() => {
     if (initial) return T.catchUp(T.normalizeTycoon(initial));
     const meta = loadTycoonMeta();

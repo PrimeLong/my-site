@@ -4,6 +4,7 @@
    школьники, поэтому текст — простыми словами, без мелкого шрифта. */
 import React, { useState } from 'react';
 import { X } from 'lucide-react';
+import { OperatorBlock, AgeRating } from './legal-block.jsx';
 
 export const PRIVACY_TITLE = 'Данные и конфиденциальность';
 // раздел: заголовок и пункты; сроки — те же, что в api/_lib/store.js
@@ -16,7 +17,8 @@ export const PRIVACY_SECTIONS = [
     'Прогресс: пройденные уроки, ответы для повторения, серию, монеты, покупки в лавке, сохранения партий, достижения и рекорды.',
     'Сообщения об ошибках, которые вы отправили: текст, упражнение, ваш ответ, версия приложения и данные устройства (браузер и размер экрана).',
     'IP-адрес — только чтобы ограничить частоту регистраций, попыток входа и сообщений. Он хранится как счётчик и стирается через час, с профилем не связывается.',
-    'Обезличенные счётчики для улучшения уроков: сколько раз за день нажали «Начать», выбрали цель, начали и прошли урок, создали аккаунт, вернулись на следующий день и через неделю, и сколько раз упражнение решили верно с первой попытки. Без логина, имени и IP-адреса — только числа.',
+    'Обезличенные счётчики для улучшения уроков: сколько раз за день нажали «Начать», выбрали цель, начали и прошли первый урок, создали аккаунт, вернулись на следующий день и через неделю; сколько уроков начали и прошли; сколько раз упражнение решили верно с первой попытки; сколько устройств за день открывали «Мир», учебник, лавку, сад, лиги, «Своё дело» и сетевую партию. Без логина, имени и IP-адреса — только числа.',
+    'Чтобы не считать одно устройство дважды, браузер помнит у себя (localStorage), какие из этих отметок уже отправлены: «первый урок» — один раз, открытие раздела — раз в день. На сервер эти отметки не уходят.',
   ] },
   { title: 'Где', items: [
     'Сайт и серверные функции работают на Vercel.',
@@ -76,7 +78,8 @@ export function PrivacyPage({ onClose }) {
             </ul>
           </section>
         ))}
-        <p className="ds-faint" style={{ fontSize: 13, marginTop: 18 }}>Редакция от 10 октября 2026 года.</p>
+        <OperatorBlock />
+        <p className="ds-faint" style={{ fontSize: 13, marginTop: 18 }}>Редакция от 31 октября 2026 года. <AgeRating /></p>
       </div>
     </div>
   );
@@ -93,7 +96,9 @@ export function StorageNotice() {
   const ok = () => { try { localStorage.setItem(STORAGE_NOTICE_KEY, String(Date.now())); } catch { /* приватный режим */ } setHidden(true); };
   return (
     <>
-      <div role="region" aria-label="Память браузера" data-testid="storage-notice"
+      {/* на ПК — узкой карточкой в левом нижнем углу: не ложится на демо-урок приветствия и на «Начать» */}
+      <style>{'@media (min-width: 1024px) { .ems-storage-notice { right: auto !important; left: 24px !important; max-width: 380px !important; margin: 0 !important; } }'}</style>
+      <div role="region" aria-label="Память браузера" data-testid="storage-notice" className="ems-storage-notice"
         style={{ position: 'fixed', left: 12, right: 12, bottom: 'calc(82px + env(safe-area-inset-bottom))', zIndex: 300, maxWidth: 520, margin: '0 auto',
           background: '#FFFDF6', color: '#2A2420', border: '1px solid #CDBFA3', borderRadius: 8, boxShadow: '0 6px 22px rgba(40,30,15,.22)', padding: '12px 14px',
           font: '14px/1.45 "PT Sans", system-ui, sans-serif' }}>

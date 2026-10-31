@@ -10,6 +10,7 @@
    Ядро лёгкое и едет в стартовом файле (нижняя панель, «Мир»); иллюстрации — отдельно. */
 import React from 'react';
 import { DS_THEMES, tokenVars, worldTokens } from './ds-tokens.js';
+import { typo } from './lib/typo.js';
 
 export const DS_CSS = `
   .ds { background: var(--ds-paper); color: var(--ds-ink); font-family: var(--ds-sans); font-size: 16px; line-height: 1.5; -webkit-tap-highlight-color: transparent; --u-ink: color-mix(in srgb, var(--u) 80%, #000); }
@@ -166,7 +167,9 @@ export const DS_CSS = `
     background: var(--ds-card); border: 2px solid var(--ds-rule); border-radius: 16px; box-shadow: 0 12px 30px rgba(60, 30, 0, .18); }
   .ds-nav .ds-more button { flex: none; flex-direction: row; justify-content: flex-start; gap: 12px; padding: 12px 14px; min-height: 48px; border-radius: 12px; color: var(--ds-ink); font: 700 15.5px var(--ds-sans); letter-spacing: 0; cursor: pointer; }
   .ds-nav .ds-more button:hover, .ds-nav .ds-more button:focus-visible { background: var(--ds-card2); }
-  .ds-nav .ds-more button[aria-current="page"] { color: var(--u-ink); }
+  /* открытый пункт меню «Ещё» подсвечен: фон цвета юнита, полоска слева и «сейчас открыто» — подпись вкладки при этом не меняется */
+  .ds-nav .ds-more button[aria-current="page"] { color: var(--u-ink); background: color-mix(in srgb, var(--u) 13%, var(--ds-card)); box-shadow: inset 4px 0 0 var(--u); }
+  .ds-nav .ds-more button[aria-current="page"] small { color: var(--u-ink); font-weight: 700; }
   .ds-nav .ds-more button[aria-current="page"]::before { display: none; }
   .ds-nav .ds-more small { display: block; font: 400 12.5px var(--ds-sans); color: var(--ds-ink3); }
   .ds-nav .ds-more button > span { text-align: left; }
@@ -306,8 +309,9 @@ export function Heading({ eyebrow, title, sub, level = 1, children, className, .
   return (
     <div className={className} {...rest}>
       {eyebrow && <div className="ds-eyebrow" style={{ marginBottom: 4 }}>{eyebrow}</div>}
-      <Tag className={level === 1 ? 'ds-h1' : level === 2 ? 'ds-h2' : 'ds-h3'}>{title}</Tag>
-      {sub && <div className="ds-sub" style={{ fontSize: 15, marginTop: 4 }}>{sub}</div>}
+      {/* неразрывные пробелы после коротких предлогов и перед тире (src/lib/typo.js) */}
+      <Tag className={level === 1 ? 'ds-h1' : level === 2 ? 'ds-h2' : 'ds-h3'}>{typo(title)}</Tag>
+      {sub && <div className="ds-sub" style={{ fontSize: 15, marginTop: 4 }}>{typo(sub)}</div>}
       {children}
     </div>
   );

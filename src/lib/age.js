@@ -23,3 +23,8 @@ export function kidsModeOf(profile, now = Date.now()) {
   if (isKid(profile.birthYear, now)) return true;
   return profile.kidsMode === true;
 }
+
+/* Лавка без давления дефицитом (docs/mechanics.md, «Хеллоуин»): младше 16 лет — без плашек «−30%» и отсчётов
+   «ещё N дней, потом через год». Год не указан (старый профиль, гость) — тоже считаем младше 16, как у
+   детского режима: ни один ребёнок не окажется «старше», чем он есть. */
+export const noScarcity = (birthYear, now = Date.now()) => !validBirthYear(birthYear, now) || isKid(birthYear, now);

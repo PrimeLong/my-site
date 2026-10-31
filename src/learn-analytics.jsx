@@ -225,6 +225,19 @@ export function AnalyticsView({ onBack }) {
             </div>
           </Card>
         )}
+        {data && data.features && (
+          <Card style={{ marginBottom: 12 }}>
+            <div className="an-h"><b>Разделы</b><span className="an-sub">устройств в день, сумма за 7 дней · 30 дней</span></div>
+            <div data-testid="analytics-features">
+              {data.features.map((f) => (
+                <div key={f.event} className="an-row" data-event={f.event}>
+                  <span>{f.label}</span>
+                  <span><b className="ds-num">{f.now}</b><span className="an-conv">{f.prev ? `${f.now >= f.prev ? '+' : '−'}${pct(Math.abs(f.now - f.prev) / f.prev)}` : '—'} · {f.month}</span></span>
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
         {data && data.lessons && data.lessons.length > 0 && (
           <Card style={{ marginBottom: 12 }}>
             <div className="an-h">

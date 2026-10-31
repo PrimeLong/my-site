@@ -15,7 +15,7 @@ async function openMore(page, id) {
 }
 
 const DIR = 'screens';
-const ACCOUNT = { token: 't', login: 'tester', name: 'Тест', emblem: 'star', kidsMode: false };
+const ACCOUNT = { token: 't', login: 'tester', name: 'Тест', emblem: 'star', kidsMode: false, birthYear: 1990 };
 // пройдено всё, кроме «Итогов юнита»: на Пути видно и пройденное, и текущее; любой урок открыт для повтора
 const DONE = ['sc-i1', 'sc-l1', 'sc-l2', 'sc-i2', 'sc-l3', 'sc-l4', 'sc-l5', 'sc-l6', 'sc-w', 'sc-s1', 'sc-radio', 'sc-g', 'sc-rev', 'sc-sum', 'sd-i1', 'sd-l1', 'sd-w', 'sd-i2', 'sd-l3', 'sd-s1', 'sd-l-radio', 'sd-g', 'sd-rev'];
 
@@ -169,6 +169,17 @@ async function passCards(page) {
     await foot(page).click(); await page.waitForTimeout(320);
   }
 }
+
+// приветствие на ПК: две колонки (docs/mechanics.md, «Приветствие и загрузка»); остальные снимки — телефонные
+test('экраны: приветствие на ПК (desktop)', async ({ page, isMobile }) => {
+  test.skip(isMobile, 'снимок ПК');
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const errors = await setup(page, { theme: 'light', account: false });
+  await page.goto('/', { waitUntil: 'networkidle' });
+  await expect(page.getByTestId('welcome')).toBeVisible();
+  await shot(page, '01-welcome-desktop', 'light', { wait: 1500 });
+  expect(errors).toEqual([]);
+});
 
 for (const theme of ['light', 'dark']) {
   test.describe(`экраны: тема ${theme}`, () => {

@@ -351,9 +351,13 @@ export function forgone(price) {
   return { lessons, week: piggyValue(price, PIGGY.days) - price, text: `≈ ${lessons} ${plural(lessons, 'урок', 'урока', 'уроков')}` };
 }
 
-/* Копилка — честно про проценты: 2% в день — это 730% годовых, в жизни так не бывает. Рядом —
-   как растут реальные 8% годовых: 1000 крон за 10 лет (сложный процент, раз в год). */
+/* Копилка — честно про проценты (docs/mechanics.md): 2% в день — это 730% годовых простыми, а со сложным
+   процентом (копилка начисляет именно его) деньги за год выросли бы примерно в 1400 раз; в жизни так не бывает.
+   Рядом — как растут обычные для вклада 8% годовых: 1000 крон за 10 лет (сложный процент, раз в год).
+   «Обычные», а не «реальные» — реальная ставка в учебнике — это ставка за вычетом инфляции. */
 export const PIGGY_YEARLY = Math.round(PIGGY.rate * 365 * 100);
+// во сколько раз выросли бы деньги за год при ставке rate в день со сложным процентом — до двух значащих цифр
+export const yearGrowth = (rate) => Number(((1 + rate) ** 365).toPrecision(2));
 export const REAL_RATE = 0.08;
 export const realCurve = (amount = 1000, years = 10) => Array.from({ length: years + 1 }, (_, y) => ({ year: y, value: Math.round(amount * (1 + REAL_RATE) ** y) }));
 
@@ -425,6 +429,7 @@ export const achievementKey = (id) => `a:${id}`;
 
 /* ------------------------------ ИСПЫТАНИЕ МЕСЯЦА ------------------------------ */
 const MONTHS = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'];
+const MONTHS_GEN = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
 const inMonth = (map, month) => Object.entries(map || {}).filter(([k]) => k.startsWith(month));
 /* Испытание ПЕРСОНАЛЬНОЕ и посильное: цель считается от самого ученика.
    — Темп: цель дня в минутах → сколько это уроков, опыта, уроков без ошибок за день; за
@@ -434,7 +439,9 @@ const inMonth = (map, month) => Object.entries(map || {}).filter(([k]) => k.star
    — Бывают и испытания постоянства: заниматься N дней месяца, выполнить все задания дня N раз.
    — История: если в прошлом месяце сделано больше темпа — цель чуть больше прошлого (+10%, не
      меньше чем на единицу шага), иначе «теперь чуть больше» было бы неправдой.
-   — Пришёл посреди месяца — темп и нижняя планка считаются по оставшимся дням.
+   — Пришёл посреди месяца — темп и нижняя планка считаются пропорционально оставшимся дням.
+   — До конца месяца меньше FIRST_MIN_DAYS дней — первого испытания в этом месяце нет: оно начнётся
+     с 1-го числа следующего (waiting). Иначе новичок 29-го получал «100 минут, осталось 2 дня».
    Цель закрепляется при первом показе (fixMonth) вместе с видом испытания; планы прежних
    правил (v меньше нынешней), пока марка не получена, считаются заново. */
 const quests = (s, m) => Object.keys(s.claimed || {}).filter((k) => k.startsWith(`q:${m}`) && k.endsWith(':all')).length;
@@ -455,7 +462,8 @@ const MONTH_KINDS = [
 const KIND_BY_ID = Object.fromEntries(MONTH_KINDS.map((k) => [k.id, k]));
 export const MONTH_COINS = 100;
 const ACTIVE_SHARE = 5 / 7;
-const MONTH_PLAN_V = 3;
+const MONTH_PLAN_V = 4;
+export const FIRST_MIN_DAYS = 7;
 // первый день ученика: регистрация или самое раннее занятие
 const firstDay = (s) => {
   const days = [...Object.keys(s.done || {}), ...Object.keys(s.xp || {})].sort();
@@ -474,6 +482,17 @@ export function monthChallenge(s, now = Date.now()) {
   const start = firstDay(s) || day;
   const from = start.slice(0, 7) === month ? Number(start.slice(8)) : start < month ? 1 : d.getUTCDate();
   const span = last - from + 1;
+  // сегодня тоже считается: 29-го в 30-дневном месяце осталось два дня
+  const daysLeft = last - d.getUTCDate() + 1;
+  const name = `${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+  // новичку под конец месяца — не испытание на два дня: первое начнётся с 1-го числа следующего
+  if (!plan && !hasClaim(s, key) && span < FIRST_MIN_DAYS) {
+    const next = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1));
+    const startsOn = next.toISOString().slice(0, 10); const startsText = `1 ${MONTHS_GEN[next.getUTCMonth()]}`;
+    return { month, name, waiting: true, startsOn, startsText, id: null, title: `Первое испытание — с ${startsText}`, have: 0, target: 0, need: 0, unit: '',
+      done: false, claimed: false, key, coins: MONTH_COINS, daysLeft,
+      why: 'До конца месяца меньше недели — первое испытание начнётся с 1-го числа, чтобы на него был целый месяц.' };
+  }
   let kind = (plan && KIND_BY_ID[plan.kind]) || MONTH_KINDS[Math.floor(mix01(`month:${month}`) * MONTH_KINDS.length)];
   // пришёл под конец месяца — испытание постоянства («заниматься 2 дня») было бы пустым: берём объёмное
   if (!plan && kind.steady && span < 14) { const vol = MONTH_KINDS.filter((k) => !k.steady); kind = vol[Math.floor(mix01(`month:${month}:late`) * vol.length)]; }
@@ -481,8 +500,8 @@ export function monthChallenge(s, now = Date.now()) {
   const byPace = kind.pace(mins) * span * ACTIVE_SHARE;
   const before = kind.have(s, prevMonth(month));
   const up = (x) => Math.ceil(x / kind.round) * kind.round;
-  // нижняя планка — за весь месяц; пришёл позже — по оставшимся дням, но не меньше половины: испытание, а не отметка
-  const floor = up(kind.floor * Math.max(0.5, Math.min(1, span / last)));
+  // нижняя планка — за весь месяц; пришёл позже — пропорционально оставшимся дням
+  const floor = up(kind.floor * Math.min(1, span / last));
   // дней в месяце больше не станет: испытание постоянства не выше оставшихся дней
   const cap = kind.steady ? span : Infinity;
   // прошлый месяц выше темпа — цель чуть больше прошлого: +10%, минимум на один шаг
@@ -492,14 +511,12 @@ export function monthChallenge(s, now = Date.now()) {
   const target = plan ? plan.target : Math.min(cap, Math.max(floor, up(byPace), fromHistory));
   // марка получена — испытание месяца выполнено до конца месяца, нового нет
   const have = hasClaim(s, key) ? target : Math.min(target, kind.have(s, month));
-  // сегодня тоже считается: 29-го в 30-дневном месяце осталось два дня
-  const daysLeft = last - d.getUTCDate() + 1;
   // почему именно столько — чтобы цель читалась как своя, а не взятая с потолка
   const why = plan && plan.why ? plan.why : fromHistory && target === fromHistory ? `В прошлом месяце — ${before}, теперь ${target}: чуть больше.`
     : kind.steady ? kind.steady
       : target === floor && up(byPace) < floor ? `По вашей цели — ${mins} минут в день: испытание чуть больше обычного темпа.`
         : `По вашей цели — ${mins} минут в день, пять дней в неделю.`;
-  return { month, name: `${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`, id: kind.id, title: kind.title(target), have, target, need: Math.max(0, target - have), unit: kind.unit(Math.max(0, target - have)),
+  return { month, name, id: kind.id, title: kind.title(target), have, target, need: Math.max(0, target - have), unit: kind.unit(Math.max(0, target - have)),
     done: have >= target, claimed: hasClaim(s, key), key, coins: MONTH_COINS, daysLeft, why };
 }
 // закрепить испытание месяца: вид, цель и «почему» считаются один раз — при первом показе в месяце
@@ -508,6 +525,8 @@ export function fixMonth(s, now = Date.now()) {
   const cur = (s.monthPlan || {})[month];
   if (cur && (cur.v === MONTH_PLAN_V || hasClaim(s, `m:${month}`))) return s;
   const m = monthChallenge(s, now);
+  // испытание ещё не началось (новичок под конец месяца) — закреплять нечего
+  if (m.waiting) return s;
   return { ...s, monthPlan: { ...s.monthPlan, [month]: { target: m.target, why: m.why, at: now, kind: m.id, v: MONTH_PLAN_V } } };
 }
 // марки месяцев, которые уже получены: «m:ГГГГ-ММ» → подпись

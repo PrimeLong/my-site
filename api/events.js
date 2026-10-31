@@ -5,19 +5,27 @@
    (заголовки запроса не читаются вовсе).
 
    Отчёт видят только владельцы — OWNER_LOGINS, как сообщения об ошибках (api/reports.js): воронка
-   за 30 дней с конверсией шагов, активность и точность по дням, сводка за неделю против прошлой,
-   уроки (начали, дошли до конца, сколько минут) и самые трудные упражнения, новые сообщения об
-   ошибках по причинам. */
+   за 30 дней с конверсией шагов (только разовые события: первый урок — first_lesson_*), активность и
+   точность по дням, сводка за неделю против прошлой, открытия разделов, уроки (начали, дошли до конца,
+   сколько минут) и самые трудные упражнения, новые сообщения об ошибках по причинам. */
 import { bumpCounters, addCounters, readCounters, addToSet, setMembers, getReports, hasKv } from './_lib/store.js';
 import { userBySession } from './_lib/accounts.js';
 import { isOwner } from './reports.js';
 
-// шаги воронки — в том порядке, в каком их проходит ученик
-export const FUNNEL = ['welcome_start', 'goal_done', 'lesson_start', 'lesson_done', 'register_done', 'return_d1', 'return_d7'];
-export const EVENTS = [...FUNNEL, 'ex_first_try_ok', 'ex_first_try_fail'];
+/* шаги воронки — в том порядке, в каком их проходит ученик; каждый шаг — разовое событие, не больше раза с
+   устройства (docs/mechanics.md, «Аналитика»), поэтому шаги сравнимы между собой */
+export const FUNNEL = ['welcome_start', 'goal_done', 'first_lesson_start', 'first_lesson_done', 'register_done', 'return_d1', 'return_d7'];
+// активность — на каждый урок и каждый ответ; в воронку не входит
+export const ACTIVITY = ['lesson_start', 'lesson_done', 'ex_first_try_ok', 'ex_first_try_fail'];
+// открытия разделов — не чаще раза в день с устройства
+export const FEATURES = ['world_open', 'textbook_open', 'shop_open', 'garden_open', 'league_open', 'tycoon_open', 'network_open'];
+export const EVENTS = [...FUNNEL, ...ACTIVITY, ...FEATURES];
 export const FUNNEL_LABEL = {
-  welcome_start: 'Нажали «Начать»', goal_done: 'Выбрали цель', lesson_start: 'Начали первый урок', lesson_done: 'Прошли урок',
+  welcome_start: 'Нажали «Начать»', goal_done: 'Выбрали цель', first_lesson_start: 'Начали первый урок', first_lesson_done: 'Прошли первый урок',
   register_done: 'Создали аккаунт', return_d1: 'Вернулись на следующий день', return_d7: 'Вернулись через неделю',
+};
+export const FEATURE_LABEL = {
+  world_open: 'Мир', textbook_open: 'Учебник', shop_open: 'Лавка', garden_open: 'Сад Инфли', league_open: 'Лиги', tycoon_open: 'Своё дело', network_open: 'Сетевая партия',
 };
 const ID_RE = /^[a-z0-9][a-z0-9_:.-]{0,79}$/i;
 const today = (now = Date.now()) => new Date(now).toISOString().slice(0, 10);
@@ -60,6 +68,8 @@ export async function report(now = Date.now()) {
   const stat = (ev) => ({ now: sumDays(c, week(0), ev), prev: sumDays(c, week(7), ev), today: sumDays(c, days.slice(0, 1), ev) });
   const acc = (ds) => { const ok = sumDays(c, ds, 'ex_first_try_ok'); const all = ok + sumDays(c, ds, 'ex_first_try_fail'); return all ? ok / all : null; };
   const totals = { lessons: stat('lesson_done'), starts: stat('lesson_start'), accounts: stat('register_done'), newcomers: stat('welcome_start'), accuracy: { now: acc(week(0)), prev: acc(week(7)) } };
+  // разделы: сколько устройств открывали за неделю (сумма по дням) против прошлой и за 30 дней
+  const features = FEATURES.map((ev) => ({ event: ev, label: FEATURE_LABEL[ev], ...stat(ev), month: sumDays(c, days, ev) }));
   // уроки: начали, дошли до конца, сколько минут в среднем
   const lessonIds = await setMembers('lessons');
   const lc = await readCounters(lessonIds.flatMap((id) => [`lesson:${id}:start`, `lesson:${id}:done`, `lesson:${id}:sec`]));
@@ -76,7 +86,7 @@ export async function report(now = Date.now()) {
     const total = ex[`exercise:${id}:total`] || 0; const correct = ex[`exercise:${id}:correct`] || 0;
     return { id, total, correct, share: total ? correct / total : 1 };
   }).filter((x) => x.total >= 5).sort((a, b) => a.share - b.share || b.total - a.total).slice(0, 20);
-  return { funnel, daily, totals, lessons, reports, hardest, days: 30 };
+  return { funnel, daily, totals, features, lessons, reports, hardest, days: 30 };
 }
 
 async function handleRequest(req, res) {

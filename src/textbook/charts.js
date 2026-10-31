@@ -26,7 +26,7 @@ const supplyDemand = {
     const span = Math.round(a * 0.4);
     const { P } = sdEquilibrium(a, num(A, 'b', 2), num(A, 'c', -20), num(A, 'd', 4));
     // режим «издержки»: единственный ползунок — на сколько подорожала каждая единица для продавцов
-    if (A.cost != null) return [{ id: 'cost', label: 'Издержки на единицу выросли на', min: 0, max: Math.round(P), step: 1, def: 0, fmt: (v) => `${v} руб.` }];
+    if (A.cost != null) return [{ id: 'cost', label: 'Издержки на единицу выросли на', min: 0, max: Math.round(P), step: 1, def: 0, fmt: (v) => `${v} кр.` }];
     return [
       { id: 'dA', label: 'Сдвиг спроса', min: -span, max: span, step: 1, def: 0, fmt: (v) => `${v > 0 ? '+' : ''}${v} ед.` },
       { id: 'dC', label: 'Сдвиг предложения', min: -span, max: span, step: 1, def: 0, fmt: (v) => `${v > 0 ? '+' : ''}${v} ед.` },
@@ -414,10 +414,10 @@ const costs = {
       readout.push({ label: 'Решение', value: firm.shut ? 'цена ниже min AVC: закрыться, потерять FC' : firm.profit >= 0 ? 'работать с прибылью' : 'работать в убыток: он меньше FC' });
     }
     const show = costShow(A);
-    if (!show) return { xDomain: [0, Qmax], yDomain: [0, yMax], xLabel: 'Q', yLabel: 'руб.', curves, points, rects, readout };
+    if (!show) return { xDomain: [0, Qmax], yDomain: [0, yMax], xLabel: 'Q', yLabel: 'кр.', curves, points, rects, readout };
     const shown = (id) => show.includes(id.replace(/0$/, ''));
     return {
-      xDomain: [0, Qmax], yDomain: [0, yMax], xLabel: 'Q', yLabel: 'руб.', readout,
+      xDomain: [0, Qmax], yDomain: [0, yMax], xLabel: 'Q', yLabel: 'кр.', readout,
       curves: curves.filter((c) => shown(c.id)),
       points: points.filter((pt) => (pt.label === 'min AVC' ? shown('AVC') : pt.label === 'min ATC' || pt.label === 'в среднем' ? shown('ATC') : true)),
       rects: show.includes('profit') ? rects : [],
@@ -928,7 +928,7 @@ const demandChart = {
   controls: (A) => {
     const p = demandParams(A);
     return [
-      { id: 'P', label: 'Цена самого товара', min: 0, max: Math.round((p.a / p.b) * 0.9), step: 1, def: p.P, fmt: (v) => `${v} руб.` },
+      { id: 'P', label: 'Цена самого товара', min: 0, max: Math.round((p.a / p.b) * 0.9), step: 1, def: p.P, fmt: (v) => `${v} кр.` },
       { id: 'dA', label: 'Доходы покупателей: сдвиг спроса', min: -Math.round(p.a * 0.3), max: Math.round(p.a * 0.3), step: 5, def: p.dA, fmt: (v) => `${v > 0 ? '+' : ''}${v} ед.` },
     ];
   },
@@ -966,7 +966,7 @@ const buyerQ = (b, P) => Math.max(0, (b.choke - P) / b.slope);
 export const marketQ = (P) => MARKET_BUYERS.reduce((a, b) => a + buyerQ(b, P), 0);
 const marketDemandChart = {
   title: 'Рыночный спрос — сумма по горизонтали',
-  controls: (A) => [{ id: 'P', label: 'Цена стакана', min: 0, max: 290, step: 10, def: num(A, 'p', 150), fmt: (v) => `${v} руб.` }],
+  controls: (A) => [{ id: 'P', label: 'Цена стакана', min: 0, max: 290, step: 10, def: num(A, 'p', 150), fmt: (v) => `${v} кр.` }],
   measure: (A, v) => ({ Q: marketQ(v.P) }),
   build: (A, v) => {
     const top = Math.max(...MARKET_BUYERS.map((b) => b.choke));
@@ -1047,7 +1047,7 @@ const extChart = {
   controls: (A) => {
     const p = extParams(A);
     return [
-      { id: 'e', label: 'Ущерб соседям от единицы', min: 0, max: Math.round(p.e * 2), step: 1, def: p.e, fmt: (v) => `${v} руб.` },
+      { id: 'e', label: 'Ущерб соседям от единицы', min: 0, max: Math.round(p.e * 2), step: 1, def: p.e, fmt: (v) => `${v} кр.` },
       // pigou=1 — налог уже введён (шаг «Налог Пигу» показывает итог, а не исходный рынок)
       { id: 'pigou', label: 'Налог Пигу = ущербу', toggle: true, def: A.pigou === '1' || A.pigou === 'true' },
     ];
@@ -1191,7 +1191,7 @@ const inflationChart = {
     const r = inflationPath(p.p0, v.pi, v.i, p.n);
     const top = Math.max(r.price, r.deposit, p.p0);
     return {
-      xDomain: [0, p.n], yDomain: [0, Math.ceil((top * 1.15) / 20) * 20], xLabel: 'год', yLabel: 'руб.',
+      xDomain: [0, p.n], yDomain: [0, Math.ceil((top * 1.15) / 20) * 20], xLabel: 'год', yLabel: 'кр.',
       curves: [
         { id: 'P', label: 'цена корзины', labelPos: 0.85, points: pts(price), color: 'rust' },
         { id: 'D', label: 'вклад', labelPos: 0.55, points: pts(dep), color: 'blue' },

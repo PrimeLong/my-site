@@ -16,7 +16,7 @@ const { PNG } = utilsBundle;
    Серое сглаживание и буквы по целым пикселям — везде. */
 test.use({ launchOptions: { ...(process.env.PW_CHROMIUM ? { executablePath: process.env.PW_CHROMIUM } : {}), args: ['--disable-lcd-text', '--disable-font-subpixel-positioning'] } });
 
-const ACCOUNT = { token: 't', login: 'tester', name: 'Тест', emblem: 'star', kidsMode: false };
+const ACCOUNT = { token: 't', login: 'tester', name: 'Тест', emblem: 'star', kidsMode: false, birthYear: 1990 };
 const NOW = new Date('2026-10-05T10:00:00');
 const SHOT = { animations: 'disabled', caret: 'hide', maxDiffPixelRatio: 0.02 };
 

@@ -6,6 +6,8 @@ import { freshRoom, resolveQuarter, publicView } from '../api/room.js';
 import { makeInitialEconomy, defaultDecisions } from '../src/lib/engine.js';
 import { SCREENS } from '../src/learn/screens.js';
 import { BOOK_BY_ID, bookSpeech, passageAt, passageStart } from '../src/learn/shelf.js';
+import { PEOPLE } from '../src/learn/people.js';
+import { listPeoplePhotos, readPhotoCredits } from '../scripts/voice-files-plugin.js';
 
 /* Общая подготовка каждой страницы: серверные функции подменены, внешние
    запросы и ошибки страницы собираются — тест падает, если сайт полез за
@@ -50,7 +52,7 @@ async function openTasks(page) {
 }
 /* Вход обязателен: во всех тестах, кроме тестов первого запуска («вход: …»), пользователь уже
    вошёл — аккаунт лежит на устройстве до загрузки страницы. */
-const ACCOUNT = { token: 't', login: 'tester', name: 'Тест', emblem: 'star', kidsMode: false };
+const ACCOUNT = { token: 't', login: 'tester', name: 'Тест', emblem: 'star', kidsMode: false, birthYear: 1990 };
 test.beforeEach(async ({ page }, info) => {
   // уведомление о памяти браузера уже прочитано — кроме теста самого уведомления
   if (!info.title.startsWith('память браузера:')) await page.context().addInitScript(() => { try { localStorage.setItem('ems-storage-notice', '1'); } catch { /* нет хранилища */ } });
@@ -475,6 +477,58 @@ async function expectGateOnly(page) {
   for (const id of ['bottom-nav', 'shell', 'path', 'tasks', 'learn-profile', 'world', 'lesson', 'learn-book']) await expect(page.getByTestId(id)).toHaveCount(0);
 }
 
+/* Приветствие на ПК (docs/mechanics.md, «Приветствие и загрузка»): две колонки, «Начать» видна без прокрутки при
+   1440×900, уведомление о памяти браузера не закрывает ни демо-урок, ни «Начать». */
+test('вход: приветствие на ПК — две колонки, «Начать» без прокрутки, плашка про cookie не на демо-уроке', async ({ page, isMobile }) => {
+  test.skip(isMobile, 'раскладка ПК');
+  await page.setViewportSize({ width: 1440, height: 900 });
+  // уведомление о памяти браузера — как при первом открытии (скрипт страницы идёт после скрипта контекста)
+  await page.addInitScript(() => localStorage.removeItem('ems-storage-notice'));
+  const { errors } = await openApp(page, '/', '{}', { tab: null });
+  const start = page.getByRole('button', { name: 'Начать' });
+  const demo = page.getByTestId('welcome-try');
+  const notice = page.getByTestId('storage-notice');
+  await expect(start).toBeVisible();
+  await expect(notice).toBeVisible();
+  await page.waitForTimeout(1500); // приветствие проявляется по шагам
+  const [s, d, n, v] = await Promise.all([start.boundingBox(), demo.boundingBox(), notice.boundingBox(), page.getByTestId('welcome-values').boundingBox()]);
+  // две колонки: демо-урок справа от обещаний и кнопок
+  expect(d.x).toBeGreaterThan(v.x + v.width);
+  expect(d.x).toBeGreaterThan(s.x + s.width);
+  // «Начать» — в первом экране, без прокрутки
+  expect(s.y + s.height).toBeLessThanOrEqual(900);
+  expect(await page.evaluate(() => window.scrollY)).toBe(0);
+  // плашка не закрывает ни демо-урок, ни «Начать»
+  const hit = (a, b) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+  expect(hit(n, d), 'плашка на демо-уроке').toBe(false);
+  expect(hit(n, s), 'плашка на «Начать»').toBe(false);
+  // демо-урок отвечает и на ПК
+  await demo.getByRole('button', { name: 'Станет меньше' }).click();
+  await expect(page.getByTestId('welcome-try-say')).toContainText('Верно');
+  expect(errors).toEqual([]);
+});
+
+/* Бюджет первого экрана (docs/mechanics.md, «Приветствие и загрузка»): приветствие грузит не больше 600 КБ JS
+   без сжатия. Движок партии, справочники «Мира» и меню партии — ленивые чанки; раньше статический импорт
+   src/lib/catalog.js тянул на приветствие весь движок, и выходило ~1,08 МБ. */
+const FIRST_SCREEN_JS_KB = 600;
+test('вход: приветствие грузит не больше 600 КБ JS — движок партии и меню «Мира» не грузятся', async ({ page }) => {
+  const js = [];
+  page.on('response', async (r) => {
+    if (!/\.js(\?|$)/.test(r.url())) return;
+    try { js.push({ url: r.url(), size: (await r.body()).length }); } catch { /* ответ без тела */ }
+  });
+  const { errors } = await openApp(page, '/', '{}', { tab: null });
+  await expect(page.getByRole('button', { name: 'Начать' })).toBeVisible();
+  // всё, что первый экран догружает сам (без нажатий)
+  await page.waitForTimeout(1500);
+  const kb = Math.round(js.reduce((a, x) => a + x.size, 0) / 1024);
+  const list = js.map((x) => `${x.url.split('/').pop()} ${Math.round(x.size / 1024)} КБ`).join(', ');
+  expect(kb, `JS на приветствии: ${list}`).toBeLessThanOrEqual(FIRST_SCREEN_JS_KB);
+  expect(js.map((x) => x.url).filter((u) => /\/assets\/(catalog|world-menu|game|tycoon|network)-/.test(u)), 'ленивые чанки «Мира»').toEqual([]);
+  expect(errors).toEqual([]);
+});
+
 test('вход: первый запуск — приветствие, цель, урок гостем, «Сохраните прогресс», регистрация; выход, вход и восстановление', async ({ page }) => {
   test.setTimeout(120_000);
   await withTestFlag(page);
@@ -508,7 +562,7 @@ test('вход: первый запуск — приветствие, цель, 
   await expect(reg.locator('[data-nav="back"]')).toHaveCount(1);
   await expectNoSidewaysScroll(page);
   await reg.getByLabel('Логин').fill('anna');
-  await reg.getByLabel('Пароль').fill('secret1');
+  await reg.getByLabel('Пароль', { exact: true }).fill('secret12');
   await reg.getByLabel('Имя').fill('Анна');
   // год рождения: до 16 лет «Мир» — в детском режиме, подсказка говорит об этом сразу
   await reg.getByTestId('birth-year').fill('2013');
@@ -520,17 +574,40 @@ test('вход: первый запуск — приветствие, цель, 
   await expect(page.getByTestId('privacy')).toContainText('Что мы храним');
   await expect(page.getByTestId('privacy')).toContainText('Upstash');
   await expect(page.getByTestId('privacy')).toContainText('за пределами России');
+  // оператор и контакты — заглушки до решения владельца; знак маркировки — из одной константы (src/legal.js)
+  await expect(page.getByTestId('privacy').getByTestId('operator')).toContainText('[ФИО/название]');
+  await expect(page.getByTestId('privacy').getByTestId('operator')).toContainText('[адрес для обращений]');
+  await expect(page.getByTestId('privacy').getByTestId('operator')).toContainText('[e-mail]');
+  await expect(page.getByTestId('privacy').getByTestId('age-rating')).toContainText('[возрастная маркировка]');
   await page.getByTestId('privacy').getByRole('button', { name: 'Закрыть' }).click();
   await reg.getByTestId('consent-terms').click();
   await expect(page.getByTestId('terms')).toContainText('Учебная игра, не финансовый совет');
+  await expect(page.getByTestId('terms').getByTestId('operator')).toContainText('Оператор и контакты');
+  await expect(page.getByTestId('terms').getByTestId('age-rating')).toContainText('[возрастная маркировка]');
   await page.getByTestId('terms').getByRole('button', { name: 'Закрыть' }).click();
   await reg.getByTestId('consent-page').check();
   await expect(reg.getByRole('button', { name: 'Создать аккаунт' })).toBeDisabled();
   await reg.getByTestId('consent-pd').check();
+  // пароль — не короче 8 символов; «Показать пароль» открывает набранное, второе нажатие прячет
+  const pw = reg.getByLabel('Пароль', { exact: true });
+  await pw.fill('secret1');
+  await expect(reg.getByRole('button', { name: 'Создать аккаунт' })).toBeDisabled();
+  await pw.fill('secret12');
+  await expect(pw).toHaveAttribute('type', 'password');
+  await reg.getByRole('button', { name: 'Показать пароль' }).click();
+  await expect(pw).toHaveAttribute('type', 'text');
+  await reg.getByRole('button', { name: 'Скрыть пароль' }).click();
+  await expect(pw).toHaveAttribute('type', 'password');
   await reg.getByRole('button', { name: 'Создать аккаунт' }).click();
-  // почты нет — код восстановления показывается один раз
+  // почты нет — код восстановления показывается один раз: скопировать, скачать .txt и «Я сохранил код»
   await expect(page.getByTestId('recovery-code')).toHaveText('ABCD-EFGH-JKMN');
   await expectGateOnly(page);
+  await expect(page.getByRole('button', { name: 'Скопировать код' })).toBeVisible();
+  const [file] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Скачать код .txt' }).click()]);
+  expect(file.suggestedFilename()).toBe('inflatia-kod-anna.txt');
+  const text = fs.readFileSync(await file.path(), 'utf8');
+  expect(text).toContain('Код: ABCD-EFGH-JKMN');
+  expect(text).toContain('Логин: anna');
   await page.getByRole('button', { name: 'Я сохранил код' }).click();
   // Путь; цель дня — минуты занятий (10 минут); урок гостя перешёл в аккаунт и засчитан
   await expect(page.getByTestId('path')).toBeVisible();
@@ -556,7 +633,7 @@ test('вход: первый запуск — приветствие, цель, 
   await page.getByRole('button', { name: 'У меня уже есть аккаунт' }).click();
   const login = page.getByTestId('welcome-login');
   await login.getByLabel('Логин').fill('anna');
-  await login.getByLabel('Пароль').fill('secret1');
+  await login.getByLabel('Пароль', { exact: true }).fill('secret12');
   await login.getByRole('button', { name: 'Войти' }).click();
   await expect(page.getByTestId('path')).toBeVisible();
 
@@ -570,7 +647,7 @@ test('вход: первый запуск — приветствие, цель, 
   const rec = page.getByTestId('welcome-recover');
   await rec.getByLabel('Логин').fill('anna');
   await rec.getByLabel('Код восстановления').fill('abcd-efgh-jkmn');
-  await rec.getByLabel('Новый пароль').fill('fresh12');
+  await rec.getByLabel('Новый пароль', { exact: true }).fill('fresh123');
   await rec.getByRole('button', { name: 'Задать пароль' }).click();
   await expect(page.getByTestId('recovery-code')).toHaveText('PQRS-TUVW-XYZ2');
   await page.getByRole('button', { name: 'Я сохранил код' }).click();
@@ -592,7 +669,7 @@ test('вход: до 14 лет — отдельный шаг «Подтверж�
   await goal.getByRole('button', { name: 'Продолжить' }).click();
   const reg = await guestToRegister(page);
   await reg.getByLabel('Логин').fill('kid');
-  await reg.getByLabel('Пароль').fill('secret1');
+  await reg.getByLabel('Пароль', { exact: true }).fill('secret12');
   await reg.getByTestId('birth-year').fill(String(new Date().getFullYear() - 12));
   await reg.getByTestId('consent-page').check();
   await reg.getByTestId('consent-pd').check();
@@ -882,11 +959,12 @@ test('учебник: оглавление, формулы KaTeX, график �
   await prob.getByRole('button', { name: 'Проверить' }).click();
   await expect(prob.getByTestId('tb-verdict')).toContainText('Пока неверно');
   // единицу из подписи можно дописать к ответу
-  await prob.getByRole('textbox').fill('30 руб.');
+  await prob.getByRole('textbox').fill('30 кр.');
   await prob.getByRole('button', { name: 'Не уверен', exact: true }).click();
   await prob.getByRole('button', { name: 'Проверить' }).click();
-  await expect(prob.getByTestId('tb-verdict')).toContainText('Верно: 30 руб.');
-  await expect(prob.getByTestId('tb-verdict')).not.toContainText('руб..');
+  // задачи учебника — в кронах, как на Пути (docs/world.md, «Валюта»)
+  await expect(prob.getByTestId('tb-verdict')).toContainText('Верно: 30 кр.');
+  await expect(prob.getByTestId('tb-verdict')).not.toContainText('кр..');
   // ошибся, потом ответил верно — повторение остаётся через два дня, и решённой задача не считается
   await expect(prob.getByTestId('tb-verdict')).toContainText('вернётся через 2 дня');
   await expect(prob).toContainText('была ошибка · повтор через 2 дня');
@@ -903,7 +981,7 @@ test('учебник: оглавление, формулы KaTeX, график �
   await multi.getByRole('textbox', { name: 'Задача 1, шаг в)' }).fill('39');
   await multi.getByRole('button', { name: 'Уверен', exact: true }).click();
   await multi.getByRole('button', { name: 'Проверить' }).click();
-  await expect(multi.getByTestId('tb-verdict')).toContainText('Верно: а) 24 ед.; б) 20 руб.; в) 39 ед.');
+  await expect(multi.getByTestId('tb-verdict')).toContainText('Верно: а) 24 ед.; б) 20 кр.; в) 39 ед.');
   // калькулятор задачи: корень и скобки; результат — в поле, где стоял курсор
   await multi.getByRole('textbox', { name: 'Задача 1, шаг б)' }).fill('');
   await multi.getByTestId('tb-calc-open').click();
@@ -1182,8 +1260,14 @@ test('нижняя панель: «Мир» без учебных карточе
   await expect(page.getByTestId('menu-study')).toHaveCount(0);
   await expect(page.locator('[data-mode="textbook"]')).toHaveCount(0);
   await expect(page.locator('[data-mode="lab"]')).toBeVisible();
-  // Мир открыт — «⋯» подписана его именем
-  await expect(page.getByTestId('bottom-nav').locator('[data-tab]')).toHaveText(['Путь', 'Учебник', 'Лиги', 'Лавка', 'Мир']);
+  // Мир открыт — подпись пятой вкладки не меняется: «Ещё»; открытый пункт подсвечен в меню
+  await expect(page.getByTestId('bottom-nav').locator('[data-tab]')).toHaveText(['Путь', 'Учебник', 'Лиги', 'Лавка', 'Ещё']);
+  await page.getByTestId('bottom-nav').locator('[data-tab="more"]').click();
+  await expect(page.getByTestId('more-menu').locator('[data-tab="world"]')).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByTestId('more-menu').locator('[data-tab="world"]')).toContainText('сейчас открыто');
+  await expect(page.getByTestId('more-menu').locator('[data-tab="profile"]')).not.toHaveAttribute('aria-current', 'page');
+  await page.getByTestId('bottom-nav').locator('[data-tab="more"]').click();
+  await expect(page.getByTestId('more-menu')).toHaveCount(0);
   await openTasks(page);
   await expect(page.getByTestId('practice-today')).toHaveCount(0);
   // повторять пока нечего — кнопка выключена
@@ -1411,27 +1495,45 @@ async function answerExercise(page, { wrong = false, skipOpen = false } = {}) {
   // мини-игра и «Домино» проверяются сами, когда доиграны
   if (!['swipe', 'rush', 'wallet', 'domino'].includes(kind) && !(kind === 'open' && skipOpen)) await page.getByRole('button', { name: kind === 'open' ? 'Ответить' : 'Проверить' }).click();
   const fb = page.getByTestId('ex-feedback');
-  await expect(fb).toHaveAttribute('data-ok', String(!wrong || kind === 'open'));
+  // домино с падением собрано — засчитано не с первого раза (data-partial), но и не ошибка
+  await expect(fb).toHaveAttribute('data-ok', String(!wrong || kind === 'open' || kind === 'domino'));
+  if (kind === 'domino') await expect(fb).toHaveAttribute('data-partial', String(wrong));
   if (kind === 'open' && skipOpen) { await expect(page.getByTestId('lesson-foot')).toContainText('Вопрос пропущен'); await expect(page.getByTestId('open-review')).toBeVisible(); }
   return kind;
 }
+/* Нарочная ошибка возможна не везде: собранное с падением домино засчитано (не с первого раза), у открытого
+   вопроса неверного ответа нет. Порядок упражнений в уроке случайный, поэтому ошибка, назначенная на такое
+   упражнение, переносится на следующее. mistake: true — ошибка нужна «на повтор» (практика «Повторить
+   ошибки»): тогда переносится и с мини-игр — они в практику не идут (canPractice). Без переноса тест через
+   раз не находил ошибку в практике (flaky на phone, smoke :1621). */
+const NO_WRONG_KINDS = ['domino', 'open'];
+const GAME_KINDS_E2E = ['swipe', 'rush', 'wallet'];
 // пройти урок до экрана итогов; wrongAt — номера упражнений, где ошибиться нарочно
-async function playLesson(page, { wrongAt = [], skipOpen = false } = {}) {
+async function playLesson(page, { wrongAt = [], skipOpen = false, mistake = false } = {}) {
   const kinds = new Set();
   let retries = 0;
   let cards = 0;
+  let owe = 0;
   for (let i = 0; i < 70; i += 1) {
     if (await page.getByTestId('lesson-result').isVisible()) break;
     // карточки перед упражнением: шаг, слово (перевернуть), пункт итогов — прочитать и дальше
     cards += await passCards(page);
     if (await page.getByTestId('ex-retry').isVisible()) retries += 1;
-    kinds.add(await answerExercise(page, { wrong: wrongAt.includes(i), skipOpen }));
+    if (wrongAt.includes(i)) owe += 1;
+    const kind = await page.getByTestId('ex').getAttribute('data-kind');
+    const wrong = owe > 0 && !NO_WRONG_KINDS.includes(kind) && !(mistake && GAME_KINDS_E2E.includes(kind));
+    if (wrong) owe -= 1;
+    kinds.add(await answerExercise(page, { wrong, skipOpen }));
     await page.getByRole('button', { name: 'Дальше', exact: true }).click();
   }
   await expect(page.getByTestId('lesson-result')).toBeVisible();
   return { kinds, retries, cards };
 }
 const withTestFlag = (page) => page.addInitScript(() => { window.__INFLATIA_TEST__ = true; });
+/* Длинные сценарии в WebKit (эмуляция iPhone) идут в полтора-два раза дольше, чем в Chromium, и не укладывались
+   в минуту — падали по таймауту в случайном месте второй половины («element is not stable» — это просто
+   последнее ожидание перед таймаутом). Тройной бюджет — только в WebKit: в Chromium замедление ловится как раньше. */
+const slowInWebkit = () => test.slow(test.info().project.name === 'webkit', 'WebKit (iPhone) медленнее Chromium: длинный сценарий');
 // «Откройте сами»: четыре разные цены — четыре дня в «Зерне», точки на графике, линия, «Дальше»
 async function playDiscover(page, prices = [12, 18, 26, 33]) {
   const d = page.getByTestId('discover');
@@ -1493,6 +1595,7 @@ async function startLesson(page, id, button = /Начать|Повторить/)
 }
 
 test('путь: карточка урока, «Знакомство» шагами, ошибка и её повтор, итоги, замок следующего урока', async ({ page }) => {
+  slowInWebkit();
   await withTestFlag(page);
   const { errors, external } = await openApp(page, '/', '{}', { tab: 'path' });
   const path = page.getByTestId('path');
@@ -1601,8 +1704,23 @@ test('путь: карточка урока, «Знакомство» шагам
   await expect(page.getByTestId('prof-lessons')).toHaveText('1');
   await expect(page.getByTestId('prof-calendar').locator('.today')).toHaveCount(1);
   await expect(page.getByTestId('prof-types')).toHaveCount(0);
-  // повтор пройденного урока — «Подробнее в учебнике» открывает главу, «назад» — снова итоги
-  await openTab(page, 'path');
+  expect(external).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
+/* Повтор пройденного урока — отдельным тестом: вместе с первым прохождением это два полных урока «Знакомство»
+   в одном тесте, и в WebKit (iPhone) он не укладывался в минуту — падал по таймауту в случайном месте второй
+   половины (flaky на CI, smoke :1495 на webkit). Урок здесь уже пройден вчера — как после теста выше. */
+test('путь: повтор пройденного урока — «Урок уже был пройден», «Подробнее в учебнике» открывает главу, «назад» — снова итоги', async ({ page }) => {
+  slowInWebkit();
+  await withTestFlag(page);
+  await page.addInitScript(() => {
+    if (localStorage.getItem('ems-textbook-v1')) return;
+    localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons: { 'sc-i1': { at: Date.now() - 86400000, runs: 1, best: 80 } } } }));
+  });
+  const { errors, external } = await openApp(page, '/', '{}', { tab: 'path' });
+  const path = page.getByTestId('path');
+  await expect(pathNode(page, 'sc-i1')).toHaveAttribute('data-state', 'done');
   await startLesson(page, 'sc-i1', 'Повторить');
   await playLesson(page);
   await expect(page.getByTestId('lesson-result')).toContainText('Урок уже был пройден');
@@ -1615,6 +1733,56 @@ test('путь: карточка урока, «Знакомство» шагам
   await page.getByTestId('lesson-result').getByRole('button', { name: 'Дальше', exact: true }).click();
   await expect(path).toBeVisible();
   expect(external).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
+/* Подписи остановок Пути (docs/mechanics.md, «Навигация»): прямоугольник каждой подписи не пересекается ни с
+   другой подписью, ни с плашкой «рекомендуем сейчас» / «продолжить», ни с линией дороги (полоса 16 px вдоль пути). */
+async function pathLabelClashes(page) {
+  return page.evaluate(() => {
+    const out = [];
+    const hit = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+    document.querySelectorAll('[data-testid=path] .ln-route').forEach((route) => {
+      const box = route.getBoundingClientRect();
+      if (!box.width || !box.height) return;
+      const labels = [...route.querySelectorAll('.ln-stop-title')].map((el) => ({ r: el.getBoundingClientRect(), name: el.textContent.trim() }));
+      const pins = [...route.querySelectorAll('.ln-pin')].map((el) => ({ r: el.getBoundingClientRect(), name: el.textContent.trim() }));
+      labels.forEach((a, i) => labels.slice(i + 1).forEach((b) => { if (hit(a.r, b.r)) out.push(`«${a.name}» × «${b.name}»`); }));
+      labels.forEach((a) => pins.forEach((p) => { if (hit(a.r, p.r)) out.push(`«${a.name}» × плашка «${p.name}»`); }));
+      const path = route.querySelector('svg path');
+      if (!path) return;
+      const m = path.getScreenCTM(); const len = path.getTotalLength(); const half = 8 * Math.hypot(m.a, m.b);
+      for (let d = 0; d <= len; d += 3) {
+        const q = path.getPointAtLength(d);
+        const x = m.a * q.x + m.c * q.y + m.e; const y = m.b * q.x + m.d * q.y + m.f;
+        const road = { left: x - half, right: x + half, top: y - half, bottom: y + half };
+        labels.forEach((a) => { if (hit(a.r, road)) out.push(`«${a.name}» × дорога`); });
+      }
+      // подписи не выходят за экран
+      labels.forEach((a) => { if (a.r.left < 0 || a.r.right > document.documentElement.clientWidth) out.push(`«${a.name}» за краем экрана`); });
+    });
+    return [...new Set(out)];
+  });
+}
+test('путь: подписи остановок не пересекаются друг с другом, с плашкой «рекомендуем сейчас» и с дорогой', async ({ page }) => {
+  const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
+  const path = page.getByTestId('path');
+  await expect(path.getByTestId('path-lesson').first()).toBeVisible();
+  // остановки юнита по порядку дороги: уроки и особые уроки
+  const ids = await path.getByTestId('path-lesson').evaluateAll((els) => els.map((e) => e.dataset.lesson));
+  expect(ids.length).toBeGreaterThan(8);
+  // новичок; два урока (рекомендуем — «Персоналии»); середина юнита; почти весь юнит
+  for (const k of [0, 2, 5, ids.length - 2]) {
+    await page.evaluate(({ done }) => {
+      const at = Date.now() - 86400000;
+      localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons: Object.fromEntries(done.map((id) => [id, { at, runs: 1, best: 90 }])) } }));
+    }, { done: ids.slice(0, k) });
+    await page.reload({ waitUntil: 'networkidle' });
+    await expect(path.getByTestId('path-lesson').first()).toBeVisible();
+    if (k) await expect(path.locator('[data-testid=path-lesson][data-state="done"]')).toHaveCount(k);
+    await expect(path.getByTestId('path-rec')).toHaveCount(1);
+    expect(await pathLabelClashes(page), `пройдено уроков: ${k}`).toEqual([]);
+  }
   expect(errors).toEqual([]);
 });
 
@@ -1678,7 +1846,7 @@ test('путь: выход после первого ответа — урок �
     await page.getByTestId('term-sheet').getByRole('button', { name: 'Понятно' }).click();
     await expect(page.getByTestId('term-sheet')).toHaveCount(0);
   }
-  await playLesson(page, { wrongAt: [2] });
+  await playLesson(page, { wrongAt: [2], mistake: true });
   await page.getByTestId('lesson-result').getByRole('button', { name: 'Дальше', exact: true }).click();
   // практика: ошибка решается — и уходит из списка
   await openTasks(page);
@@ -1786,11 +1954,15 @@ test('урок: после перезагрузки продолжается с 
     await page.getByRole('dialog', { name: 'Выйти из урока?' }).getByRole('button', { name: 'Выйти', exact: true }).click();
     await expect(page.getByTestId('lesson')).toHaveCount(0);
   };
-  // первый урок: три верных подряд — огонёк «3»
+  // первый урок: три верных подряд — молния «3 подряд верно» (огонёк — только у серии дней)
   await startLesson(page, 'sc-l1');
   for (let k = 0; k < 3; k += 1) { await passCards(page); await answerExercise(page); await page.getByRole('button', { name: 'Дальше', exact: true }).click(); }
   await passCards(page);
   await expect(flame).toHaveAttribute('data-streak', '3');
+  await expect(flame).toHaveText(/3\s*подряд верно/);
+  await expect(flame).toHaveAttribute('aria-label', '3 подряд верно');
+  await expect(flame.locator('svg.lucide-zap')).toHaveCount(1);
+  await expect(flame.locator('svg.lucide-flame')).toHaveCount(0);
   expect(await rc()).toBe(3);
   const ex = page.getByTestId('ex');
   const here = [await ex.getAttribute('data-kind'), await ex.getAttribute('data-answer')];
@@ -2200,9 +2372,10 @@ test('лавка → сад: урожай с редкостью — продат
   await expect(garden.locator('[data-testid=garden-plot][data-plant="chamomile"]')).toHaveAttribute('data-stage', 'bloom');
   await expect(garden.locator('[data-testid=garden-plot][data-plant="tulip"]')).toHaveAttribute('data-stage', 'bud');
   await expect(garden.locator('[data-testid=garden-plot][data-plant="tulip"] [data-testid=garden-left]')).toContainText('3 ч');
-  // шансов редкости на экране нет — только редкости и во сколько раз дороже урожай
+  // шансов редкости на экране нет — только редкости и во сколько раз дороже урожай; экран «Шансы урожая» выключен (SHOW_ODDS)
   await expect(garden.getByTestId('garden-odds').first()).not.toContainText('%');
   await expect(garden.getByTestId('garden-grades')).toContainText('небывалый ×6');
+  await expect(garden.getByTestId('garden-odds-open')).toHaveCount(0);
   // на пакетике видно, можно ли купить: «Посадить» — или что мешает, и кнопка выключена
   const seedStates = await garden.getByTestId('garden-seed').evaluateAll((els) => els.map((e) => { const b = e.querySelector('[data-testid=garden-plant]'); return [e.dataset.state, b.textContent, b.disabled]; }));
   seedStates.forEach(([st, text, off]) => {
@@ -2290,7 +2463,13 @@ test('лиги: отдельная вкладка — медаль, что ну�
   await expect(lg.getByTestId('league-status')).toContainText('40 опыта');
   await expect(lg.getByTestId('league-when')).toContainText('4 дня до итогов');
   await expect(lg.getByTestId('league-goal')).toHaveAttribute('data-kind', /stay|down|up/);
-  await expect(lg.getByTestId('league-note')).toContainText('боты');
+  // «Соперники — боты» — заметной плашкой вверху вкладки, над медалью и названием лиги, а не мелкой строкой внизу
+  const note = lg.getByTestId('league-note');
+  await expect(note).toContainText('Соперники — боты');
+  await expect(note).toContainText('опыт выдуманный');
+  await expect(note).toBeInViewport();
+  expect((await note.boundingBox()).y).toBeLessThan((await lg.getByTestId('league-title').boundingBox()).y);
+  expect(await note.locator('b').evaluate((el) => parseFloat(getComputedStyle(el).fontSize))).toBeGreaterThanOrEqual(16);
   // все семь лиг: Бронзовая пройдена, Серебряная — здесь, дальше — закрыты
   await expect(lg.getByTestId('league-tier')).toHaveCount(7);
   await expect(lg.locator('[data-testid=league-tier][data-tier="bronze"]')).toHaveAttribute('data-state', 'passed');
@@ -2715,8 +2894,9 @@ test('сообщить об ошибке: флажок на упражнении
       if (body.action === 'report') {
         const day = (k) => new Date(Date.now() - k * 86400000).toISOString().slice(0, 10);
         const daily = Array.from({ length: 30 }, (_, i) => ({ day: day(29 - i), welcome_start: i % 3, goal_done: 0, lesson_start: 4 + (i % 5), lesson_done: 2 + (i % 4), register_done: i % 7 === 0 ? 1 : 0, return_d1: 0, return_d7: 0, ex_first_try_ok: 10 + i, ex_first_try_fail: 5 }));
-        return JSON.stringify({ funnel: [{ event: 'welcome_start', label: 'Нажали «Начать»', count: 40 }, { event: 'lesson_done', label: 'Прошли урок', count: 25 }],
+        return JSON.stringify({ funnel: [{ event: 'welcome_start', label: 'Нажали «Начать»', count: 40 }, { event: 'first_lesson_done', label: 'Прошли первый урок', count: 25 }],
           hardest: [{ id: 'sd-q2', total: 12, correct: 3, share: 0.25 }], daily,
+          features: [{ event: 'shop_open', label: 'Лавка', now: 12, prev: 8, today: 2, month: 40 }, { event: 'garden_open', label: 'Сад Инфли', now: 0, prev: 0, today: 0, month: 0 }],
           totals: { lessons: { now: 30, prev: 20, today: 4 }, starts: { now: 45, prev: 40, today: 6 }, accounts: { now: 3, prev: 4, today: 0 }, newcomers: { now: 9, prev: 7, today: 1 }, accuracy: { now: 0.7, prev: 0.65 } },
           lessons: [{ id: 'sd-i1', start: 20, done: 15, finish: 0.75, minutes: 4.2 }, { id: 'sd-l1', start: 8, done: 2, finish: 0.25, minutes: 6 }],
           reports: { fresh: 2, byReason: { answer: 1, typo: 1 } } });
@@ -2818,13 +2998,19 @@ test('сообщить об ошибке: флажок на упражнении
   await expect(page.getByTestId('settings')).toBeVisible();
   // аналитика без персональных данных: в событиях нет ни логина, ни сессии
   expect(events.some((e) => e.event === 'lesson_start' && e.lesson === 'sc-i1')).toBe(true);
+  // шаг воронки «начали первый урок» — разовый, без id урока
+  expect(events.filter((e) => e.event === 'first_lesson_start')).toEqual([{ event: 'first_lesson_start' }]);
   expect(events.some((e) => e.event === 'ex_first_try_fail' && e.exercise)).toBe(true);
   events.forEach((e) => { expect(e.session).toBeUndefined(); expect(e.login).toBeUndefined(); expect(e.playerId).toBeUndefined(); });
   await page.getByTestId('prof-analytics').click();
   const an = page.getByTestId('analytics');
   await expect(an.getByTestId('analytics-funnel').locator('[data-event]')).toHaveCount(2);
   // воронка с конверсией шага: 25 из 40 — 63%
-  await expect(an.getByTestId('analytics-funnel').locator('[data-event="lesson_done"]')).toContainText('63%');
+  await expect(an.getByTestId('analytics-funnel').locator('[data-event="first_lesson_done"]')).toContainText('Прошли первый урок');
+  await expect(an.getByTestId('analytics-funnel').locator('[data-event="first_lesson_done"]')).toContainText('63%');
+  // разделы: устройств за неделю против прошлой — лавка +50%, сад не открывали
+  await expect(an.getByTestId('analytics-features').locator('[data-event="shop_open"]')).toContainText('+50%');
+  await expect(an.getByTestId('analytics-features').locator('[data-event="garden_open"]')).toContainText('—');
   await expect(an.getByTestId('analytics-hardest').locator('[data-exercise="sd-q2"]')).toContainText('25%');
   await expect(an.getByTestId('analytics-hardest').locator('[data-exercise="sd-q2"]')).toContainText('3 из 12');
   // сводка недели против прошлой: +50% уроков
@@ -2856,7 +3042,7 @@ test('вход: программа — вступительный тест, су
   await goal.getByRole('button', { name: 'Продолжить' }).click();
   const reg = await guestToRegister(page);
   await reg.getByLabel('Логин').fill('anna');
-  await reg.getByLabel('Пароль').fill('secret1');
+  await reg.getByLabel('Пароль', { exact: true }).fill('secret12');
   await reg.getByTestId('birth-year').fill('2000');
   await reg.getByTestId('consent-page').check();
   await reg.getByTestId('consent-pd').check();
@@ -2878,7 +3064,12 @@ test('вход: программа — вступительный тест, су
   await expect(page.getByTestId('quests').getByTestId('quest')).toHaveCount(3);
   await expect(page.getByTestId('goal-row')).toContainText('Цель дня: 15 минут занятий');
   await expect(page.getByTestId('month')).toBeVisible();
-  await expect(page.getByTestId('month-why')).toContainText('15 минут в день');
+  // новичок за неделю до конца месяца (по всемирному времени) испытания не получает: первое — с 1-го числа
+  const nowUtc = new Date(); const daysLeft = new Date(Date.UTC(nowUtc.getUTCFullYear(), nowUtc.getUTCMonth() + 1, 0)).getUTCDate() - nowUtc.getUTCDate() + 1;
+  if (daysLeft < 7) {
+    await expect(page.getByTestId('month')).toHaveAttribute('data-waiting', 'true');
+    await expect(page.getByTestId('month-title')).toContainText('Первое испытание — с 1 ');
+  } else await expect(page.getByTestId('month-why')).toContainText('15 минут в день');
   await openTab(page, 'path');
 
   // вступительный тест: юнит 1 — без ошибок, юнит 2 — две ошибки подряд: тест заканчивается
@@ -3027,6 +3218,10 @@ async function expectScreen(page, name, seen) {
 const clickBack = (page) => page.locator('[data-nav="back"]:not([inert] *)').filter({ visible: true }).click();
 
 test('навигация: у каждого экрана один «назад» туда, откуда пришли, и нет двух путей в одно место', async ({ page }) => {
+  /* обход всех экранов одним сеансом (в конце — проверка, что обойдены все из src/learn/screens.js) — около
+     сорока переходов; в WebKit (iPhone) это дольше минуты, и тест падал по таймауту в конце обхода
+     (smoke :3029 на webkit). Сеанс делить нельзя — в WebKit у теста тройной бюджет, в Chromium — обычный. */
+  slowInWebkit();
   await withTestFlag(page);
   // юнит 1 пройден — в конце его дороги сундук
   await page.addInitScript(() => {
@@ -3255,6 +3450,9 @@ test.describe('офлайн', () => {
     await page.goto('/', { waitUntil: 'networkidle' });
     const manifest = await page.evaluate(async () => (await fetch(document.querySelector('link[rel=manifest]').href)).json());
     expect(manifest.display).toBe('standalone');
+    // светлая тема — по умолчанию: и манифест, и строка браузера; тёмный цвет — только для тёмной системы
+    expect([manifest.theme_color, manifest.background_color]).toEqual(['#FFF8EE', '#FFF8EE']);
+    expect(await page.locator('meta[name="theme-color"]').evaluateAll((els) => els.map((e) => [e.content, e.media || '']))).toEqual([['#0B0F17', '(prefers-color-scheme: dark)'], ['#FFF8EE', '']]);
     expect(manifest.icons.some((i) => i.sizes === '512x512')).toBe(true);
     await page.evaluate(() => navigator.serviceWorker.ready);
     // со второго открытия страницей управляет service worker и складывает файлы в кэш
@@ -3427,10 +3625,12 @@ test('новые глаголы: «Откройте сами», живая мо�
   const before = Number((await shop.getByTestId('shop-balance').innerText()).match(/\d+/)[0]);
   await piggy.getByTestId('piggy-amount').fill('100');
   await expect(piggy.getByTestId('piggy-chart')).toBeVisible();
-  // ставка недели — на карточке копилки; честно про проценты («так не бывает», рядом реальные 8% годовых) — свёрнуто
+  // ставка недели — на карточке копилки; честно про проценты (годовые простыми и рост со сложным; рядом обычные для вклада 8%) — свёрнуто
   await expect(piggy.getByTestId('rate-week')).toBeVisible();
   await piggy.getByTestId('piggy-real').locator('summary').click();
-  await expect(piggy.getByTestId('piggy-real')).toContainText(/\d+% годовых — в жизни так не бывает/);
+  await expect(piggy.getByTestId('piggy-real')).toContainText(/\d+% годовых простыми, а со сложным процентом деньги за год выросли бы примерно в [\d\s ,]+ раз/);
+  await expect(piggy.getByTestId('piggy-real')).toContainText('обычные для вклада 8% годовых');
+  await expect(piggy.getByTestId('piggy-real')).not.toContainText('реальные');
   await piggy.getByTestId('piggy-put').click();
   // вклад — под ставку этой недели
   await expect(shop.getByTestId('shop-msg')).toContainText(/Срочный вклад: 100 монет под \d+(,\d)?% в день\. Через 7 дней станет 1[0-2]\d\./);
@@ -3898,7 +4098,7 @@ test('узкий телефон 320 px: Путь без бокового скр�
   await page.getByTestId('more-menu').locator('[data-tab="profile"]').click();
   await expect(page.getByTestId('learn-profile')).toBeVisible();
   await expect(page.getByTestId('bottom-nav').locator('[data-tab="more"]')).toHaveAttribute('aria-current', 'page');
-  await expect(page.getByTestId('bottom-nav').locator('[data-tab="more"]')).toContainText('Профиль');
+  await expect(page.getByTestId('bottom-nav').locator('[data-tab="more"]')).toHaveText('Ещё');
   expect(errors).toEqual([]);
 });
 
@@ -5190,6 +5390,77 @@ test('особые уроки не пропустить: после урока �
   expect(errors).toEqual([]);
 });
 
+// «Шансы урожая» — экран за флагом SHOW_ODDS (выключен по решению владельца); тест открывает его своим флагом
+test('сад: экран «Шансы урожая» (за флагом) — редкость, шанс и цена, в сумме 100%', async ({ page }) => {
+  await withTestFlag(page);
+  await page.addInitScript(() => {
+    localStorage.setItem('ems-show-odds', '1');
+    if (localStorage.getItem('ems-textbook-v1')) return;
+    localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons: { 'sc-i1': { at: Date.now() - 86400000, runs: 1, best: 90 } }, coins: { '2026-01-01': 50 } } }));
+  });
+  const { errors } = await openApp(page, '/', '{}', { tab: 'shop' });
+  await page.getByTestId('shop').getByTestId('shop-switch').locator('[data-view="garden"]').click();
+  await page.getByTestId('garden-odds-open').click();
+  const t = page.getByTestId('garden-odds-table');
+  expect(await t.locator('tbody tr').evaluateAll((rows) => rows.map((r) => r.children[1].textContent))).toEqual(['55%', '25%', '12%', '6%', '1,9%', '0,1%']);
+  await expect(t.locator('tr[data-grade="myth"]')).toContainText('×6');
+  await page.getByTestId('garden-odds-sheet').getByRole('button', { name: 'Понятно' }).click();
+  await expect(page.getByTestId('garden-odds-sheet')).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+// профиль новичка (docs/mechanics.md, «Профиль»): вместо нулей — приглашение к первому уроку; после урока — рекорды
+test('профиль: новичок без уроков — «Пройдите первый урок — здесь появятся рекорды», а не нули', async ({ page }) => {
+  await withTestFlag(page);
+  const { errors } = await openApp(page, '/', '{}', { tab: 'profile' });
+  const rec = page.getByTestId('prof-records');
+  await expect(rec).toHaveAttribute('data-empty', 'true');
+  await expect(rec).toContainText('Пройдите первый урок — здесь появятся рекорды');
+  await expect(rec).not.toContainText('0 дней подряд');
+  await expect(rec).not.toContainText('Рекорд — 0');
+  await expect(page.getByTestId('prof-coins')).toHaveCount(0);
+  await page.getByTestId('prof-first-lesson').click();
+  await expect(page.getByTestId('path')).toBeVisible();
+  // после урока — обычные рекорды: серия 1 день
+  await startLesson(page, 'sc-i1');
+  await playLesson(page);
+  await page.getByTestId('lesson-result').getByRole('button', { name: 'Дальше', exact: true }).click();
+  await openTab(page, 'profile');
+  await expect(page.getByTestId('prof-records')).not.toHaveAttribute('data-empty', 'true');
+  await expect(page.getByTestId('prof-streak')).toContainText('1');
+  expect(errors).toEqual([]);
+});
+
+/* Лавка без давления дефицитом (docs/mechanics.md, «Хеллоуин»): младше 16 — ни «−30%», ни зачёркнутой цены, ни
+   отсчётов «обновится через», «ещё N дней, потом через год»; скидка дня остаётся. Взрослому — как раньше. */
+test('лавка: младше 16 — без «−30%» и «ещё N дней, потом через год»; взрослому — со скидкой и сроком', async ({ page }) => {
+  await page.clock.setFixedTime(new Date('2026-10-31T10:00:00Z'));
+  await page.addInitScript(() => {
+    if (localStorage.getItem('ems-textbook-v1')) return;
+    const at = Date.now() - 86400000;
+    localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons: { 'sc-i1': { at, runs: 1, best: 90 }, 'sc-l1': { at, runs: 1, best: 90 } }, coins: { '2026-01-01': 50 } } }));
+  });
+  // ученик 2013 года рождения: в 2026 году ему 12 или 13
+  await page.context().addInitScript((a) => { localStorage.setItem('ems-account', JSON.stringify(a)); }, { ...ACCOUNT, birthYear: 2013, kidsMode: true });
+  const { errors } = await openApp(page, '/', '{}', { tab: 'shop' });
+  const shop = page.getByTestId('shop');
+  await expect(shop.getByTestId('shop-halloween')).toBeVisible();
+  await expect(shop.getByTestId('shop-halloween')).toContainText('Хеллоуинские вещи для Инфли. Купленное остаётся навсегда.');
+  await expect(shop).not.toContainText('потом через год');
+  await expect(shop).not.toContainText('Обновится через');
+  await expect(shop).not.toContainText('−30%');
+  await expect(shop.getByTestId('shop-deal')).toHaveCount(0);
+  await expect(shop.locator('[data-testid=shop-item][data-deal="true"] .rw-price s')).toHaveCount(0);
+  // взрослому — плашка скидки и срок сезона
+  // (скрипты страницы идут после скриптов контекста — взрослый аккаунт перекрывает детский)
+  await page.addInitScript((a) => { localStorage.setItem('ems-account', JSON.stringify(a)); }, { ...ACCOUNT, birthYear: 1990 });
+  await gotoApp(page, '/', 'shop');
+  await expect(shop.getByTestId('shop-halloween')).toContainText('потом через год');
+  await expect(shop.getByTestId('shop-deal')).toHaveCount(1);
+  await expect(shop.getByTestId('shop-tabs')).toContainText('−30%');
+  expect(errors).toEqual([]);
+});
+
 test('лавка: «Пыльная витрина» — тряпкой по стеклу, 100% — блик и 3 монеты; до трёх витрин в день', async ({ page }) => {
   await page.addInitScript(() => {
     if (localStorage.getItem('ems-textbook-v1')) return;
@@ -5288,49 +5559,60 @@ test('«Разбор графика» — остановка на дороге �
   expect(errors).toEqual([]);
 });
 
-test('«Персоналии»: портреты с Википедии — только свободные файлы Commons с подписью автора; иначе медальон', async ({ page }) => {
-  // Википедию подменяем: Роббинс — общественное достояние, Мальтус — fair use, Рикардо — локальный файл английской Википедии
-  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
-  await page.route('https://en.wikipedia.org/**', (r) => {
-    const u = r.request().url();
-    const src = u.includes('Robbins') ? 'https://upload.wikimedia.org/wikipedia/commons/a/ab/Robbins.jpg'
-      : u.includes('Malthus') ? 'https://upload.wikimedia.org/wikipedia/commons/c/cd/Malthus.jpg' : 'https://upload.wikimedia.org/wikipedia/en/e/ef/Ricardo.jpg';
-    return r.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ originalimage: { source: src } }) });
-  });
-  await page.route('https://commons.wikimedia.org/**', (r) => {
-    const free = r.request().url().includes('Robbins');
-    const name = free ? 'Robbins' : 'Malthus';
-    return r.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ query: { pages: { 7: { imageinfo: [{
-      thumburl: `https://upload.wikimedia.org/wikipedia/commons/thumb/a/ab/${name}.jpg/480px-${name}.jpg`, descriptionurl: `https://commons.wikimedia.org/wiki/File:${name}.jpg`,
-      extmetadata: { LicenseShortName: { value: free ? 'Public domain' : 'Fair use' }, Artist: { value: '<span>Elliott &amp; Fry</span>' } } }] } } } }) });
-  });
-  await page.route('https://upload.wikimedia.org/**', (r) => r.fulfill({ status: 200, contentType: 'image/png', body: png }));
-  await page.addInitScript(() => {
-    localStorage.setItem('ems-portraits-test', '1');
+test('«Персоналии»: портрет — свой файл из public/people с подписью из people/credits.csv; нет файла — медальон; Википедию не спрашиваем', async ({ page }) => {
+  // что лежит в public/people и что написано в people/credits.csv — тем же разбором, что и при сборке
+  const files = listPeoplePhotos();
+  const credits = readPhotoCredits();
+  const everyone = PEOPLE.flatMap((g) => g.people);
+  const noFile = everyone.find((p) => !files[p.id]);
+  // знакомы все группы, кроме «Людей выбора»: их проходим сейчас — потом вся галерея в профиле
+  await page.addInitScript((met) => {
     if (localStorage.getItem('ems-textbook-v1')) return;
+    // прежний кеш ответов Википедии и прежний флаг теста «сходи в Википедию» — больше ни на что не влияют
+    localStorage.setItem('ems-portraits-test', '1');
+    localStorage.setItem('ems-portraits-v1', JSON.stringify({ king: { file: 'https://upload.wikimedia.org/wikipedia/commons/a/ab/King.jpg', author: 'x', license: 'CC0', at: Date.now() } }));
     const at = Date.now() - 86400000;
-    localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons: { 'sc-i1': { at, runs: 1, best: 90 }, 'sc-l1': { at, runs: 1, best: 90 } } } }));
-  });
+    localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons: { 'sc-i1': { at, runs: 1, best: 90 }, 'sc-l1': { at, runs: 1, best: 90 } }, met } }));
+  }, Object.fromEntries(PEOPLE.filter((g) => g.id !== 'people-scarcity').map((g) => [g.id, Date.now() - 86400000])));
+  const wiki = [];
+  page.on('request', (r) => { if (/wikipedia\.org|wikimedia\.org/.test(r.url())) wiki.push(r.url()); });
   const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
   await page.locator('[data-testid=path-extra][data-extra="people"]').click();
   const pg = page.getByTestId('people');
-  await expect(pg.getByTestId('people-page')).toHaveAttribute('data-person', 'robbins');
-  await expect(pg.getByTestId('people-portrait')).toHaveAttribute('data-photo', 'true');
-  await expect(pg.getByTestId('people-portrait').locator('img')).toHaveAttribute('src', /upload\.wikimedia\.org\/wikipedia\/commons\/thumb\/a\/ab\/Robbins\.jpg/);
-  await expect(pg.getByTestId('people-credit')).toContainText('Фото: Elliott & Fry · Public domain · Wikimedia Commons');
-  await expect(pg.getByTestId('people-credit').locator('a')).toHaveAttribute('href', 'https://commons.wikimedia.org/wiki/File:Robbins.jpg');
-  // ответ запомнен устройством — без повторного запроса к Википедии
-  expect(await page.evaluate(() => Object.keys(JSON.parse(localStorage.getItem('ems-portraits-v1') || '{}')))).toContain('robbins');
-  await pg.locator('[data-testid=people-opt][data-ok="true"]').click();
-  await page.getByTestId('people-next').click();
-  // Мальтус: fair use — медальон и без подписи
-  await expect(pg.getByTestId('people-page')).toHaveAttribute('data-person', 'malthus');
-  await expect(pg.getByTestId('people-portrait')).toHaveAttribute('data-photo', 'false');
-  await expect(pg.getByTestId('people-credit')).toHaveCount(0);
-  await pg.locator('[data-testid=people-opt][data-ok="true"]').click();
-  await page.getByTestId('people-next').click();
-  // Рикардо: файл не на Commons — медальон
-  await expect(pg.getByTestId('people-page')).toHaveAttribute('data-person', 'ricardo');
-  await expect(pg.getByTestId('people-portrait')).toHaveAttribute('data-photo', 'false');
+  for (const p of PEOPLE.find((g) => g.id === 'people-scarcity').people) {
+    await expect(pg.getByTestId('people-page')).toHaveAttribute('data-person', p.id);
+    const pic = pg.getByTestId('people-portrait');
+    if (files[p.id]) {
+      // фото — со своего адреса; подпись — автор, лицензия и ссылка из credits.csv
+      await expect(pic).toHaveAttribute('data-photo', 'true');
+      await expect(pic.locator('img')).toHaveAttribute('src', `/people/${files[p.id]}`);
+      const c = credits[p.id];
+      if (c) {
+        const credit = pg.getByTestId('people-credit');
+        if (c.author) await expect(credit).toContainText(c.author);
+        if (c.license) await expect(credit).toContainText(c.license);
+        if (c.source) await expect(credit.locator('a')).toHaveAttribute('href', c.source);
+      } else await expect(pg.getByTestId('people-credit')).toHaveCount(0);
+    } else {
+      await expect(pic).toHaveAttribute('data-photo', 'false');
+      await expect(pg.getByTestId('people-credit')).toHaveCount(0);
+    }
+    await pg.locator('[data-testid=people-opt][data-ok="true"]').click();
+    await page.getByTestId('people-next').click();
+  }
+  await page.getByTestId('people-finish').click();
+  // галерея профиля: у кого есть файл — фото, у кого нет — медальон с инициалами
+  await openTab(page, 'profile');
+  const gallery = page.getByTestId('prof-gallery');
+  await gallery.scrollIntoViewIfNeeded();
+  await expect(gallery.locator('[data-testid=gallery-person][data-met="true"]')).toHaveCount(everyone.length);
+  await expect(gallery.locator('[data-testid=people-portrait][data-photo="true"]')).toHaveCount(everyone.filter((p) => files[p.id]).length);
+  if (noFile) {
+    const card = gallery.locator(`[data-testid=gallery-person][data-person="${noFile.id}"]`);
+    await expect(card.getByTestId('people-portrait')).toHaveAttribute('data-photo', 'false');
+    await expect(card.getByRole('img', { name: `${noFile.name} — медальон с инициалами` })).toHaveCount(1);
+  }
+  expect(wiki, 'портреты не берутся с Википедии').toEqual([]);
+  expect(await page.evaluate(() => localStorage.getItem('ems-portraits-v1')), 'старый кеш Википедии стёрт').toBeNull();
   expect(errors).toEqual([]);
 });

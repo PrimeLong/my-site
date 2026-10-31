@@ -71,6 +71,10 @@ function parseLink(inner) {
   return { t: 'link', kind, target, params, label };
 }
 
+/* Типографика текста (docs/world.md, «Правила», п. 12): неразрывный пробел после коротких предлогов и союзов и
+   перед тире. Разбор хранит текст как написан, неразрывные пробелы ставит рендер — Inline в src/textbook.jsx. */
+export { typo } from '../lib/typo.js';
+
 export function parseInline(src) {
   const out = [];
   let buf = '';

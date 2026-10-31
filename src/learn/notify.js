@@ -208,7 +208,7 @@ export function notificationsOf(learn, now = Date.now(), opts = {}) {
       add({ id: `month-done:${m.month}`, kind: 'path', icon: 'calendar', tone: '#9A6300', at: when, go: 'tasks', toast: true,
         title: 'Испытание месяца выполнено', text: `Марка «${m.name}» — в альбоме профиля.` });
     }
-  } else if (started && m.daysLeft <= 5) {
+  } else if (started && !m.waiting && m.daysLeft <= 5) {
     add({ id: `month:${m.month}:${m.daysLeft <= 2 ? 'last' : 'soon'}`, kind: 'path', icon: 'calendar', tone: '#9A6300', at: at(day, 8), go: 'tasks',
       title: m.daysLeft <= 1 ? 'Испытание месяца: последний день' : `Испытание месяца: ${m.daysLeft} ${plural(m.daysLeft, 'день', 'дня', 'дней')}`, text: `${m.title} — осталось ${m.need} ${m.unit}.` });
   }

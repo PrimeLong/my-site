@@ -2,7 +2,7 @@
    вместе с KaTeX и текстами глав — в меню и в партии этот код не нужен.
    Тексты — src/textbook/chapters/*.md (разметка — src/textbook/markdown.js), порядок и
    ссылки на настоящие учебники — src/textbook/toc.js, прогресс — src/textbook/progress.js. */
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import katex from 'katex';
 import 'katex/dist/katex.min.css';
 import { ArrowLeft, BookOpenText, BookOpen, Calculator, Gamepad2, Play, Check, RotateCcw, ChevronLeft, ChevronRight, Info, Target, ListChecks, TriangleAlert, Brain, ChevronDown, ChevronUp, ArrowDown, ArrowUp, Lightbulb, X, Lock } from 'lucide-react';
@@ -23,7 +23,7 @@ import { sectionDone, sectionProgress, dueItems, chapterRead, chapterShare } fro
 import { COIN, bookFirstTry, earn } from './learn/rewards.js';
 import { emptyLearn } from './textbook/learn-state.js';
 import { CHARTS, chartDefaults, checkGraph, captionVars } from './textbook/charts.js';
-import { actionOf, parseInline, checkAnswer, matchTraps, LEVELS } from './textbook/markdown.js';
+import { actionOf, parseInline, checkAnswer, matchTraps, LEVELS, typo } from './textbook/markdown.js';
 import { loadProgress, saveProgress, latestProgress, PROGRESS_EVENT, markRead, unmarkRead, recordAnswer, scheduleAfter, reviewQueue, chapterScore, setLast, daysUntil, confidenceStats, addStudyMinute } from './textbook/progress.js';
 import { afterBookAnswer, dropFromReview } from './textbook/review-sync.js';
 import { EXAMS, examSet, examTemplates, examResult, mixedSet, mixedChapters, weakTopics, journalWeeks, journalSummary } from './textbook/check.js';
@@ -35,6 +35,7 @@ import { markTerms } from './learn/terms.js';
 import { StatTile, Meter, DayBars, STATS_CSS } from './learn-stats.jsx';
 import { openBookLevels } from './learn/grade.js';
 import { unlockBypass } from './learn-unlock.jsx';
+import { trackDaily } from './lib/client.js';
 
 const LEVER_BY_ID = Object.fromEntries(LEVERS.map((l) => [l.id, l]));
 const DRILL_BY_ID = Object.fromEntries(DRILLS.map((d) => [d.id, d]));
@@ -422,7 +423,7 @@ function Link({ n, ctx }) {
 
 export function Inline({ nodes, ctx }) {
   return nodes.map((n, i) => {
-    if (n.t === 'text') return <React.Fragment key={i}>{n.v}</React.Fragment>;
+    if (n.t === 'text') return <React.Fragment key={i}>{typo(n.v)}</React.Fragment>;
     if (n.t === 'math') return <Tex key={i} tex={n.v} />;
     if (n.t === 'b') return <b key={i}><Inline nodes={n.c} ctx={ctx} /></b>;
     if (n.t === 'i') return <i key={i}><Inline nodes={n.c} ctx={ctx} /></i>;
@@ -2314,6 +2315,8 @@ function ToTop({ withNav = false }) {
 }
 
 export function TextbookScreen({ onBack, onExit = null, resume = false, startPage = null, backLabel, onOpenLab, onStartDrill, onOpenTycoon, onOpenScenario, reportSlot = null, reportFlag = null, asTab = false, homeTick = 0 }) {
+  // аналитика: раздел открыт — не чаще раза в день с устройства (docs/mechanics.md, «Аналитика»)
+  useEffect(() => { trackDaily('textbook_open'); }, []);
   const [progress, setProgress] = useState(loadProgress);
   const [page, setPage] = useState(() => startPage || (resume && progress.last ? progress.last : { kind: 'toc' }));
   const [stack, setStack] = useState([]);

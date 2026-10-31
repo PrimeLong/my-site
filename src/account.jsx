@@ -2,7 +2,8 @@
    в шапке меню. Вынесено из MacroSimulator.jsx; общие вещи (тема, звук, playerId
    устройства и синхронизация прогресса) — оттуда же, те же объекты. */
 import React, { useState } from 'react';
-import { Star, Crown, Landmark, Coins, Shield, Anchor, Factory, Wheat, User, LogIn, LogOut, KeyRound, X, Copy, Check, AlertTriangle, ShieldAlert } from 'lucide-react';
+import { Star, Crown, Landmark, Coins, Shield, Anchor, Factory, Wheat, User, LogIn, LogOut, KeyRound, X, Copy, Check, AlertTriangle, ShieldAlert, Eye, EyeOff, Download } from 'lucide-react';
+import { PASSWORD_MIN, LOGIN_PASSWORD_MIN, PASSWORD_HINT } from './lib/password.js';
 import {
   accountRegister, accountLogin, accountMe, accountUpdate, accountPassword, accountLogout, accountRecover, accountRecoveryNew, reportFilter, accountExport, accountDelete,
 } from './lib/client.js';
@@ -45,7 +46,8 @@ export const forgetAccount = () => saveAccount(null);
 export const accountKidsMode = (a = loadAccount()) => !a || a.kidsMode !== false;
 /* renameBy — до какого момента сменить ник, нарушающий правила (иначе блок), blocked — срок вышел,
    nameNextAt — когда ник можно сменить снова (раз в 30 дней). Всё считает сервер (api/_lib/accounts.js). */
-const fromProfile = (profile) => ({ name: profile.name, emblem: profile.emblem, kidsMode: profile.kidsMode !== false, leaguePublic: profile.leaguePublic === true,
+// год рождения — на устройстве тоже: по нему лавка решает, показывать ли скидки и отсчёты (src/lib/age.js, noScarcity)
+const fromProfile = (profile) => ({ name: profile.name, emblem: profile.emblem, kidsMode: profile.kidsMode !== false, leaguePublic: profile.leaguePublic === true, birthYear: profile.birthYear || null,
   renameBy: profile.renameBy || null, blocked: profile.blocked === true, nameNextAt: profile.nameNextAt || 0 });
 // при запуске: подтянуть с сервера имя, значок и детский режим
 export const refreshAccount = async () => {
@@ -152,12 +154,54 @@ export function StorageWarning() {
   );
 }
 
+/* Поле пароля с кнопкой «Показать пароль» (docs/mechanics.md, «Регистрация и вход»): на телефоне пароль легко
+   набрать с ошибкой. Новый пароль — не короче PASSWORD_MIN (src/lib/password.js); для входа подходят и старые. */
+export const passwordLongEnough = (password, mode) => String(password || '').length >= (mode === 'login' ? LOGIN_PASSWORD_MIN : PASSWORD_MIN);
+export function PasswordField({ label, value, onChange, mode = 'register', fieldStyle = null }) {
+  const [shown, setShown] = useState(false);
+  const id = React.useId();
+  // кнопка — рядом с полем, а не внутри подписи: у поля своё имя («Пароль»), у кнопки своё («Показать пароль»)
+  return (
+    <div className="ds-label">
+      <label htmlFor={id}>{label}</label>
+      <div style={{ display: 'flex', gap: 6, alignItems: 'stretch', marginTop: 6 }}>
+        <input id={id} className="ds-field" type={shown ? 'text' : 'password'} value={value} onChange={(e) => onChange(e.target.value)} data-testid="password"
+          autoComplete={mode === 'login' ? 'current-password' : 'new-password'} autoCapitalize="none" spellCheck={false}
+          placeholder={mode === 'login' ? '' : PASSWORD_HINT} style={{ flex: 1, minWidth: 0, ...fieldStyle }} />
+        <button type="button" className="ds-btn ds-btn--secondary ds-btn--small" data-testid="password-show" aria-pressed={shown}
+          aria-label={shown ? 'Скрыть пароль' : 'Показать пароль'} title={shown ? 'Скрыть пароль' : 'Показать пароль'}
+          onClick={() => setShown((v) => !v)} style={{ flexShrink: 0, minWidth: 48 }}>
+          {shown ? <EyeOff size={18} aria-hidden="true" /> : <Eye size={18} aria-hidden="true" />}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /* Код восстановления показываем один раз: почты у игры нет, и без кода забытый
-   пароль не вернуть. Кнопка «Я сохранил» — нарочно отдельное действие. */
-export function RecoveryCodeView({ code, onDone, doneLabel = 'Я сохранил код' }) {
+   пароль не вернуть. «Скопировать код», «Скачать код .txt» и отдельным действием — «Я сохранил код». */
+export const recoveryFileName = (login) => `inflatia-kod-${String(login || 'akkaunt').replace(/[^a-z0-9_]/gi, '') || 'akkaunt'}.txt`;
+export const recoveryFileText = (code, login) => [
+  'Инфляция — код восстановления',
+  login ? `Логин: ${login}` : null,
+  `Код: ${code}`,
+  '',
+  'Если забудете пароль: «Вход» → «Забыли пароль?» → логин, этот код и новый пароль.',
+  'Храните код вне игры и никому не показывайте.',
+].filter((x) => x !== null).join('\n');
+export function RecoveryCodeView({ code, onDone, doneLabel = 'Я сохранил код', login = null }) {
   const [copied, setCopied] = useState(false);
   const copy = () => {
     try { navigator.clipboard.writeText(code); setCopied(true); setTimeout(() => setCopied(false), 1600); } catch { /* код виден на экране */ }
+  };
+  const download = () => {
+    try {
+      const url = URL.createObjectURL(new Blob([`${recoveryFileText(code, login)}\n`], { type: 'text/plain;charset=utf-8' }));
+      const a = document.createElement('a');
+      a.href = url; a.download = recoveryFileName(login);
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch { /* код виден на экране */ }
   };
   return (
     <div>
@@ -167,13 +211,16 @@ export function RecoveryCodeView({ code, onDone, doneLabel = 'Я сохрани�
       </div>
       <div className="ds-num" data-testid="recovery-code" style={{ fontSize: 21, fontWeight: 700, letterSpacing: '0.12em', textAlign: 'center', padding: '12px 8px',
         background: 'var(--ds-card2)', border: '1.5px dashed var(--u-ink)', color: 'var(--ds-ink)', marginBottom: 12 }}>{code}</div>
-      <div style={{ display: 'flex', gap: 6 }}>
-        <button type="button" className="ds-btn ds-btn--secondary ds-btn--small"  onClick={copy}>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+        <button type="button" className="ds-btn ds-btn--secondary ds-btn--small" data-testid="recovery-copy" onClick={copy} style={{ flex: 1 }}>
           {copied ? <Check size={12} style={{ verticalAlign: -2, marginRight: 5 }} /> : <Copy size={12} style={{ verticalAlign: -2, marginRight: 5 }} />}
-          {copied ? 'Скопировано' : 'Копировать'}
+          {copied ? 'Скопировано' : 'Скопировать код'}
         </button>
-        <button type="button" className="ds-btn" style={{ flex: 1, }} onClick={onDone}>{doneLabel}</button>
+        <button type="button" className="ds-btn ds-btn--secondary ds-btn--small" data-testid="recovery-download" onClick={download} style={{ flex: 1 }}>
+          <Download size={12} style={{ verticalAlign: -2, marginRight: 5 }} />Скачать код .txt
+        </button>
       </div>
+      <button type="button" className="ds-btn" style={{ width: '100%' }} data-testid="recovery-done" onClick={onDone}>{doneLabel}</button>
     </div>
   );
 }
@@ -309,7 +356,7 @@ export function AuthModal({ onClose, onDone, reason }) {
       </ModalShell>
     );
   }
-  const canSubmit = login.trim().length >= 3 && password.length >= 6 && (tab !== 'recover' || code.replace(/[^A-Za-z0-9]/g, '').length >= 12)
+  const canSubmit = login.trim().length >= 3 && passwordLongEnough(password, tab) && (tab !== 'recover' || code.replace(/[^A-Za-z0-9]/g, '').length >= 12)
     && (tab !== 'register' || (validBirthYear(birthYearOf(year)) && consents.page && consents.pd && (!parentStep || consentsReady(consents, birthYearOf(year)))));
   return (
     <ModalShell title={titles[tab]} label="Профиль игрока" icon={User} onClose={onClose}>
@@ -339,11 +386,7 @@ export function AuthModal({ onClose, onDone, reason }) {
               className="ds-field ds-num" style={{ marginTop: 5, letterSpacing: '0.08em' }} />
           </label>
         )}
-        <label className="ds-label">{tab === 'recover' ? 'Новый пароль' : 'Пароль'}
-          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
-            autoComplete={tab === 'login' ? 'current-password' : 'new-password'} placeholder="не короче 6 символов"
-            className="ds-field" style={{ marginTop: 5 }} />
-        </label>
+        <PasswordField label={tab === 'recover' ? 'Новый пароль' : 'Пароль'} value={password} onChange={setPassword} mode={tab} />
         {tab === 'register' && (
           <label className="ds-label">Имя в игре
             <input value={name} onChange={(e) => setName(e.target.value)} placeholder="как вас видят партнёры" maxLength={24}
@@ -576,8 +619,8 @@ export function ProfileModal({ onClose, onSwitched }) {
       {panel === 'password' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
           <input type="password" placeholder="Старый пароль" aria-label="Старый пароль" value={oldPw} onChange={(e) => setOldPw(e.target.value)} autoComplete="current-password" className="ds-field" />
-          <input type="password" placeholder="Новый пароль" aria-label="Новый пароль" value={newPw} onChange={(e) => setNewPw(e.target.value)} autoComplete="new-password" className="ds-field" />
-          <button className="ds-btn ds-btn--secondary ds-btn--small" disabled={busy || newPw.length < 6 || !oldPw}  onClick={changePw}>Сменить пароль</button>
+          <input type="password" placeholder={`Новый пароль, ${PASSWORD_HINT}`} aria-label="Новый пароль" value={newPw} onChange={(e) => setNewPw(e.target.value)} autoComplete="new-password" className="ds-field" />
+          <button className="ds-btn ds-btn--secondary ds-btn--small" disabled={busy || newPw.length < PASSWORD_MIN || !oldPw}  onClick={changePw}>Сменить пароль</button>
         </div>
       )}
       {panel === 'recovery' && (

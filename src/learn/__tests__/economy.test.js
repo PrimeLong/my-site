@@ -2,7 +2,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   COIN, OUTFITS, FREEZE, BOOST, ACHIEVEMENTS, RATE_MAX, PATH_LESSONS, courseIncome, incomePerLesson, forgone,
-  rateOn, PIGGY, PIGGY_YEARLY, REAL_RATE, realCurve,
+  rateOn, PIGGY, PIGGY_YEARLY, REAL_RATE, realCurve, yearGrowth,
 } from '../rewards.js';
 import { XP, lessonXp, addDays } from '../../textbook/learn-state.js';
 import { LESSONS } from '../course.js';
@@ -57,9 +57,13 @@ describe('опыт и монеты', () => {
 });
 
 describe('копилка: честно про проценты', () => {
-  it('2% в день — это 730% годовых; реальные 8% годовых — 1000 крон за 10 лет чуть больше чем вдвое', () => {
+  it('2% в день — это 730% годовых простыми и рост примерно в 1400 раз со сложным; обычные для вклада 8% — 1000 крон за 10 лет чуть больше чем вдвое', () => {
     expect(PIGGY.rate).toBe(0.02);
     expect(PIGGY_YEARLY).toBe(730);
+    // копилка начисляет сложный процент: 1,02^365 ≈ 1377 — «примерно в 1400 раз»
+    expect(yearGrowth(0.02)).toBe(1400);
+    expect(yearGrowth(0.015)).toBe(230);
+    expect(yearGrowth(0.005)).toBe(6.2);
     expect(REAL_RATE).toBe(0.08);
     const c = realCurve();
     expect(c).toHaveLength(11);

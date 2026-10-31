@@ -11,7 +11,7 @@ const acc = (body) => new Promise((resolve) => {
 let n = 0;
 const reg = async (p) => {
   const login = `${p}fr${n++}`;
-  const r = await acc({ action: 'register', consentPage: true, consentPd: true, birthYear: 1990, login, password: 'secret1', name: p });
+  const r = await acc({ action: 'register', consentPage: true, consentPd: true, birthYear: 1990, login, password: 'secret12', name: p });
   return { login, token: r.data.token };
 };
 

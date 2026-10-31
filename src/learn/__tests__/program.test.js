@@ -418,12 +418,15 @@ describe('правки: печать «Без помарок», испытани
       expect(c.target, `${day} ${c.id}`).toBeLessThanOrEqual(CEIL[c.id]);
     }
     const VOLUME = ['minutes', 'lessons', 'perfect', 'xp'];
-    const late = setProfile(emptyLearn(), { minutes: 10 }, at('2026-09-29'));
-    const m = monthChallenge(late, at('2026-09-29'));
-    expect(m.daysLeft).toBe(2);
-    // пришёл в конце месяца — не испытание постоянства на два дня, а объёмное, с планкой не меньше половины
+    // пришёл за 2 дня до конца месяца — испытания нет, первое — с 1-го числа (src/learn/__tests__/month.test.js)
+    expect(monthChallenge(setProfile(emptyLearn(), { minutes: 10 }, at('2026-09-29')), at('2026-09-29')).waiting).toBe(true);
+    // пришёл за 10 дней — не испытание постоянства на десять дней, а объёмное, пропорционально оставшимся дням
+    const late = setProfile(emptyLearn(), { minutes: 10 }, at('2026-09-21'));
+    const m = monthChallenge(late, at('2026-09-21'));
+    expect(m.daysLeft).toBe(10);
     expect(VOLUME).toContain(m.id);
-    expect(m.target).toBeGreaterThanOrEqual(FLOOR[m.id] / 2);
+    expect(m.target).toBeGreaterThanOrEqual(Math.floor((FLOOR[m.id] * 10) / 30));
+    expect(m.target).toBeLessThan(FLOOR[m.id]);
     expect(m.need).toBe(m.target - m.have);
     expect(m.title).toContain(String(m.target));
     expect(m.why).toContain('10 минут');
@@ -457,7 +460,7 @@ describe('правки: печать «Без помарок», испытани
     const s = { ...setProfile(emptyLearn(), { minutes: 10 }, at('2026-07-01')), monthPlan: { '2026-10': { target: 8, why: 'старое', at: at('2026-10-01') } } };
     const m = monthChallenge(s, at('2026-10-10'));
     expect(m.target).toBeGreaterThan(8);
-    expect(fixMonth(s, at('2026-10-10')).monthPlan['2026-10']).toMatchObject({ v: 3, kind: m.id, target: m.target });
+    expect(fixMonth(s, at('2026-10-10')).monthPlan['2026-10']).toMatchObject({ v: 4, kind: m.id, target: m.target });
     const got = { ...s, claimed: { 'm:2026-10': at('2026-10-05') } };
     expect(monthChallenge(got, at('2026-10-10')).target).toBe(8);
   });
