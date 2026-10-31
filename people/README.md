@@ -5,7 +5,7 @@
 `public/people/` под именем из таблицы. После сборки на Vercel портрет появится сам —
 сайт отдаёт его со своего адреса, поэтому Википедия ученику не нужна.
 
-Сейчас лежит 29 из 30. Этот файл пишет команда `npm run people:export`.
+Сейчас лежит 27 из 30. Этот файл пишет команда `npm run people:export`.
 
 ## Как добавить портрет
 
@@ -31,16 +31,19 @@
 
 ## Подпись: автор и лицензия
 
-Для «CC BY» и «CC BY-SA» подпись обязательна. Откройте [`credits.csv`](credits.csv) и заполните
-строку человека: `id;автор;лицензия;ссылка`. Например:
+Подпись нужна **у каждого фото** — и для «Public domain» тоже: без автора, лицензии и ссылки фото не
+проходит проверку (`npm test`). Откройте [`credits.csv`](credits.csv) и заполните строку человека:
+`id;автор;лицензия;ссылка;заметка`. Например:
 
 ```
-robbins;Имя Фамилия автора;CC BY-SA 4.0;https://commons.wikimedia.org/wiki/File:Имя_файла.jpg
+robbins;Имя Фамилия автора;CC BY-SA 4.0;https://commons.wikimedia.org/wiki/File:Имя_файла.jpg;
 ```
 
-Автор и лицензия — со страницы файла на Commons, ссылка — адрес этой страницы. Под портретом
-появится «Фото: автор · лицензия · Wikimedia Commons». Для «Public domain» подпись можно не
-заполнять.
+Автор и лицензия — со страницы файла на Commons, ссылка — адрес этой страницы (файла на Commons нет —
+адрес источника). Под портретом появится «Фото: автор · лицензия · Wikimedia Commons». Заметка — для
+себя (на экран не идёт): откуда фото, что ещё проверить. Точку с запятой внутри полей не ставьте — это
+разделитель. Лицензию найти нельзя или фото не то, что на странице, — не кладите его: пусть будет
+медальон.
 
 ## Кто есть
 
@@ -74,5 +77,5 @@ robbins;Имя Фамилия автора;CC BY-SA 4.0;https://commons.wikimedi
 | 26 | Джон Д. Рокфеллер | 1839–1937 | Люди власти рынка | `rockefeller.jpg` | [статья](https://en.wikipedia.org/wiki/John_D._Rockefeller) | ✓ rockefeller.jpg, подпись есть |
 | 27 | Йозеф Шумпетер | 1883–1950 | Люди власти рынка | `schumpeter.jpg` | [статья](https://en.wikipedia.org/wiki/Joseph_Schumpeter) | ✓ schumpeter.jpg, подпись есть |
 | 28 | Эдвард Чемберлин | 1899–1967 | Люди бренда | `chamberlin.jpg` | [статья](https://en.wikipedia.org/wiki/Edward_Chamberlin) | ✓ chamberlin.jpg, подпись есть |
-| 29 | Джоан Робинсон | 1903–1983 | Люди бренда | `robinson.jpg` | [статья](https://en.wikipedia.org/wiki/Joan_Robinson) | ✓ robinson.jpg, подпись есть |
-| 30 | Гарольд Хотеллинг | 1895–1973 | Люди бренда | `hotelling.jpg` | [статья](https://en.wikipedia.org/wiki/Harold_Hotelling) | ✓ hotelling.jpg |
+| 29 | Джоан Робинсон | 1903–1983 | Люди бренда | `robinson.jpg` | [статья](https://en.wikipedia.org/wiki/Joan_Robinson) | — |
+| 30 | Гарольд Хотеллинг | 1895–1973 | Люди бренда | `hotelling.jpg` | [статья](https://en.wikipedia.org/wiki/Harold_Hotelling) | — |

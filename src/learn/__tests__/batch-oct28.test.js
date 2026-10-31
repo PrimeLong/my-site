@@ -189,6 +189,25 @@ describe('портреты «Персоналий» руками: файл в pu
       ostrom: { author: 'Prolineserver', license: 'CC BY-SA 3.0', source: '' },
     });
   });
+  it('у каждого фото в public/people — автор, лицензия и https-ссылка в credits.csv; заметка (5-й столбец) на экран не идёт', async () => {
+    const fs = await import('node:fs');
+    const { listPeoplePhotos, parseCredits, readPhotoCredits } = await import('../../../scripts/voice-files-plugin.js');
+    expect(parseCredits('robbins;LSE Library;No known copyright restrictions;https://example.org/x;для владельца'))
+      .toEqual({ robbins: { author: 'LSE Library', license: 'No known copyright restrictions', source: 'https://example.org/x' } });
+    const files = listPeoplePhotos();
+    const credits = readPhotoCredits();
+    expect(Object.keys(files).length).toBeGreaterThan(0);
+    Object.keys(files).forEach((id) => {
+      const c = credits[id];
+      expect(c, `${id}: нет подписи`).toBeTruthy();
+      expect(c.author, `${id}: автор`).not.toBe('');
+      expect(c.license, `${id}: лицензия`).not.toBe('');
+      expect(c.source, `${id}: ссылка`).toMatch(/^https:\/\//);
+    });
+    // подпись без файла — не подпись: удалённое фото не оставляет чужой строки
+    Object.keys(credits).forEach((id) => expect(files[id], `${id}: подпись есть, файла нет`).toBeTruthy());
+    expect(fs.existsSync(new URL('../../../public/people/robinson.jpg', import.meta.url))).toBe(false);
+  });
   it('у каждого человека в people/credits.csv есть строка, имена файлов в инструкции — его id', async () => {
     const fs = await import('node:fs');
     const { PEOPLE } = await import('../people.js');
