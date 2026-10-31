@@ -5390,6 +5390,28 @@ test('сад: экран «Шансы урожая» (за флагом) — р�
   expect(errors).toEqual([]);
 });
 
+// профиль новичка (docs/mechanics.md, «Профиль»): вместо нулей — приглашение к первому уроку; после урока — рекорды
+test('профиль: новичок без уроков — «Пройдите первый урок — здесь появятся рекорды», а не нули', async ({ page }) => {
+  await withTestFlag(page);
+  const { errors } = await openApp(page, '/', '{}', { tab: 'profile' });
+  const rec = page.getByTestId('prof-records');
+  await expect(rec).toHaveAttribute('data-empty', 'true');
+  await expect(rec).toContainText('Пройдите первый урок — здесь появятся рекорды');
+  await expect(rec).not.toContainText('0 дней подряд');
+  await expect(rec).not.toContainText('Рекорд — 0');
+  await expect(page.getByTestId('prof-coins')).toHaveCount(0);
+  await page.getByTestId('prof-first-lesson').click();
+  await expect(page.getByTestId('path')).toBeVisible();
+  // после урока — обычные рекорды: серия 1 день
+  await startLesson(page, 'sc-i1');
+  await playLesson(page);
+  await page.getByTestId('lesson-result').getByRole('button', { name: 'Дальше', exact: true }).click();
+  await openTab(page, 'profile');
+  await expect(page.getByTestId('prof-records')).not.toHaveAttribute('data-empty', 'true');
+  await expect(page.getByTestId('prof-streak')).toContainText('1');
+  expect(errors).toEqual([]);
+});
+
 /* Лавка без давления дефицитом (docs/mechanics.md, «Хеллоуин»): младше 16 — ни «−30%», ни зачёркнутой цены, ни
    отсчётов «обновится через», «ещё N дней, потом через год»; скидка дня остаётся. Взрослому — как раньше. */
 test('лавка: младше 16 — без «−30%» и «ещё N дней, потом через год»; взрослому — со скидкой и сроком', async ({ page }) => {

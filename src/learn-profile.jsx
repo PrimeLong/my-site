@@ -323,7 +323,7 @@ function FriendsEntry({ friends, guest, onOpen }) {
 }
 
 const Library = React.lazy(() => import('./learn-shelf.jsx'));
-export function ProfileView({ learn, update = null, onOpenBook, onSettings, onNotify, unread = 0, friends = null, guest = false, onFriends = () => {} }) {
+export function ProfileView({ learn, update = null, onOpenBook, onSettings, onNotify, unread = 0, friends = null, guest = false, onFriends = () => {}, onPath = null }) {
   const st = streak(learn); const stats = learnStats(learn);
   const bw = bestWeek(learn);
   const [page, setPage] = useState(null); // null | 'album' | 'seal' | 'month'
@@ -350,6 +350,16 @@ export function ProfileView({ learn, update = null, onOpenBook, onSettings, onNo
         </div>
       </div>
       <FriendsEntry friends={friends} guest={guest} onOpen={onFriends} />
+      {/* новичок: ни урока, ни опыта, ни серии — не «0 дней · рекорд 0 · 0 опыта», а приглашение (docs/mechanics.md, «Профиль») */}
+      {!stats.totalXp && !st.days && !longestStreak(learn) && !Object.keys(learn.lessons || {}).length ? (
+        <Card style={{ margin: '12px 0', textAlign: 'center' }} data-testid="prof-records" data-empty="true">
+          <div className="ds-h3" style={{ marginBottom: 6 }}>Рекорды</div>
+          <Mascot mood="hello" size={64} />
+          <div style={{ fontWeight: 700, fontSize: 16.5, margin: '8px 0 4px' }} data-testid="prof-records-empty">Пройдите первый урок — здесь появятся рекорды</div>
+          <div className="ds-sub" style={{ fontSize: 14 }}>Серия дней, опыт и лучшая неделя считаются с первого урока.</div>
+          {onPath && <Button style={{ marginTop: 12 }} data-testid="prof-first-lesson" onClick={() => { Audio.play('click'); onPath(); }}>К первому уроку</Button>}
+        </Card>
+      ) : (
       <Card style={{ margin: '12px 0' }} data-testid="prof-records">
         <div className="ds-h3" style={{ marginBottom: 2 }}>Рекорды</div>
         <StatHero icon={Flame} tone="#D9822B" value={st.days} testid="prof-streak" label={`${plural(st.days, 'день', 'дня', 'дней')} подряд — серия сейчас`}
@@ -363,6 +373,7 @@ export function ProfileView({ learn, update = null, onOpenBook, onSettings, onNo
         </div>
         <div className="ds-faint" style={{ fontSize: 13, marginTop: 8 }}>Один пропущенный день в неделю серию не обнуляет, второй — прощает «Страховка серии» из лавки.</div>
       </Card>
+      )}
 
       <Shelf kind="album" items={album} testid="prof-album" itemTestid="album-stamp" onOpen={setOpen} onAll={() => setPage('album')}>
         <div className="ds-faint" style={{ fontSize: 13, marginTop: 8 }}>Каждый пройденный урок — печать в паспорте: их уже {stampsDone}.</div>
