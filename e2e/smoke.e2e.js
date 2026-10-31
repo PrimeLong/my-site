@@ -1212,8 +1212,14 @@ test('нижняя панель: «Мир» без учебных карточе
   await expect(page.getByTestId('menu-study')).toHaveCount(0);
   await expect(page.locator('[data-mode="textbook"]')).toHaveCount(0);
   await expect(page.locator('[data-mode="lab"]')).toBeVisible();
-  // Мир открыт — «⋯» подписана его именем
-  await expect(page.getByTestId('bottom-nav').locator('[data-tab]')).toHaveText(['Путь', 'Учебник', 'Лиги', 'Лавка', 'Мир']);
+  // Мир открыт — подпись пятой вкладки не меняется: «Ещё»; открытый пункт подсвечен в меню
+  await expect(page.getByTestId('bottom-nav').locator('[data-tab]')).toHaveText(['Путь', 'Учебник', 'Лиги', 'Лавка', 'Ещё']);
+  await page.getByTestId('bottom-nav').locator('[data-tab="more"]').click();
+  await expect(page.getByTestId('more-menu').locator('[data-tab="world"]')).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByTestId('more-menu').locator('[data-tab="world"]')).toContainText('сейчас открыто');
+  await expect(page.getByTestId('more-menu').locator('[data-tab="profile"]')).not.toHaveAttribute('aria-current', 'page');
+  await page.getByTestId('bottom-nav').locator('[data-tab="more"]').click();
+  await expect(page.getByTestId('more-menu')).toHaveCount(0);
   await openTasks(page);
   await expect(page.getByTestId('practice-today')).toHaveCount(0);
   // повторять пока нечего — кнопка выключена
@@ -4042,7 +4048,7 @@ test('узкий телефон 320 px: Путь без бокового скр�
   await page.getByTestId('more-menu').locator('[data-tab="profile"]').click();
   await expect(page.getByTestId('learn-profile')).toBeVisible();
   await expect(page.getByTestId('bottom-nav').locator('[data-tab="more"]')).toHaveAttribute('aria-current', 'page');
-  await expect(page.getByTestId('bottom-nav').locator('[data-tab="more"]')).toContainText('Профиль');
+  await expect(page.getByTestId('bottom-nav').locator('[data-tab="more"]')).toHaveText('Ещё');
   expect(errors).toEqual([]);
 });
 

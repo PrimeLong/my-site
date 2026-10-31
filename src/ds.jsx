@@ -166,7 +166,9 @@ export const DS_CSS = `
     background: var(--ds-card); border: 2px solid var(--ds-rule); border-radius: 16px; box-shadow: 0 12px 30px rgba(60, 30, 0, .18); }
   .ds-nav .ds-more button { flex: none; flex-direction: row; justify-content: flex-start; gap: 12px; padding: 12px 14px; min-height: 48px; border-radius: 12px; color: var(--ds-ink); font: 700 15.5px var(--ds-sans); letter-spacing: 0; cursor: pointer; }
   .ds-nav .ds-more button:hover, .ds-nav .ds-more button:focus-visible { background: var(--ds-card2); }
-  .ds-nav .ds-more button[aria-current="page"] { color: var(--u-ink); }
+  /* открытый пункт меню «Ещё» подсвечен: фон цвета юнита, полоска слева и «сейчас открыто» — подпись вкладки при этом не меняется */
+  .ds-nav .ds-more button[aria-current="page"] { color: var(--u-ink); background: color-mix(in srgb, var(--u) 13%, var(--ds-card)); box-shadow: inset 4px 0 0 var(--u); }
+  .ds-nav .ds-more button[aria-current="page"] small { color: var(--u-ink); font-weight: 700; }
   .ds-nav .ds-more button[aria-current="page"]::before { display: none; }
   .ds-nav .ds-more small { display: block; font: 400 12.5px var(--ds-sans); color: var(--ds-ink3); }
   .ds-nav .ds-more button > span { text-align: left; }

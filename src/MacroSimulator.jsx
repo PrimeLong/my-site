@@ -901,7 +901,8 @@ function BottomNav({ tab, onTab, onReselect = null }) {
     { id: 'book', icon: BookOpenText, label: 'Учебник' },
     { id: 'league', icon: Trophy, label: 'Лиги', lock: locks.league },
     { id: 'shop', icon: ShoppingBag, label: 'Лавка', lock: locks.shop },
-    { id: 'more', icon: Ellipsis, label: inMore ? inMore.label : 'Ещё', menu: true, open: menu, dot: newsNew && tab !== 'news' },
+    // подпись не меняется («Ещё», а не «Мир»/«Профиль»): открытый пункт подсвечен внутри меню (docs/mechanics.md, «Навигация»)
+    { id: 'more', icon: Ellipsis, label: 'Ещё', menu: true, open: menu, dot: newsNew && tab !== 'news' },
   ];
   useEffect(() => {
     if (!menu) return undefined;
@@ -927,7 +928,7 @@ function BottomNav({ tab, onTab, onReselect = null }) {
               return (
                 <button key={t.id} type="button" role="menuitem" data-tab={t.id} aria-current={on ? 'page' : undefined} data-nav-target={on ? undefined : `tab:${t.id}`}
                   onClick={() => { setMenu(false); if (on) { if (onReselect) onReselect(t.id); return; } Audio.play('tab'); onTab(t.id); }}>
-                  <Icon size={22} aria-hidden="true" /><span>{t.label}{t.id === 'news' && newsNew && <span className="ds-new">новое</span>}{t.id === 'world' && locks.world && <Lock size={13} aria-label="откроется позже" data-testid="world-lock" style={{ marginLeft: 6, verticalAlign: '-1px' }} />}<small>{t.id === 'world' && locks.world ? 'Откроется после 10-го урока' : t.text}</small></span>
+                  <Icon size={22} aria-hidden="true" /><span>{t.label}{t.id === 'news' && newsNew && <span className="ds-new">новое</span>}{t.id === 'world' && locks.world && <Lock size={13} aria-label="откроется позже" data-testid="world-lock" style={{ marginLeft: 6, verticalAlign: '-1px' }} />}<small>{on ? 'сейчас открыто' : t.id === 'world' && locks.world ? 'Откроется после 10-го урока' : t.text}</small></span>
                 </button>
               );
             })}
