@@ -959,11 +959,12 @@ test('учебник: оглавление, формулы KaTeX, график �
   await prob.getByRole('button', { name: 'Проверить' }).click();
   await expect(prob.getByTestId('tb-verdict')).toContainText('Пока неверно');
   // единицу из подписи можно дописать к ответу
-  await prob.getByRole('textbox').fill('30 руб.');
+  await prob.getByRole('textbox').fill('30 кр.');
   await prob.getByRole('button', { name: 'Не уверен', exact: true }).click();
   await prob.getByRole('button', { name: 'Проверить' }).click();
-  await expect(prob.getByTestId('tb-verdict')).toContainText('Верно: 30 руб.');
-  await expect(prob.getByTestId('tb-verdict')).not.toContainText('руб..');
+  // задачи учебника — в кронах, как на Пути (docs/world.md, «Валюта»)
+  await expect(prob.getByTestId('tb-verdict')).toContainText('Верно: 30 кр.');
+  await expect(prob.getByTestId('tb-verdict')).not.toContainText('кр..');
   // ошибся, потом ответил верно — повторение остаётся через два дня, и решённой задача не считается
   await expect(prob.getByTestId('tb-verdict')).toContainText('вернётся через 2 дня');
   await expect(prob).toContainText('была ошибка · повтор через 2 дня');
@@ -980,7 +981,7 @@ test('учебник: оглавление, формулы KaTeX, график �
   await multi.getByRole('textbox', { name: 'Задача 1, шаг в)' }).fill('39');
   await multi.getByRole('button', { name: 'Уверен', exact: true }).click();
   await multi.getByRole('button', { name: 'Проверить' }).click();
-  await expect(multi.getByTestId('tb-verdict')).toContainText('Верно: а) 24 ед.; б) 20 руб.; в) 39 ед.');
+  await expect(multi.getByTestId('tb-verdict')).toContainText('Верно: а) 24 ед.; б) 20 кр.; в) 39 ед.');
   // калькулятор задачи: корень и скобки; результат — в поле, где стоял курсор
   await multi.getByRole('textbox', { name: 'Задача 1, шаг б)' }).fill('');
   await multi.getByTestId('tb-calc-open').click();

@@ -1466,3 +1466,18 @@ describe('параллельные варианты: сто случайных �
     }
   });
 });
+
+// Валюта учебника (docs/world.md, раздел 1): в примерах и задачах — кроны; рубли — только в реальной статистике
+// с источником и годом (Россия, Росстат, Банк России). Смешанная задача («руб.» рядом с «кр.») — ошибка.
+describe('валюта учебника — кроны', () => {
+  it('в главах, вариантах задач, подписях и обозначениях рублей нет, кроме реальной статистики', async () => {
+    const fs = await import('node:fs');
+    const RUB = /(^|[^А-Яа-яЁё])(руб\.|рубл[а-яё]*|₽)/i;
+    const REAL = /России|российск|Росстат|Банк России/;
+    const dir = new URL('../chapters/', import.meta.url);
+    const files = [...fs.readdirSync(dir).map((f) => new URL(f, dir)), ...['variants.js', 'symbols.js', 'charts.js', 'glossary.js', 'diagrams.js'].map((f) => new URL(`../${f}`, import.meta.url))];
+    const bad = [];
+    files.forEach((u) => fs.readFileSync(u, 'utf8').split('\n').forEach((line, i) => { if (RUB.test(line) && !REAL.test(line)) bad.push(`${u.pathname.split('/').pop()}:${i + 1}`); }));
+    expect(bad).toEqual([]);
+  });
+});
