@@ -2402,7 +2402,13 @@ test('лиги: отдельная вкладка — медаль, что ну�
   await expect(lg.getByTestId('league-status')).toContainText('40 опыта');
   await expect(lg.getByTestId('league-when')).toContainText('4 дня до итогов');
   await expect(lg.getByTestId('league-goal')).toHaveAttribute('data-kind', /stay|down|up/);
-  await expect(lg.getByTestId('league-note')).toContainText('боты');
+  // «Соперники — боты» — заметной плашкой вверху вкладки, над медалью и названием лиги, а не мелкой строкой внизу
+  const note = lg.getByTestId('league-note');
+  await expect(note).toContainText('Соперники — боты');
+  await expect(note).toContainText('опыт выдуманный');
+  await expect(note).toBeInViewport();
+  expect((await note.boundingBox()).y).toBeLessThan((await lg.getByTestId('league-title').boundingBox()).y);
+  expect(await note.locator('b').evaluate((el) => parseFloat(getComputedStyle(el).fontSize))).toBeGreaterThanOrEqual(16);
   // все семь лиг: Бронзовая пройдена, Серебряная — здесь, дальше — закрыты
   await expect(lg.getByTestId('league-tier')).toHaveCount(7);
   await expect(lg.locator('[data-testid=league-tier][data-tier="bronze"]')).toHaveAttribute('data-state', 'passed');

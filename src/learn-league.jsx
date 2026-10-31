@@ -3,7 +3,7 @@
    карточкой, «Забрать» открывает окно вручения; лестница всех семи лиг; таблица группы,
    разделённая на три зоны: повышение, «остаётесь в лиге», понижение. В воскресенье — перерыв. */
 import React, { useEffect, useState } from 'react';
-import { ArrowUp, ArrowDown, Minus, ChevronDown, Lock, Coffee, X, Hourglass } from 'lucide-react';
+import { ArrowUp, ArrowDown, Minus, ChevronDown, Lock, Coffee, X, Hourglass, Bot } from 'lucide-react';
 import { Audio } from './MacroSimulator.jsx';
 import { Button, Card, Sheet, IconButton } from './ds.jsx';
 import { LEAGUE_BY_ID, LEAGUES, PROMOTE, GROUP, DEMOTE, PLACE_COINS, leagueState, claimLeague, pendingRewards } from './learn/league.js';
@@ -15,6 +15,11 @@ import { newsDate } from './learn/news.js';
 import { CoinShower } from './ds-art.jsx';
 
 const LEAGUE_CSS = `
+  .lg-bots { display: flex; gap: 12px; align-items: center; padding: 12px 14px; margin: 0 0 14px; border-radius: 16px; border: 2px solid var(--ds-ink); background: var(--ds-card);
+    color: var(--ds-ink); box-shadow: 0 3px 0 var(--ds-rule2); }
+  .lg-bots > svg { flex-shrink: 0; }
+  .lg-bots b { display: block; font: 800 17px/1.2 var(--ds-head); }
+  .lg-bots span { display: block; font-size: 14.5px; line-height: 1.4; margin-top: 2px; }
   .lg-hero { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 14px; align-items: center; }
   .lg-hero h1 { font: 700 24px/1.15 var(--ds-head); margin: 2px 0 4px; }
   .lg-place { font: 700 15px var(--ds-sans); color: var(--ds-ink); }
@@ -246,6 +251,12 @@ export function LeagueView({ learn, update, now = Date.now() }) {
   return (
     <div data-testid="league" data-league={st.league} data-place={st.me.place} data-rest={String(st.rest)}>
       <style>{LEAGUE_CSS}</style>
+      {/* раскрытие — первым делом, а не мелкой строкой внизу (среди учеников есть школьники; docs/mechanics.md, «Лиги недели») */}
+      <div className="lg-bots" role="note" data-testid="league-note">
+        <Bot size={26} aria-hidden="true" />
+        <div><b>Соперники — боты</b>
+          <span>Это не живые ученики: соперники — программа, их опыт выдуманный.{names.length > 0 && ' Под некоторыми ботами стоят имена учеников, которые разрешили их показывать, — опыт у этих строк тоже выдуманный.'}</span></div>
+      </div>
       <div className="lg-hero">
         <LeagueBadge id={st.league} size={78} />
         <div style={{ minWidth: 0 }}>
@@ -340,9 +351,6 @@ export function LeagueView({ learn, update, now = Date.now() }) {
           </ul>
         )}
       </div>
-      <Card flat style={{ fontSize: 13, lineHeight: 1.45, marginTop: 10 }} data-testid="league-note">
-        Соперники — ученики-боты. Под некоторыми могут стоять имена учеников, которые разрешили их показывать; опыт у них выдуманный.
-      </Card>
       {got && <RewardSheet got={got} onClose={() => { Audio.play('paper'); setGot(null); }} />}
     </div>
   );
