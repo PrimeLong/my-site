@@ -1654,6 +1654,56 @@ test('путь: повтор пройденного урока — «Урок у
   expect(errors).toEqual([]);
 });
 
+/* Подписи остановок Пути (docs/mechanics.md, «Навигация»): прямоугольник каждой подписи не пересекается ни с
+   другой подписью, ни с плашкой «рекомендуем сейчас» / «продолжить», ни с линией дороги (полоса 16 px вдоль пути). */
+async function pathLabelClashes(page) {
+  return page.evaluate(() => {
+    const out = [];
+    const hit = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+    document.querySelectorAll('[data-testid=path] .ln-route').forEach((route) => {
+      const box = route.getBoundingClientRect();
+      if (!box.width || !box.height) return;
+      const labels = [...route.querySelectorAll('.ln-stop-title')].map((el) => ({ r: el.getBoundingClientRect(), name: el.textContent.trim() }));
+      const pins = [...route.querySelectorAll('.ln-pin')].map((el) => ({ r: el.getBoundingClientRect(), name: el.textContent.trim() }));
+      labels.forEach((a, i) => labels.slice(i + 1).forEach((b) => { if (hit(a.r, b.r)) out.push(`«${a.name}» × «${b.name}»`); }));
+      labels.forEach((a) => pins.forEach((p) => { if (hit(a.r, p.r)) out.push(`«${a.name}» × плашка «${p.name}»`); }));
+      const path = route.querySelector('svg path');
+      if (!path) return;
+      const m = path.getScreenCTM(); const len = path.getTotalLength(); const half = 8 * Math.hypot(m.a, m.b);
+      for (let d = 0; d <= len; d += 3) {
+        const q = path.getPointAtLength(d);
+        const x = m.a * q.x + m.c * q.y + m.e; const y = m.b * q.x + m.d * q.y + m.f;
+        const road = { left: x - half, right: x + half, top: y - half, bottom: y + half };
+        labels.forEach((a) => { if (hit(a.r, road)) out.push(`«${a.name}» × дорога`); });
+      }
+      // подписи не выходят за экран
+      labels.forEach((a) => { if (a.r.left < 0 || a.r.right > document.documentElement.clientWidth) out.push(`«${a.name}» за краем экрана`); });
+    });
+    return [...new Set(out)];
+  });
+}
+test('путь: подписи остановок не пересекаются друг с другом, с плашкой «рекомендуем сейчас» и с дорогой', async ({ page }) => {
+  const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
+  const path = page.getByTestId('path');
+  await expect(path.getByTestId('path-lesson').first()).toBeVisible();
+  // остановки юнита по порядку дороги: уроки и особые уроки
+  const ids = await path.getByTestId('path-lesson').evaluateAll((els) => els.map((e) => e.dataset.lesson));
+  expect(ids.length).toBeGreaterThan(8);
+  // новичок; два урока (рекомендуем — «Персоналии»); середина юнита; почти весь юнит
+  for (const k of [0, 2, 5, ids.length - 2]) {
+    await page.evaluate(({ done }) => {
+      const at = Date.now() - 86400000;
+      localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons: Object.fromEntries(done.map((id) => [id, { at, runs: 1, best: 90 }])) } }));
+    }, { done: ids.slice(0, k) });
+    await page.reload({ waitUntil: 'networkidle' });
+    await expect(path.getByTestId('path-lesson').first()).toBeVisible();
+    if (k) await expect(path.locator('[data-testid=path-lesson][data-state="done"]')).toHaveCount(k);
+    await expect(path.getByTestId('path-rec')).toHaveCount(1);
+    expect(await pathLabelClashes(page), `пройдено уроков: ${k}`).toEqual([]);
+  }
+  expect(errors).toEqual([]);
+});
+
 test('путь: выход после первого ответа — урок продолжается с того же места; брошенный за сутки — в статистике', async ({ page }) => {
   // урок «Практика» играется целиком дважды — дольше минуты под нагрузкой
   test.setTimeout(120_000);
