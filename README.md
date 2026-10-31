@@ -57,6 +57,8 @@ npx playwright test e2e/visual.e2e.js --project=phone --update-snapshots   # о�
 npx playwright install webkit   # один раз, чтобы локально шёл проект webkit
 npm run balance    # стенд длинных партий: баланс модели
 npm run icons      # иконки и картинка для ссылок из public/favicon.svg
+npm run people:optimize   # портреты public/people: до 480 px по ширине, JPEG до 80 КБ, без EXIF (нужен ffmpeg)
+npm run people:export     # people/README.md: кто есть, сколько портретов лежит
 ```
 
 Перед коммитом: `npm run lint`, `npm test`, `npm run build`, `npx playwright test`
