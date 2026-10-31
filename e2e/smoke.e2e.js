@@ -2975,7 +2975,12 @@ test('вход: программа — вступительный тест, су
   await expect(page.getByTestId('quests').getByTestId('quest')).toHaveCount(3);
   await expect(page.getByTestId('goal-row')).toContainText('Цель дня: 15 минут занятий');
   await expect(page.getByTestId('month')).toBeVisible();
-  await expect(page.getByTestId('month-why')).toContainText('15 минут в день');
+  // новичок за неделю до конца месяца (по всемирному времени) испытания не получает: первое — с 1-го числа
+  const nowUtc = new Date(); const daysLeft = new Date(Date.UTC(nowUtc.getUTCFullYear(), nowUtc.getUTCMonth() + 1, 0)).getUTCDate() - nowUtc.getUTCDate() + 1;
+  if (daysLeft < 7) {
+    await expect(page.getByTestId('month')).toHaveAttribute('data-waiting', 'true');
+    await expect(page.getByTestId('month-title')).toContainText('Первое испытание — с 1 ');
+  } else await expect(page.getByTestId('month-why')).toContainText('15 минут в день');
   await openTab(page, 'path');
 
   // вступительный тест: юнит 1 — без ошибок, юнит 2 — две ошибки подряд: тест заканчивается

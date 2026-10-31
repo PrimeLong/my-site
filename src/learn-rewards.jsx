@@ -316,7 +316,8 @@ export function TasksEntry({ learn, onOpen, now = Date.now() }) {
   const m = monthChallenge(learn, now);
   const done = quests.filter((q) => q.done).length;
   const goalOk = g.done >= g.goal;
-  const text = `Задания дня: ${done} из 3 · цель ${Math.min(g.done, g.goal)}/${g.goal} мин · испытание месяца ${m.claimed ? 'выполнено' : `${m.have} из ${m.target}`}`;
+  const month = m.claimed ? 'выполнено' : m.waiting ? `с ${m.startsText}` : `${m.have} из ${m.target}`;
+  const text = `Задания дня: ${done} из 3 · цель ${Math.min(g.done, g.goal)}/${g.goal} мин · испытание месяца ${month}`;
   return (
     <button type="button" className="ds-card ds-card--button rw-tasks-entry" data-testid="tasks-card" data-nav-target="tasks" aria-label={`Задания. ${text}`}
       onClick={() => { Audio.play('paper'); onOpen(); }}>
@@ -390,19 +391,21 @@ export function QuestsCard({ learn, now = Date.now(), testid = 'quests' }) {
 export function MonthCard({ learn, now = Date.now() }) {
   const m = monthChallenge(learn, now);
   return (
-    <Card style={{ margin: '0 0 14px' }} data-testid="month" data-done={String(m.done)} data-kind={m.id}>
+    <Card style={{ margin: '0 0 14px' }} data-testid="month" data-done={String(m.done)} data-kind={m.id || undefined} data-waiting={m.waiting ? 'true' : undefined}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
         <CalendarDays size={18} color="var(--u-ink)" aria-hidden="true" />
         <span className="ds-h3" style={{ flex: 1 }}>Испытание месяца</span>
         <CoinTag n={`+${m.coins}`} />
       </div>
-      <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 6 }}>{m.title}</div>
+      <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 6 }} data-testid="month-title">{m.title}</div>
+      {m.waiting ? <div className="ds-faint" style={{ fontSize: 12, marginTop: 2 }} data-testid="month-why">{m.why}</div> : <>
       <Bar have={m.have} target={m.target} ok={m.done} />
       <div className="ds-faint" style={{ fontSize: 12, marginTop: 4 }}>
         {m.claimed ? `Выполнено — марка «${m.name}» в альбоме.`
           : `${m.have} из ${m.target}${m.need ? ` · нужно ещё ${m.need} ${m.unit}` : ''} · до конца месяца ${m.daysLeft} ${plural(m.daysLeft, 'день', 'дня', 'дней')}${m.daysLeft === 1 ? ' — сегодня последний' : ''}`}
       </div>
       <div className="ds-faint" style={{ fontSize: 12, marginTop: 2 }} data-testid="month-why">{m.why}</div>
+      </>}
     </Card>
   );
 }
