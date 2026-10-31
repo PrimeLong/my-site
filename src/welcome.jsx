@@ -17,7 +17,7 @@ import { dsThemeId } from './ds-tokens.js';
 import { loadProgress, saveProgress } from './textbook/progress.js';
 import { setGoal, setProfile, PROFILE_GOAL_LABEL, LESSONS_FOR_MINUTES } from './textbook/learn-state.js';
 import { startGuest, endGuest } from './lib/guest.js';
-import { track } from './lib/client.js';
+import { track, trackOnce } from './lib/client.js';
 
 // ответы первого запуска: после регистрации они уходят в программу ученика (learn.profile)
 const ONBOARD_KEY = 'ems-onboarding';
@@ -204,7 +204,7 @@ function Hello({ go }) {
         <div style={{ marginTop: 14, width: '100%' }} className="wl-g2"><Guilloche height={20} /></div>
       </div>
       <div className="wl-foot">
-        <Button wide className={tried ? 'wl-cta-go' : ''} onClick={() => { Audio.prime(); Audio.play('click'); track('welcome_start'); go('goal'); }}>{tried ? 'Начать — первый урок' : 'Начать'}</Button>
+        <Button wide className={tried ? 'wl-cta-go' : ''} onClick={() => { Audio.prime(); Audio.play('click'); trackOnce('welcome_start'); go('goal'); }}>{tried ? 'Начать — первый урок' : 'Начать'}</Button>
         <Button variant="secondary" wide onClick={() => { Audio.prime(); Audio.play('click'); go('login'); }}>У меня уже есть аккаунт</Button>
       </div>
     </div>
@@ -237,7 +237,7 @@ function Goal({ go, plan, setPlan }) {
         </div>
       </div>
       <div className="wl-foot">
-        <Button wide disabled={!ok} onClick={() => { Audio.play('click'); saveOnboarding(plan); applyPlan(plan); track('goal_done'); startGuest(); }}>Продолжить</Button>
+        <Button wide disabled={!ok} onClick={() => { Audio.play('click'); saveOnboarding(plan); applyPlan(plan); trackOnce('goal_done'); startGuest(); }}>Продолжить</Button>
       </div>
     </div>
   );

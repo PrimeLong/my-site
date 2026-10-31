@@ -3,6 +3,7 @@
    приглашение на вступительный тест. Всё — из компонентов дизайн-системы (src/ds.jsx,
    src/ds-art.jsx); расчёты — в чистых модулях src/learn/rewards.js и src/learn/program.js. */
 import React, { useEffect, useRef, useState } from 'react';
+import { trackDaily } from './lib/client.js';
 import {
   X, Wallet, ShieldCheck, CalendarDays, Check, Flame, GraduationCap, Timer, Map as MapIcon, Target, Coins, TrendingUp, TrendingDown, Minus, Gem, Zap,
   ListChecks, ChevronRight, Ghost, Crown, Lock, Plus, Store, Palette, Shirt, PiggyBank, ChevronDown,
@@ -639,6 +640,8 @@ const SHOP_TABS = [
 ];
 let lastShopTab = 'showcase';
 export function ShopView({ learn, update, now = Date.now(), focus = null }) {
+  // аналитика: раздел открыт — не чаще раза в день с устройства (docs/mechanics.md, «Аналитика»)
+  useEffect(() => { trackDaily('shop_open'); }, []);
   const day = dayOf(now);
   const rate = rateOn(day); const prev = rateOn(addDays(day, -1));
   const [msg, setMsg] = useState(null);

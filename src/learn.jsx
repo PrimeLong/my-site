@@ -22,7 +22,7 @@ import { unitStops, EXTRA_KIND } from './learn/stops.js';
 import { STATS_CSS } from './learn-stats.jsx';
 import { askSave } from './lib/guest.js';
 import { writeLearnLevel } from './lib/disclosure.js';
-import { track } from './lib/client.js';
+import { track, trackOnce } from './lib/client.js';
 import { Audio, getPlayerId, syncProfile } from './MacroSimulator.jsx';
 import { Blocks, Inline, ChartSvg, ChartLegend, TEXTBOOK_CSS, TextbookScreen } from './textbook.jsx';
 import { CHARTS, chartDefaults } from './textbook/charts.js';
@@ -1033,7 +1033,9 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
     if (r.empty) { setFb({ ok: false, why: null, empty: true }); return; }
     const a = acc.current;
     // урок начат — с первого ответа
-    if (!started) { setStarted(true); update(startLesson); if (run.mode === 'lesson') track('lesson_start', { lesson: run.lessonId }); }
+    /* аналитика: lesson_start — активность, на каждый урок; first_lesson_start — шаг воронки, один раз с
+       устройства (docs/mechanics.md, «Аналитика») */
+    if (!started) { setStarted(true); update(startLesson); if (run.mode === 'lesson') { track('lesson_start', { lesson: run.lessonId }); trackOnce('first_lesson_start'); } }
     const firstTime = !(orig in a.first);
     // верно с первого раза: собранное с падениями домино выполнено, но не с первого раза
     const firstOk = r.ok && !r.partial;
@@ -1104,6 +1106,7 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
     let apply;
     if (run.mode === 'lesson') {
       track('lesson_done', { lesson: run.lessonId, ms });
+      trackOnce('first_lesson_done');
       xp = lessonXp({ firstTry: firstOk, replay, diamond, bonus: a.bonus });
       apply = (s) => finishLesson(s, run.lessonId, { xp, ...done, diamond });
       dropResume(run.lessonId);

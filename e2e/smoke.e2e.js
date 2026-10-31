@@ -2751,8 +2751,9 @@ test('сообщить об ошибке: флажок на упражнении
       if (body.action === 'report') {
         const day = (k) => new Date(Date.now() - k * 86400000).toISOString().slice(0, 10);
         const daily = Array.from({ length: 30 }, (_, i) => ({ day: day(29 - i), welcome_start: i % 3, goal_done: 0, lesson_start: 4 + (i % 5), lesson_done: 2 + (i % 4), register_done: i % 7 === 0 ? 1 : 0, return_d1: 0, return_d7: 0, ex_first_try_ok: 10 + i, ex_first_try_fail: 5 }));
-        return JSON.stringify({ funnel: [{ event: 'welcome_start', label: 'Нажали «Начать»', count: 40 }, { event: 'lesson_done', label: 'Прошли урок', count: 25 }],
+        return JSON.stringify({ funnel: [{ event: 'welcome_start', label: 'Нажали «Начать»', count: 40 }, { event: 'first_lesson_done', label: 'Прошли первый урок', count: 25 }],
           hardest: [{ id: 'sd-q2', total: 12, correct: 3, share: 0.25 }], daily,
+          features: [{ event: 'shop_open', label: 'Лавка', now: 12, prev: 8, today: 2, month: 40 }, { event: 'garden_open', label: 'Сад Инфли', now: 0, prev: 0, today: 0, month: 0 }],
           totals: { lessons: { now: 30, prev: 20, today: 4 }, starts: { now: 45, prev: 40, today: 6 }, accounts: { now: 3, prev: 4, today: 0 }, newcomers: { now: 9, prev: 7, today: 1 }, accuracy: { now: 0.7, prev: 0.65 } },
           lessons: [{ id: 'sd-i1', start: 20, done: 15, finish: 0.75, minutes: 4.2 }, { id: 'sd-l1', start: 8, done: 2, finish: 0.25, minutes: 6 }],
           reports: { fresh: 2, byReason: { answer: 1, typo: 1 } } });
@@ -2854,13 +2855,19 @@ test('сообщить об ошибке: флажок на упражнении
   await expect(page.getByTestId('settings')).toBeVisible();
   // аналитика без персональных данных: в событиях нет ни логина, ни сессии
   expect(events.some((e) => e.event === 'lesson_start' && e.lesson === 'sc-i1')).toBe(true);
+  // шаг воронки «начали первый урок» — разовый, без id урока
+  expect(events.filter((e) => e.event === 'first_lesson_start')).toEqual([{ event: 'first_lesson_start' }]);
   expect(events.some((e) => e.event === 'ex_first_try_fail' && e.exercise)).toBe(true);
   events.forEach((e) => { expect(e.session).toBeUndefined(); expect(e.login).toBeUndefined(); expect(e.playerId).toBeUndefined(); });
   await page.getByTestId('prof-analytics').click();
   const an = page.getByTestId('analytics');
   await expect(an.getByTestId('analytics-funnel').locator('[data-event]')).toHaveCount(2);
   // воронка с конверсией шага: 25 из 40 — 63%
-  await expect(an.getByTestId('analytics-funnel').locator('[data-event="lesson_done"]')).toContainText('63%');
+  await expect(an.getByTestId('analytics-funnel').locator('[data-event="first_lesson_done"]')).toContainText('Прошли первый урок');
+  await expect(an.getByTestId('analytics-funnel').locator('[data-event="first_lesson_done"]')).toContainText('63%');
+  // разделы: устройств за неделю против прошлой — лавка +50%, сад не открывали
+  await expect(an.getByTestId('analytics-features').locator('[data-event="shop_open"]')).toContainText('+50%');
+  await expect(an.getByTestId('analytics-features').locator('[data-event="garden_open"]')).toContainText('—');
   await expect(an.getByTestId('analytics-hardest').locator('[data-exercise="sd-q2"]')).toContainText('25%');
   await expect(an.getByTestId('analytics-hardest').locator('[data-exercise="sd-q2"]')).toContainText('3 из 12');
   // сводка недели против прошлой: +50% уроков

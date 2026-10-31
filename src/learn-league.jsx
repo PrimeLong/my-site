@@ -9,7 +9,7 @@ import { Button, Card, Sheet, IconButton } from './ds.jsx';
 import { LEAGUE_BY_ID, LEAGUES, PROMOTE, GROUP, DEMOTE, PLACE_COINS, leagueState, claimLeague, pendingRewards } from './learn/league.js';
 import { coinsWord, plural } from './learn/rewards.js';
 import { loadAccount, accountKidsMode } from './account.jsx';
-import { accountLeagueNames } from './lib/client.js';
+import { accountLeagueNames, trackDaily } from './lib/client.js';
 import { dayOf, dowOf, rolloverLocal } from './textbook/learn-state.js';
 import { newsDate } from './learn/news.js';
 import { CoinShower } from './ds-art.jsx';
@@ -218,6 +218,8 @@ function GoalCard({ st }) {
 }
 
 export function LeagueView({ learn, update, now = Date.now() }) {
+  // аналитика: раздел открыт — не чаще раза в день с устройства (docs/mechanics.md, «Аналитика»)
+  useEffect(() => { trackDaily('league_open'); }, []);
   const names = useLeagueNames();
   const [got, setGot] = useState(null);
   const [rules, setRules] = useState(false);

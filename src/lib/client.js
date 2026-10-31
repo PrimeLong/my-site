@@ -196,4 +196,33 @@ export function track(event, extra = {}) {
     fetch('/api/events', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ event, ...extra }), keepalive: true }).catch(() => {});
   } catch { /* нет сети — не важно */ }
 }
+/* Разовые события воронки (docs/mechanics.md, «Аналитика»): не больше одного раза с устройства —
+   отметка лежит только в браузере (ems-events-once). Нет памяти браузера — событие не уходит вовсе:
+   лучше недосчитать, чем считать одно устройство много раз. */
+const ONCE_KEY = 'ems-events-once';
+const DAY_KEY = 'ems-events-day';
+const defaultStore = () => { try { return typeof localStorage !== 'undefined' ? localStorage : null; } catch { return null; } };
+const readMarks = (store, key) => { try { return JSON.parse(store.getItem(key) || '{}') || {}; } catch { return {}; } };
+const writeMarks = (store, key, m) => { try { store.setItem(key, JSON.stringify(m)); return true; } catch { return false; } };
+export function trackOnce(event, extra = {}, { store = defaultStore(), send = track } = {}) {
+  if (!store) return false;
+  const m = readMarks(store, ONCE_KEY);
+  if (m[event]) return false;
+  m[event] = 1;
+  if (!writeMarks(store, ONCE_KEY, m)) return false;
+  send(event, extra);
+  return true;
+}
+/* Открытие раздела (world_open, shop_open…) — не чаще раза в день (UTC, как дни в отчёте) с устройства:
+   число в отчёте — сколько устройств открывали раздел за день, а не сколько раз нажали. */
+export function trackDaily(event, { store = defaultStore(), send = track, now = Date.now() } = {}) {
+  if (!store) return false;
+  const day = new Date(now).toISOString().slice(0, 10);
+  const m = readMarks(store, DAY_KEY);
+  if (m[event] === day) return false;
+  m[event] = day;
+  if (!writeMarks(store, DAY_KEY, m)) return false;
+  send(event, {});
+  return true;
+}
 export const eventsReport = (session) => post({ action: 'report', session }, '/api/events');

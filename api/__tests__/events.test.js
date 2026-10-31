@@ -1,6 +1,6 @@
 /* Аналитика без персональных данных: только счётчики, без логина и адреса; отчёт — владельцам. */
 import { describe, it, expect } from 'vitest';
-import eventsHandler, { sanitizeEvent, counterKeys, FUNNEL, EVENTS } from '../events.js';
+import eventsHandler, { sanitizeEvent, counterKeys, FUNNEL, EVENTS, ACTIVITY, FEATURES } from '../events.js';
 import accountHandler from '../account.js';
 import { readCounters } from '../_lib/store.js';
 
@@ -12,8 +12,18 @@ const call = (handler, body, headers = {}) => new Promise((resolve) => {
 const ev = (body) => call(eventsHandler, body);
 
 describe('события', () => {
+  it('воронка — только разовые события (первый урок — first_lesson_*); уроки и ответы — активность; открытия разделов — отдельно', () => {
+    expect(FUNNEL).toEqual(['welcome_start', 'goal_done', 'first_lesson_start', 'first_lesson_done', 'register_done', 'return_d1', 'return_d7']);
+    expect(ACTIVITY).toEqual(['lesson_start', 'lesson_done', 'ex_first_try_ok', 'ex_first_try_fail']);
+    expect(FUNNEL.some((e) => ACTIVITY.includes(e))).toBe(false);
+    expect(FEATURES).toEqual(['world_open', 'textbook_open', 'shop_open', 'garden_open', 'league_open', 'tycoon_open', 'network_open']);
+    // разовые события и открытия разделов считаются по дню и имени события — без урока и упражнения в ключе
+    expect(sanitizeEvent({ event: 'first_lesson_start', lesson: 'sc-i1', login: 'anna' })).toEqual({ event: 'first_lesson_start', lesson: 'sc-i1' });
+    expect(counterKeys({ event: 'first_lesson_start', lesson: 'sc-i1' }, Date.UTC(2026, 9, 5))).toEqual(['day:2026-10-05:first_lesson_start']);
+    expect(counterKeys({ event: 'garden_open' }, Date.UTC(2026, 9, 5))).toEqual(['day:2026-10-05:garden_open']);
+  });
   it('принимает только известные события и только короткие id; лишние поля отбрасывает', () => {
-    expect(EVENTS).toEqual(expect.arrayContaining(['welcome_start', 'goal_done', 'lesson_start', 'lesson_done', 'register_done', 'return_d1', 'return_d7', 'ex_first_try_ok', 'ex_first_try_fail']));
+    expect(EVENTS).toEqual(expect.arrayContaining(['welcome_start', 'goal_done', 'first_lesson_start', 'first_lesson_done', 'lesson_start', 'lesson_done', 'register_done', 'return_d1', 'return_d7', 'ex_first_try_ok', 'ex_first_try_fail', 'world_open', 'shop_open']));
     expect(sanitizeEvent({ event: 'hack' })).toBeNull();
     expect(sanitizeEvent({ event: 'lesson_done', lesson: 'sd-i1', login: 'anna', ip: '1.2.3.4', ms: 5000 })).toEqual({ event: 'lesson_done', lesson: 'sd-i1', ms: 5000 });
     expect(sanitizeEvent({ event: 'lesson_done', lesson: 'x'.repeat(200) })).toEqual({ event: 'lesson_done' });
@@ -45,6 +55,13 @@ describe('отчёт для владельцев', () => {
     const r = await ev({ action: 'report', session: reg.data.token });
     expect(r.status).toBe(200);
     expect(r.data.funnel.map((f) => f.event)).toEqual(FUNNEL);
+    expect(r.data.funnel.find((f) => f.event === 'first_lesson_start').label).toBe('Начали первый урок');
+    // открытия разделов: за неделю, прошлую неделю и 30 дней
+    await ev({ event: 'garden_open' });
+    const rg = await ev({ action: 'report', session: reg.data.token });
+    expect(rg.data.features.map((f) => f.event)).toEqual(FEATURES);
+    expect(rg.data.features.find((f) => f.event === 'garden_open')).toMatchObject({ label: 'Сад Инфли', now: expect.any(Number), prev: expect.any(Number), month: expect.any(Number) });
+    expect(rg.data.features.find((f) => f.event === 'garden_open').now).toBeGreaterThanOrEqual(1);
     expect(r.data.hardest[0]).toMatchObject({ id: 'hard-one', total: 6, correct: 1 });
     expect(r.data.hardest.map((x) => x.id)).not.toContain('rare-one'); // меньше 5 ответов — не в списке
     expect(r.data.hardest.length).toBeLessThanOrEqual(20);

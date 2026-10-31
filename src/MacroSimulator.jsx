@@ -1,7 +1,7 @@
 ﻿import React, { useState, useEffect, Suspense } from 'react';
 import {
   syncProgress, fetchRoom,
-  fetchSoloSlots, fetchSoloSlot, deleteSoloSlot, fetchDailyBoard, fetchTycoonSlots, fetchTycoonSlot, deleteTycoonSlot, track,
+  fetchSoloSlots, fetchSoloSlot, deleteSoloSlot, fetchDailyBoard, fetchTycoonSlots, fetchTycoonSlot, deleteTycoonSlot, track, trackDaily,
 } from './lib/client.js';
 import {
   Landmark, Coins, Globe2, TrendingUp, TrendingDown, Users, Scale, ShieldCheck, ChevronDown, X, Check,
@@ -2029,6 +2029,8 @@ export default function MacroSimulator() {
      tab — открытая вкладка; из Лаборатории или партии возвращаемся на ту же вкладку. */
   const [tab, setTabRaw] = useState('path');
   const setTab = (t) => { setTabRaw(t); window.scrollTo(0, 0); };
+  // аналитика: открыли вкладку «Мир» — не чаще раза в день с устройства (docs/mechanics.md, «Аналитика»)
+  React.useEffect(() => { if (tab === 'world' && view === 'menu') trackDaily('world_open'); }, [tab, view]);
   /* Вход обязателен: без аккаунта — только приветствие, вход и регистрация (src/welcome.jsx).
      Экран входа закрывается событием ems-account-ready, когда аккаунт сохранён и код
      восстановления показан; выход из аккаунта возвращает на приветствие. */

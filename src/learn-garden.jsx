@@ -13,6 +13,7 @@ import { balance, coinsWord } from './learn/rewards.js';
 import { RateWeek } from './learn-rate.jsx';
 import { dayOf } from './textbook/learn-state.js';
 import { plural } from './lib/plural.js';
+import { trackDaily } from './lib/client.js';
 
 const RAINBOW = '#E8B840, #D2463C, #C46FC0, #4F7BC0, #4B692C, #E8B840';
 const GARDEN_CSS = `
@@ -246,6 +247,8 @@ const useNow = (ms = 30000) => {
 const seedState = (free, b, price) => (!free ? 'plots' : b < price ? 'coins' : 'ok');
 
 export function GardenView({ learn, update }) {
+  // аналитика: раздел открыт — не чаще раза в день с устройства (docs/mechanics.md, «Аналитика»)
+  useEffect(() => { trackDaily('garden_open'); }, []);
   const now = useNow(15000);
   const [msg, setMsg] = useState(null);
   const [allCrops, setAllCrops] = useState(false);
