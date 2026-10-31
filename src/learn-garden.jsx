@@ -6,9 +6,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Lock, Sprout, Clock, Coins, X, ArrowDown, Droplet, Droplets } from 'lucide-react';
 import { Audio } from './MacroSimulator.jsx';
-import { Button, Heading } from './ds.jsx';
+import { Button, Heading, Sheet } from './ds.jsx';
 import { PLANTS, PLANT_BY_ID, RARITY, GARDEN_PLOTS, GRADES, GRADE_BY_ID, MARKET_DROP, gardenPlots, growth, leftText, plant, harvest, herbarium, grown, collection,
-  plantPrice, salePrice, sell, sellAll, soldToday, cropGroups, paidPrice, STAGE_LABEL, water, needsWater, WATER_HOURS } from './learn/garden.js';
+  plantPrice, salePrice, sell, sellAll, soldToday, cropGroups, paidPrice, STAGE_LABEL, water, needsWater, WATER_HOURS, SHOW_ODDS, oddsTable } from './learn/garden.js';
 import { balance, coinsWord } from './learn/rewards.js';
 import { RateWeek } from './learn-rate.jsx';
 import { dayOf } from './textbook/learn-state.js';
@@ -110,6 +110,11 @@ const GARDEN_CSS = `
   .gd-result .gd-art { width: 64px; height: 76px; }
   .gd-result-close { position: absolute; top: 4px; right: 4px; }
   .gd-odds { font-size: 13px; line-height: 1.5; color: var(--ds-ink2); margin: 4px 0 0; }
+  .gd-odds-link { background: none; border: none; padding: 6px 0; margin-top: 4px; font: 700 14px var(--ds-sans); color: var(--ds-ink); text-decoration: underline dotted; text-underline-offset: 3px; cursor: pointer; }
+  .gd-odds-table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 14.5px; }
+  .gd-odds-table th { text-align: left; font: 700 12px var(--ds-sans); color: var(--ds-ink2); padding: 0 0 6px; }
+  .gd-odds-table td { padding: 6px 0; border-top: 1px solid var(--ds-rule); }
+  .gd-odds-table .num { text-align: right; font-variant-numeric: tabular-nums; }
   .gd-herb { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 10px 0 16px; }
   .gd-herb > div { border: 1px solid var(--ds-rule2); border-radius: 6px; padding: 6px; text-align: center; background: var(--ds-card); }
   .gd-herb > div.no { border-style: dashed; background: transparent; color: var(--ds-ink3); }
@@ -237,6 +242,26 @@ const Grade = ({ id }) => <span className="gd-grade" style={{ background: GRADE_
 const GradeArt = ({ plantId, grade, title }) => <span className={`gd-aura g-${grade}`} data-aura={grade}><PlantArt id={plantId} title={title} /></span>;
 const multText = (m) => `×${String(m).replace('.', ',')}`;
 const CROPS_SHOWN = 6;
+/* «Шансы урожая» (docs/mechanics.md, «Сад Инфли»): экран выключен флагом SHOW_ODDS — по решению владельца шансы не
+   пишем. Автотест открывает его своим флагом (ems-show-odds), чтобы экран не сломался незаметно. */
+const oddsOn = () => SHOW_ODDS || (typeof window !== 'undefined' && !!window.__INFLATIA_TEST__ && (() => { try { return localStorage.getItem('ems-show-odds') === '1'; } catch { return false; } })());
+export function GardenOdds({ onClose }) {
+  return (
+    <Sheet label="Шансы урожая" onClose={onClose} testid="garden-odds-sheet">
+      <Heading level={2} title="Шансы урожая" sub="Редкость выпадает один раз — при сборе. Шансы одни для всех растений и не зависят от покупок, курса и ставки." />
+      <table className="gd-odds-table" data-testid="garden-odds-table">
+        <thead><tr><th>Редкость</th><th className="num">Шанс</th><th className="num">Цена на рынке</th></tr></thead>
+        <tbody>
+          {oddsTable().map((g) => (
+            <tr key={g.id} data-grade={g.id}><td><Grade id={g.id} /></td><td className="num">{g.odds}</td><td className="num">{multText(g.mult)}</td></tr>
+          ))}
+        </tbody>
+      </table>
+      <div className="gd-odds" style={{ marginTop: 10 }}>Небывалый — один урожай из тысячи. В среднем урожай дороже семян примерно на 9%.</div>
+      <Button wide style={{ marginTop: 14 }} onClick={onClose}>Понятно</Button>
+    </Sheet>
+  );
+}
 const useNow = (ms = 30000) => {
   const [now, setNow] = useState(Date.now());
   useEffect(() => { const id = setInterval(() => setNow(Date.now()), ms); return () => clearInterval(id); }, [ms]);
@@ -252,6 +277,7 @@ export function GardenView({ learn, update }) {
   const now = useNow(15000);
   const [msg, setMsg] = useState(null);
   const [allCrops, setAllCrops] = useState(false);
+  const [odds, setOdds] = useState(false);
   const seedsRef = useRef(null);
   const day = dayOf(now);
   const b = balance(learn);
@@ -398,6 +424,8 @@ export function GardenView({ learn, update }) {
       <div className="gd-grades" data-testid="garden-grades">
         {GRADES.map((g) => <span key={g.id}><Grade id={g.id} /> {multText(g.mult)}</span>)}
       </div>
+      {oddsOn() && <button type="button" className="gd-odds-link" data-testid="garden-odds-open" onClick={() => { Audio.play('paper'); setOdds(true); }}>Шансы урожая</button>}
+      {odds && <GardenOdds onClose={() => setOdds(false)} />}
       {groups.length > 0 && (
         <div className="gd-crops" data-testid="garden-crops">
           {shown.map((g) => {

@@ -2311,9 +2311,10 @@ test('лавка → сад: урожай с редкостью — продат
   await expect(garden.locator('[data-testid=garden-plot][data-plant="chamomile"]')).toHaveAttribute('data-stage', 'bloom');
   await expect(garden.locator('[data-testid=garden-plot][data-plant="tulip"]')).toHaveAttribute('data-stage', 'bud');
   await expect(garden.locator('[data-testid=garden-plot][data-plant="tulip"] [data-testid=garden-left]')).toContainText('3 ч');
-  // шансов редкости на экране нет — только редкости и во сколько раз дороже урожай
+  // шансов редкости на экране нет — только редкости и во сколько раз дороже урожай; экран «Шансы урожая» выключен (SHOW_ODDS)
   await expect(garden.getByTestId('garden-odds').first()).not.toContainText('%');
   await expect(garden.getByTestId('garden-grades')).toContainText('небывалый ×6');
+  await expect(garden.getByTestId('garden-odds-open')).toHaveCount(0);
   // на пакетике видно, можно ли купить: «Посадить» — или что мешает, и кнопка выключена
   const seedStates = await garden.getByTestId('garden-seed').evaluateAll((els) => els.map((e) => { const b = e.querySelector('[data-testid=garden-plant]'); return [e.dataset.state, b.textContent, b.disabled]; }));
   seedStates.forEach(([st, text, off]) => {
@@ -5317,6 +5318,25 @@ test('особые уроки не пропустить: после урока �
   });
   await page.reload({ waitUntil: 'networkidle' });
   await expect(pathNode(page, 'sc-l3')).not.toHaveAttribute('data-state', 'locked');
+  expect(errors).toEqual([]);
+});
+
+// «Шансы урожая» — экран за флагом SHOW_ODDS (выключен по решению владельца); тест открывает его своим флагом
+test('сад: экран «Шансы урожая» (за флагом) — редкость, шанс и цена, в сумме 100%', async ({ page }) => {
+  await withTestFlag(page);
+  await page.addInitScript(() => {
+    localStorage.setItem('ems-show-odds', '1');
+    if (localStorage.getItem('ems-textbook-v1')) return;
+    localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons: { 'sc-i1': { at: Date.now() - 86400000, runs: 1, best: 90 } }, coins: { '2026-01-01': 50 } } }));
+  });
+  const { errors } = await openApp(page, '/', '{}', { tab: 'shop' });
+  await page.getByTestId('shop').getByTestId('shop-switch').locator('[data-view="garden"]').click();
+  await page.getByTestId('garden-odds-open').click();
+  const t = page.getByTestId('garden-odds-table');
+  expect(await t.locator('tbody tr').evaluateAll((rows) => rows.map((r) => r.children[1].textContent))).toEqual(['55%', '25%', '12%', '6%', '1,9%', '0,1%']);
+  await expect(t.locator('tr[data-grade="myth"]')).toContainText('×6');
+  await page.getByTestId('garden-odds-sheet').getByRole('button', { name: 'Понятно' }).click();
+  await expect(page.getByTestId('garden-odds-sheet')).toHaveCount(0);
   expect(errors).toEqual([]);
 });
 
