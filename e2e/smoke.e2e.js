@@ -3382,6 +3382,9 @@ test.describe('офлайн', () => {
     await page.goto('/', { waitUntil: 'networkidle' });
     const manifest = await page.evaluate(async () => (await fetch(document.querySelector('link[rel=manifest]').href)).json());
     expect(manifest.display).toBe('standalone');
+    // светлая тема — по умолчанию: и манифест, и строка браузера; тёмный цвет — только для тёмной системы
+    expect([manifest.theme_color, manifest.background_color]).toEqual(['#FFF8EE', '#FFF8EE']);
+    expect(await page.locator('meta[name="theme-color"]').evaluateAll((els) => els.map((e) => [e.content, e.media || '']))).toEqual([['#0B0F17', '(prefers-color-scheme: dark)'], ['#FFF8EE', '']]);
     expect(manifest.icons.some((i) => i.sizes === '512x512')).toBe(true);
     await page.evaluate(() => navigator.serviceWorker.ready);
     // со второго открытия страницей управляет service worker и складывает файлы в кэш
